@@ -41,6 +41,11 @@ export default function UploadModal({
 
   function handleFile(f: File | undefined | null) {
     if (!f) return;
+    if (f.size > 50 * 1024 * 1024) {
+      setFile(null);
+      setStatus({ text: "Too large (50 MB max)", color: "#c0392b" });
+      return;
+    }
     setFile(f);
     setName(f.name);
     setSizeLabel(fmtBytes(f.size));
@@ -57,13 +62,16 @@ export default function UploadModal({
     reader.readAsDataURL(f);
   }
 
-  function loadDemo() {
-    setFile(null);
-    setName("her2_B1.tiff");
-    setSizeLabel("8.40 MB");
-    setDims("2000 × 1500");
-    setStatus({ text: "Demo ready", color: "var(--accent)" });
-    setUrl(makeDemoHE());
+  async function loadDemo() {
+    const demoUrl = makeDemoHE();
+    const blob = await fetch(demoUrl).then((response) => response.blob());
+    const demoFile = new File([blob], "synthetic-demo.png", { type: "image/png" });
+    setFile(demoFile);
+    setName(demoFile.name);
+    setSizeLabel(fmtBytes(demoFile.size));
+    setDims("320 × 240");
+    setStatus({ text: "Synthetic demo ready", color: "var(--accent)" });
+    setUrl(demoUrl);
   }
 
   const canRun = status.text !== "No file";
@@ -124,7 +132,7 @@ export default function UploadModal({
               </svg>
             </div>
             <div className="dropzone-title">Drop a histology image here</div>
-            <div className="dropzone-sub">or click to browse · max 200 MB</div>
+            <div className="dropzone-sub">or click to browse · max 50 MB</div>
             <div className="format-pills">
               <span>.tif</span>
               <span>.tiff</span>
