@@ -162,6 +162,7 @@ node_modules/
 *.pt
 *.pth
 *.npy
+backend/model_data/
 
 # OS
 .DS_Store
