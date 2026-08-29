@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CL, CL_NAME, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
+import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
 
 const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -100,14 +100,14 @@ export default function SpatialPlot({
 
     const genesView = view === "genes";
     let gk = gene;
-    if (!pred.geneMeta[gk]) gk = "ERBB2";
+    if (!pred.geneMeta[gk]) gk = pred.genes[0] ?? "";
     const r = Math.max(2.6, pw / 160);
     for (const s of pred.spots) {
       const px = mL + s.x * pw;
       const py = mT + s.y * ph;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, 6.2832);
-      const col = genesView ? viridis(s.expr[gk]) : CL[s.cluster];
+      const col = genesView ? viridis(s.expr[gk] ?? 0) : CL[s.cluster];
       ctx.fillStyle =
         !genesView && highlight >= 0 && s.cluster !== highlight ? `${col}20` : col;
       ctx.fill();
@@ -140,8 +140,8 @@ export default function SpatialPlot({
     if (best && bd < 200) {
       const text =
         view === "genes"
-          ? `${pred.geneMeta[g.gk].label} ${best.s.expr[g.gk].toFixed(2)} · cluster ${best.s.cluster}`
-          : `cluster ${best.s.cluster} · ${CL_NAME[best.s.cluster]}`;
+          ? `${pred.geneMeta[g.gk]?.label ?? g.gk} ${(best.s.expr[g.gk] ?? 0).toFixed(2)} · cluster ${best.s.cluster}`
+          : (pred.clusters[best.s.cluster]?.name ?? `cluster ${best.s.cluster}`);
       setTip({ x: best.px, y: best.py, text });
     } else {
       setTip(null);
@@ -178,7 +178,7 @@ export default function SpatialPlot({
             >
               <span className="legend-dot" style={{ background: c }} />
               <span>
-                {i} · {CL_NAME[i]}
+                {pred.clusters[i]?.name ?? `cluster ${i}`}
               </span>
               <span className="legend-count">{pred.counts[i]}</span>
             </div>

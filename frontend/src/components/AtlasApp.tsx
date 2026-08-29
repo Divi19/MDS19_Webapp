@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CL,
-  CL_NAME,
-  generatePrediction,
   PANEL_SIZE,
+  type Prediction,
 } from "@/lib/mockPrediction";
+import { predict, toPrediction } from "@/lib/api";
 import ChatPanel from "./ChatPanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
@@ -17,7 +17,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 type View = "clusters" | "genes";
 
 export default function AtlasApp() {
-  const pred = useMemo(() => generatePrediction(), []);
+  const [pred, setPred] = useState<Prediction>({
+    spots: [],
+    genes: [],
+    geneMeta: {},
+    topGenes: [],
+    clusters: [],
+    counts: [0, 0, 0, 0, 0],
+    total: 0,
+  });
 
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("clusters");
@@ -44,20 +52,33 @@ export default function AtlasApp() {
 
   const runPrediction = useCallback(
     async (payload: RunPayload) => {
+      if (!payload.file) {
+        showToast("Choose an image file before running the real model");
+        return;
+      }
       setModalOpen(false);
       setUploaded(payload);
       setRunning(true);
+      setReady(false);
       setStepIndex(0);
-      await sleep(180);
-      for (let i = 0; i < PIPELINE_STEPS.length; i++) {
-        setStepIndex(i);
-        await sleep(430 + Math.random() * 220);
+      try {
+        setStepIndex(1);
+        const response = await predict(payload.file);
+        setStepIndex(5);
+        const converted = toPrediction(response);
+        setPred(converted);
+        setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
+        setStepIndex(PIPELINE_STEPS.length);
+        await sleep(250);
+        setReady(true);
+        showToast("Real model prediction complete");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Prediction failed";
+        setUploaded(null);
+        showToast(message);
+      } finally {
+        setRunning(false);
       }
-      setStepIndex(PIPELINE_STEPS.length);
-      await sleep(450);
-      setRunning(false);
-      setReady(true);
-      showToast("Prediction complete");
     },
     [showToast],
   );
@@ -178,8 +199,8 @@ export default function AtlasApp() {
               <div className="alert">
                 <span className="pulse" />
                 <div className="alert-text">
-                  HER2-associated markers enriched in one focal region
-                  <small>model-derived pattern · interpretation, not a diagnosis</small>
+                  Top predicted gene: {pred.topGenes[0]?.name ?? "unavailable"}
+                  <small>returned by the deployed mclSTExp API · not a diagnosis</small>
                 </div>
               </div>
             ) : (
@@ -307,7 +328,7 @@ export default function AtlasApp() {
               pred={pred}
               ready={ready}
               view={view}
-              gene={pred.geneMeta[gene] ? gene : "ERBB2"}
+              gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
             />
           </div>
 
@@ -341,7 +362,7 @@ export default function AtlasApp() {
                       <div className="count" style={{ color: "var(--muted2)" }}>
                         —
                       </div>
-                      <div className="pct">{CL_NAME[i]}</div>
+                      <div className="pct">cluster {i}</div>
                     </div>
                   ))}
             </div>
