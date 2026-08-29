@@ -7,13 +7,21 @@
  * fabricated beyond the standard annotation for known markers.
  */
 import {
-  CL_NAME,
   centroid,
   geneStats,
   locationOf,
   NAMED_GENES,
   type Prediction,
 } from "./mockPrediction";
+
+const clusterName = (pred: Prediction, index: number) =>
+  pred.clusters[index]?.name ?? `cluster ${index}`;
+
+function clusterMean(pred: Prediction, gene: string, cluster: number) {
+  const spots = pred.spots.filter((spot) => spot.cluster === cluster);
+  if (!spots.length) return 0;
+  return spots.reduce((sum, spot) => sum + (spot.expr[gene] ?? 0), 0) / spots.length;
+}
 
 export function answer(qRaw: string, pred: Prediction | null): string {
   const q = qRaw.toLowerCase();
@@ -30,7 +38,7 @@ export function answer(qRaw: string, pred: Prediction | null): string {
     const mk = NAMED_GENES.filter((k) => geneStats(pred, k).dom === c).map(
       (k) => pred.geneMeta[k].label,
     );
-    return `Cluster ${c} (${CL_NAME[c]}) — ${pred.counts[c]} spots (${(
+    return `Cluster ${c} (${clusterName(pred, c)}) — ${pred.counts[c]} spots (${(
       (pred.counts[c] / total) *
       100
     ).toFixed(1)}%), centred on ${locationOf(cen.x, cen.y)} of the section.
@@ -40,6 +48,7 @@ Among tracked markers, ${
   }
 
   if (q.includes("where") && (q.includes("erbb2") || q.includes("her2"))) {
+    if (!pred.geneMeta.ERBB2) return "ERBB2 is not present in this model's gene panel.";
     const st = geneStats(pred, "ERBB2");
     const c = centroid(pred, st.dom);
     return `Predicted ERBB2 (HER2) is highest in cluster ${st.dom}, around ${locationOf(
@@ -71,33 +80,48 @@ Among tracked markers, ${
       const b = Number(m[1]);
       const ca = centroid(pred, a);
       const cb = centroid(pred, b);
-      return `Cluster ${a} (${CL_NAME[a]}, ${pred.counts[a]} spots, ${locationOf(
+      const differences = pred.genes
+        .map((gene) => ({
+          gene,
+          difference: Math.abs(clusterMean(pred, gene, a) - clusterMean(pred, gene, b)),
+        }))
+        .sort((x, y) => y.difference - x.difference)
+        .slice(0, 3)
+        .map((item) => item.gene)
+        .join(", ");
+      return `Cluster ${a} (${clusterName(pred, a)}, ${pred.counts[a]} spots, ${locationOf(
         ca.x,
         ca.y,
-      )}) vs cluster ${b} (${CL_NAME[b]}, ${pred.counts[b]} spots, ${locationOf(cb.x, cb.y)}).
-Cluster ${a} carries stronger predicted ERBB2/MKI67 signal; cluster ${b} reads more stromal/immune. Differences are in predicted expression only.`;
+      )}) vs cluster ${b} (${clusterName(pred, b)}, ${pred.counts[b]} spots, ${locationOf(cb.x, cb.y)}).
+The largest normalised expression differences are ${differences || "not available"}. These are model predictions, not biological labels or clinical findings.`;
     }
     return 'Give me two cluster numbers, e.g. "compare cluster 3 and cluster 0".';
   }
 
   if (q.includes("flag") || q.includes("biomarker")) {
-    const e = geneStats(pred, "ERBB2");
-    const mk = geneStats(pred, "MKI67");
-    const im = geneStats(pred, "CD74");
-    return `Biomarker flags (predicted values cross-referenced with GeneCards / Gene Ontology):
-• ERBB2 — HER2 receptor, enriched in cluster ${e.dom}. Proliferation-linked.
-• MKI67 — proliferation marker, peaks in cluster ${mk.dom}.
-• CD74 / HLA — antigen-presentation, immune annotation, higher in cluster ${im.dom}.
-These are interpretive flags on predicted expression, not clinical findings.`;
+    const tracked = ["ERBB2", "MKI67", "CD74"].filter((gene) => pred.geneMeta[gene]);
+    if (!tracked.length) {
+      return "None of the currently tracked annotation markers (ERBB2, MKI67, CD74) are present in this model panel.";
+    }
+    const annotations: Record<string, string> = {
+      ERBB2: "HER2 receptor",
+      MKI67: "proliferation-associated marker",
+      CD74: "antigen-presentation-associated marker",
+    };
+    const lines = tracked.map((gene) => {
+      const stats = geneStats(pred, gene);
+      return `• ${gene} — ${annotations[gene]}, highest mean normalised prediction in cluster ${stats.dom}.`;
+    });
+    return `Tracked-marker summary:\n${lines.join("\n")}\nThese are annotations of model predictions, not clinical findings.`;
   }
 
   if (q.includes("colour") || q.includes("color")) {
     return `Each colour is one K-means cluster of spots with similar predicted gene profiles (tab10 palette):
-• 0 blue — ${CL_NAME[0]}
-• 1 orange — ${CL_NAME[1]}
-• 2 green — ${CL_NAME[2]}
-• 3 red — ${CL_NAME[3]}
-• 4 purple — ${CL_NAME[4]}
+• 0 blue — ${clusterName(pred, 0)}
+• 1 orange — ${clusterName(pred, 1)}
+• 2 green — ${clusterName(pred, 2)}
+• 3 red — ${clusterName(pred, 3)}
+• 4 purple — ${clusterName(pred, 4)}
 Colours are arbitrary labels; meaning comes from the gene profiles inside each cluster.`;
   }
 
