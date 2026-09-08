@@ -124,21 +124,31 @@ export default function UploadModal({
               accept=".tif,.tiff,.png,.jpg,.jpeg"
               onChange={(e) => handleFile(e.target.files?.[0])}
             />
-            <div className="dropzone-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-            </div>
-            <div className="dropzone-title">Drop a histology image here</div>
-            <div className="dropzone-sub">or click to browse · max 50 MB</div>
-            <div className="format-pills">
-              <span>.tif</span>
-              <span>.tiff</span>
-              <span>.png</span>
-              <span>.jpg</span>
-            </div>
+            {url ? (
+              <div className="dropzone-preview">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={url} alt="uploaded H&E section preview" />
+                <div className="dropzone-sub">{name} · click to choose a different image</div>
+              </div>
+            ) : (
+              <>
+                <div className="dropzone-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </div>
+                <div className="dropzone-title">Drop a histology image here</div>
+                <div className="dropzone-sub">or click to browse · max 50 MB</div>
+                <div className="format-pills">
+                  <span>.tif</span>
+                  <span>.tiff</span>
+                  <span>.png</span>
+                  <span>.jpg</span>
+                </div>
+              </>
+            )}
           </label>
 
           <div className="preview-meta">
@@ -168,9 +178,7 @@ export default function UploadModal({
         </div>
 
         <div className="modal-footer">
-          <span className="hint">
-            The model predicts 785 gene values per spot, then K-means groups spots into 5 clusters.
-          </span>
+          <span className="hint" />
           <button className="btn-secondary" onClick={onClose}>
             Cancel
           </button>

@@ -1,5 +1,5 @@
-import AtlasApp from "@/components/AtlasApp";
+import GeneXApp from "@/components/GeneXApp";
 
-export default function Home() {
-  return <AtlasApp />;
+export default function Page() {
+  return <GeneXApp />;
 }

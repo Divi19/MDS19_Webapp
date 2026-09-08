@@ -133,7 +133,7 @@ Colours are arbitrary labels; meaning comes from the gene profiles inside each c
 }
 
 export const INTRO_MESSAGE =
-  "I'm the Atlas agentic layer. I translate the model's predictions — the gene values, spot locations, and cluster labels — into biological meaning, using GeneCards and Gene Ontology. The model ranks the genes; I explain what the pattern means. Pick a prompt or ask in your own words.";
+  "I'm the GeneX ChatBot. I translate the model's predictions — the gene values, spot locations, and cluster labels — into biological meaning, using GeneCards and Gene Ontology. The model ranks the genes; I explain what the pattern means. Pick a prompt or ask in your own words.";
 
 export const QUICK_QUESTIONS = [
   "Profile cluster 3",

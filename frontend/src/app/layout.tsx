@@ -13,7 +13,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Atlas — Spatial Gene Expression Prediction",
+  title: "GeneX — Spatial Gene Expression Prediction",
   description:
     "Predict spatial gene expression from H&E histology sections. MDS19 · mclSTExp · HER2+ breast cancer.",
 };

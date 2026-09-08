@@ -59,14 +59,9 @@ export default function ChatPanel({ pred }: { pred: Prediction | null }) {
   return (
     <div className="col col-3">
       <div className="chat-header">
-        <div className="avatar">AL</div>
+        <div className="avatar">CB</div>
         <div>
-          <div className="chat-name">Agentic layer</div>
-          <div className="chat-status">
-            {pred
-              ? "translating prediction · GeneCards / GO"
-              : "translates predictions into biological meaning"}
-          </div>
+          <div className="chat-name">ChatBot</div>
         </div>
       </div>
 
@@ -75,7 +70,7 @@ export default function ChatPanel({ pred }: { pred: Prediction | null }) {
           <div key={i}>
             <div className={m.role === "bot" ? "msg msg-bot" : "msg msg-user"}>{m.text}</div>
             <div className={m.role === "bot" ? "msg-time" : "msg-time user"}>
-              {m.role === "bot" ? "Agentic layer" : "You"} · {m.time}
+              {m.role === "bot" ? "ChatBot" : "You"} · {m.time}
             </div>
           </div>
         ))}

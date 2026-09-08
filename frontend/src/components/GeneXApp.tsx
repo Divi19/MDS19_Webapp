@@ -16,7 +16,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type View = "clusters" | "genes";
 
-export default function AtlasApp() {
+export default function GeneXApp() {
   const [pred, setPred] = useState<Prediction>({
     spots: [],
     genes: [],
@@ -105,14 +105,8 @@ export default function AtlasApp() {
   const sortedGenes = useMemo(() => pred.genes.slice().sort(), [pred.genes]);
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
 
-  const headerStatus = running
-    ? "running mclSTExp…"
-    : ready
-      ? `prediction ready · ${fileName}`
-      : "awaiting input";
-
   const datasetLabel = !ready
-    ? "awaiting data"
+    ? ""
     : view === "genes"
       ? (pred.geneMeta[gene]?.label ?? "ERBB2")
       : `k=5 · ${pred.total} spots`;
@@ -133,8 +127,7 @@ export default function AtlasApp() {
             <circle cx="18" cy="18" r="2.4" fill="#fff" />
           </svg>
         </div>
-        <div className="app-title">Atlas</div>
-        <div className="badge">MDS19 · spatial transcriptomics</div>
+        <div className="app-title">GeneX</div>
         <div className="header-spacer" />
         <button
           className="header-btn"
@@ -144,7 +137,6 @@ export default function AtlasApp() {
         >
           Export
         </button>
-        <div className="header-status">{headerStatus}</div>
       </header>
 
       <main className="grid">
@@ -315,7 +307,7 @@ export default function AtlasApp() {
                 onChange={(e) => setGene(e.target.value)}
                 style={{ display: view === "genes" ? "block" : "none" }}
               />
-              <span className="dataset-label">{datasetLabel}</span>
+              {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
             </div>
 
             <datalist id="genelist">
@@ -372,16 +364,6 @@ export default function AtlasApp() {
         {/* Column 3 — agentic assistant */}
         <ChatPanel pred={ready ? pred : null} />
       </main>
-
-      <footer className="footer">
-        <span>mclSTExp · spatial gene expression</span>
-        <span className="sep">|</span>
-        <span>HER2+ breast cancer · {PANEL_SIZE} genes</span>
-        <span className="sep">|</span>
-        <span>K-means · k=5</span>
-        <span className="sep">|</span>
-        <span>MDS19 · Monash University</span>
-      </footer>
 
       <UploadModal open={modalOpen} onClose={() => setModalOpen(false)} onRun={runPrediction} />
       <ProgressOverlay visible={running} stepIndex={stepIndex} />
