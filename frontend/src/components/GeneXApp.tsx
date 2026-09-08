@@ -103,6 +103,21 @@ export default function GeneXApp() {
   }, []);
 
   const sortedGenes = useMemo(() => pred.genes.slice().sort(), [pred.genes]);
+
+  // Top predicted genes first (in rank order), then every other gene A–Z, so the
+  // dropdown surfaces the same shortlist shown in the "Top predicted genes" table.
+  const geneOptions = useMemo(() => {
+    const top = pred.topGenes
+      .map((g) => g.name)
+      .filter((name) => pred.geneMeta[name]);
+    const topSet = new Set(top);
+    return [
+      ...top.map((name, i) => ({ name, label: `top predicted · #${i + 1}` })),
+      ...sortedGenes
+        .filter((name) => !topSet.has(name))
+        .map((name) => ({ name, label: undefined as string | undefined })),
+    ];
+  }, [pred.topGenes, pred.geneMeta, sortedGenes]);
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
 
   const datasetLabel = !ready
@@ -208,7 +223,7 @@ export default function GeneXApp() {
 
           <div className="card">
             <div className="card-title">
-              Top predicted genes<span className="meta">sorted by expression</span>
+              Top predicted genes
             </div>
             <table className="gene-table">
               <colgroup>
@@ -305,8 +320,8 @@ export default function GeneXApp() {
             </div>
 
             <datalist id="genelist">
-              {sortedGenes.map((g) => (
-                <option key={g} value={g} />
+              {geneOptions.map((g) => (
+                <option key={g.name} value={g.name} label={g.label} />
               ))}
             </datalist>
 
