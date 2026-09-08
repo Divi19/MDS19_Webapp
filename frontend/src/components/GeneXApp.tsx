@@ -1,11 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  CL,
-  PANEL_SIZE,
-  type Prediction,
-} from "@/lib/mockPrediction";
+import { CL, type Prediction } from "@/lib/mockPrediction";
 import { predict, toPrediction } from "@/lib/api";
 import ChatPanel from "./ChatPanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
@@ -104,30 +100,22 @@ export default function GeneXApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const sortedGenes = useMemo(() => pred.genes.slice().sort(), [pred.genes]);
+  // The gene dropdown mirrors the "Top predicted genes" table exactly — same
+  // genes, same rank order.
+  const geneOptions = useMemo(
+    () =>
+      pred.topGenes
+        .filter((g) => pred.geneMeta[g.name])
+        .map((g, i) => ({ name: g.name, label: `#${i + 1}` })),
+    [pred.topGenes, pred.geneMeta],
+  );
 
-  // Top predicted genes first (in rank order), then every other gene A–Z, so the
-  // dropdown surfaces the same shortlist shown in the "Top predicted genes" table.
-  const geneOptions = useMemo(() => {
-    const top = pred.topGenes
-      .map((g) => g.name)
-      .filter((name) => pred.geneMeta[name]);
-    const topSet = new Set(top);
-    return [
-      ...top.map((name, i) => ({ name, label: `top predicted · #${i + 1}` })),
-      ...sortedGenes
-        .filter((name) => !topSet.has(name))
-        .map((name) => ({ name, label: undefined as string | undefined })),
-    ];
-  }, [pred.topGenes, pred.geneMeta, sortedGenes]);
-
-  // Substring-filtered shortlist for the gene dropdown (capped for rendering).
+  // Substring-filtered view of the dropdown list.
   const geneMatches = useMemo(() => {
     const q = geneQuery.trim().toLowerCase();
-    const list = q
+    return q
       ? geneOptions.filter((o) => o.name.toLowerCase().includes(q))
       : geneOptions;
-    return list.slice(0, 60);
   }, [geneOptions, geneQuery]);
 
   const pickGene = useCallback(
@@ -333,7 +321,7 @@ export default function GeneXApp() {
                 <div className="gene-combo">
                   <input
                     className="gsel"
-                    placeholder={`search ${PANEL_SIZE} genes`}
+                    placeholder="select a gene"
                     aria-label="gene"
                     value={geneMenuOpen ? geneQuery : gene}
                     onFocus={() => {
