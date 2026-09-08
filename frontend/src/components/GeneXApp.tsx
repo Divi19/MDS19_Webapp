@@ -31,6 +31,8 @@ export default function GeneXApp() {
   const [view, setView] = useState<View>("clusters");
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
+  const [geneMenuOpen, setGeneMenuOpen] = useState(false);
+  const [geneQuery, setGeneQuery] = useState("");
   const [running, setRunning] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [uploaded, setUploaded] = useState<RunPayload | null>(null);
@@ -118,6 +120,26 @@ export default function GeneXApp() {
         .map((name) => ({ name, label: undefined as string | undefined })),
     ];
   }, [pred.topGenes, pred.geneMeta, sortedGenes]);
+
+  // Substring-filtered shortlist for the gene dropdown (capped for rendering).
+  const geneMatches = useMemo(() => {
+    const q = geneQuery.trim().toLowerCase();
+    const list = q
+      ? geneOptions.filter((o) => o.name.toLowerCase().includes(q))
+      : geneOptions;
+    return list.slice(0, 60);
+  }, [geneOptions, geneQuery]);
+
+  const pickGene = useCallback(
+    (name: string) => {
+      setGene(name);
+      setGeneQuery("");
+      setGeneMenuOpen(false);
+      changeView("genes");
+    },
+    [changeView],
+  );
+
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
 
   const datasetLabel = !ready
@@ -307,23 +329,59 @@ export default function GeneXApp() {
                   Genes
                 </button>
               </div>
-              <input
-                className="gsel"
-                list="genelist"
-                placeholder={`search ${PANEL_SIZE} genes`}
-                aria-label="gene"
-                value={gene}
-                onChange={(e) => setGene(e.target.value)}
-                style={{ display: view === "genes" ? "block" : "none" }}
-              />
+              {view === "genes" && (
+                <div className="gene-combo">
+                  <input
+                    className="gsel"
+                    placeholder={`search ${PANEL_SIZE} genes`}
+                    aria-label="gene"
+                    value={geneMenuOpen ? geneQuery : gene}
+                    onFocus={() => {
+                      setGeneQuery("");
+                      setGeneMenuOpen(true);
+                    }}
+                    onClick={() => setGeneMenuOpen(true)}
+                    onChange={(e) => {
+                      setGeneQuery(e.target.value);
+                      setGeneMenuOpen(true);
+                    }}
+                    onBlur={() => window.setTimeout(() => setGeneMenuOpen(false), 120)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && geneMatches[0]) {
+                        e.preventDefault();
+                        pickGene(geneMatches[0].name);
+                        (e.target as HTMLInputElement).blur();
+                      } else if (e.key === "Escape") {
+                        setGeneMenuOpen(false);
+                      }
+                    }}
+                  />
+                  <span className="gsel-caret" aria-hidden>
+                    ▾
+                  </span>
+                  {geneMenuOpen && geneMatches.length > 0 && (
+                    <ul className="gene-menu" role="listbox">
+                      {geneMatches.map((o) => (
+                        <li
+                          key={o.name}
+                          role="option"
+                          aria-selected={o.name === gene}
+                          className={o.name === gene ? "on" : ""}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            pickGene(o.name);
+                          }}
+                        >
+                          <span className="gm-name">{o.name}</span>
+                          {o.label && <span className="gm-tag">{o.label}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
             </div>
-
-            <datalist id="genelist">
-              {geneOptions.map((g) => (
-                <option key={g.name} value={g.name} label={g.label} />
-              ))}
-            </datalist>
 
             <SpatialPlot
               pred={pred}
