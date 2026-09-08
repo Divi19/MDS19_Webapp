@@ -34,7 +34,7 @@ export default function ProgressOverlay({
   return (
     <div className={`progress-overlay${visible ? " visible" : ""}`}>
       <div className="progress-card">
-        <h3>Running mclSTExp</h3>
+        <h3>Running Prediction…</h3>
         <div className="sub">{sub}</div>
         <div className="progress-bar">
           <div className="progress-fill" style={{ width: `${fill}%` }} />
