@@ -204,12 +204,6 @@ export default function GeneXApp() {
                 </div>
               </div>
             )}
-
-            <div className="footer-line">
-              {ready
-                ? `Prediction complete · ${PANEL_SIZE} genes across ${pred.total} spots`
-                : `Awaiting input · ${PANEL_SIZE} gene values will be predicted on run`}
-            </div>
           </div>
 
           <div className="card">
