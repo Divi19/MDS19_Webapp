@@ -185,6 +185,28 @@ canvas{display:block;width:100%;height:auto}
 .run-btn:hover:not(:disabled){background:var(--accent-hover)}
 .run-btn:disabled{background:var(--border2);color:var(--muted);cursor:not-allowed;box-shadow:none}
 
+/* auth */
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.field-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.field input{border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:13px;background:var(--surface);color:var(--text)}
+.field input:focus{outline:none;border-color:var(--accent)}
+.field-error{background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);color:#c0392b;font-size:12px;padding:8px 11px;border-radius:8px;margin-bottom:12px}
+.field-info{background:var(--accent-soft);border:1px solid var(--accent-ring);color:var(--accent);font-size:12px;padding:8px 11px;border-radius:8px;margin-bottom:12px}
+.auth-warning{background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-size:12px;padding:8px 11px;border-radius:8px;margin-bottom:14px}
+.auth-switch{flex:1;background:none;border:none;color:var(--accent);font-family:var(--mono);font-size:11px;cursor:pointer;text-decoration:underline;text-align:left;padding:0}
+
+/* history */
+.history-modal{width:520px}
+.history-empty{text-align:center;color:var(--muted);font-size:13px;padding:24px 0}
+.history-list{display:flex;flex-direction:column;gap:8px}
+.history-item{display:flex;align-items:center;gap:12px;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;text-align:left;width:100%}
+.history-item:hover{border-color:var(--accent);background:var(--accent-soft)}
+.history-thumb{width:48px;height:48px;border-radius:8px;overflow:hidden;background:var(--surface2);display:grid;place-items:center;color:var(--muted2);flex-shrink:0}
+.history-thumb img{width:100%;height:100%;object-fit:cover}
+.history-meta{min-width:0}
+.history-filename{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.history-sub{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px}
+
 /* progress */
 .progress-overlay{position:fixed;inset:0;background:rgba(244,241,236,.85);backdrop-filter:blur(8px);display:grid;place-items:center;z-index:80;opacity:0;pointer-events:none;transition:opacity .25s}
 .progress-overlay.visible{opacity:1;pointer-events:auto}

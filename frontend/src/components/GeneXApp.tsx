@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CL, type Prediction } from "@/lib/mockPrediction";
 import { predict, toPrediction } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { getPredictionResponse, savePrediction } from "@/lib/history";
+import AuthModal from "./AuthModal";
 import ChatPanel from "./ChatPanel";
+import HistoryPanel from "./HistoryPanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
 import UploadModal, { type RunPayload } from "./UploadModal";
@@ -13,6 +17,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 type View = "clusters" | "genes";
 
 export default function GeneXApp() {
+  const { user, enabled: authEnabled, signOut } = useAuth();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [pred, setPred] = useState<Prediction>({
     spots: [],
     genes: [],
@@ -70,12 +77,38 @@ export default function GeneXApp() {
         await sleep(250);
         setReady(true);
         showToast("Real model prediction complete");
+
+        if (user) {
+          savePrediction(user.id, payload.file, response).catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "Could not save to history";
+            showToast(message);
+          });
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Prediction failed";
         setUploaded(null);
         showToast(message);
       } finally {
         setRunning(false);
+      }
+    },
+    [showToast, user],
+  );
+
+  const loadFromHistory = useCallback(
+    async (predictionId: string) => {
+      try {
+        const { response, imageUrl, filename } = await getPredictionResponse(predictionId);
+        const converted = toPrediction(response);
+        setUploaded({ name: filename ?? "—", sizeLabel: "—", url: imageUrl, file: null });
+        setPred(converted);
+        setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
+        setView("clusters");
+        setReady(true);
+        showToast("Loaded from history");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not load that prediction";
+        showToast(message);
       }
     },
     [showToast],
@@ -162,6 +195,20 @@ export default function GeneXApp() {
         >
           Export
         </button>
+        {authEnabled && user ? (
+          <>
+            <button className="header-btn" onClick={() => setHistoryOpen(true)}>
+              History
+            </button>
+            <button className="header-btn" onClick={() => signOut()} title={user.email ?? undefined}>
+              Sign out
+            </button>
+          </>
+        ) : (
+          <button className="header-btn" onClick={() => setAuthModalOpen(true)}>
+            Sign in
+          </button>
+        )}
       </header>
 
       <main className="grid">
@@ -422,6 +469,12 @@ export default function GeneXApp() {
 
       <UploadModal open={modalOpen} onClose={() => setModalOpen(false)} onRun={runPrediction} />
       <ProgressOverlay visible={running} stepIndex={stepIndex} />
+      <AuthModal open={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+      <HistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onSelect={loadFromHistory}
+      />
       <div className={`toast${toast ? " show" : ""}`}>{toast}</div>
     </div>
   );
