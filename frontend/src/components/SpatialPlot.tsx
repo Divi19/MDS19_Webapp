@@ -5,12 +5,43 @@ import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
 
 const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 
+// Fixed by the model's training config (see predictor.py) — not tunable
+// here, just mirrored so the overlay can convert a tile's grid index back
+// into a pixel position on the original upload.
+const PATCH = 224;
+const STRIDE = 224;
+
+interface ImgGeom {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+  w: number;
+  h: number;
+}
+
 interface Geom {
   mL: number;
   mT: number;
   pw: number;
   ph: number;
   gk: string;
+  /** Present only when the Genes view is overlaying on the real image —
+   * the cover-fit source rect needed to place a spot at its true pixel
+   * position instead of stretching it across the tissue's bounding box. */
+  img?: ImgGeom;
+}
+
+/** A spot's canvas position — pixel-accurate against the real image when
+ * grid indices and an image are available, falling back to the tissue
+ * bounding-box normalisation otherwise (dummy/demo data, or no image). */
+function spotXY(s: Spot, g: Geom): [number, number] {
+  if (g.img && s.gridX != null && s.gridY != null) {
+    const ox = s.gridX * STRIDE + PATCH / 2;
+    const oy = s.gridY * STRIDE + PATCH / 2;
+    return [((ox - g.img.sx) / g.img.sw) * g.img.w, ((oy - g.img.sy) / g.img.sh) * g.img.h];
+  }
+  return [g.mL + s.x * g.pw, g.mT + s.y * g.ph];
 }
 
 export default function SpatialPlot({
@@ -113,18 +144,19 @@ export default function SpatialPlot({
       }
       ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
 
+      const geom: Geom = { mL: 0, mT: 0, pw: w, ph: h, gk, img: { sx, sy, sw, sh, w, h } };
+      geomRef.current = geom;
+
       const r = Math.max(2.4, w / 130);
       ctx.globalAlpha = 0.72;
       for (const s of pred.spots) {
-        const px = s.x * w;
-        const py = s.y * h;
+        const [px, py] = spotXY(s, geom);
         ctx.beginPath();
         ctx.arc(px, py, r, 0, 6.2832);
         ctx.fillStyle = viridis(s.expr[gk] ?? 0);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
-      geomRef.current = { mL: 0, mT: 0, pw: w, ph: h, gk };
       return;
     }
 
@@ -196,8 +228,7 @@ export default function SpatialPlot({
     let best: { s: Spot; px: number; py: number } | null = null;
     let bd = 1e9;
     for (const s of pred.spots) {
-      const px = g.mL + s.x * g.pw;
-      const py = g.mT + s.y * g.ph;
+      const [px, py] = spotXY(s, g);
       const d = (mx - px) ** 2 + (my - py) ** 2;
       if (d < bd) {
         bd = d;

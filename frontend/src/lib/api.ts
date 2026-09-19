@@ -158,9 +158,11 @@ export function toPrediction(response: PredictionResponse): Prediction {
   );
   const assignments = cluster(vectors, 5);
 
-  const spots: Spot[] = response.spots.map((_, index) => ({
+  const spots: Spot[] = response.spots.map((spot, index) => ({
     x: xValues[index],
     y: yValues[index],
+    gridX: spot.x,
+    gridY: spot.y,
     cluster: assignments[index] ?? 0,
     expr: Object.fromEntries(genes.map((gene) => [gene, normalisedByGene[gene][index]])),
   }));

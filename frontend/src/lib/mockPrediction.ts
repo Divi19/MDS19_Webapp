@@ -29,8 +29,14 @@ export const PANEL_SIZE = 785;
 
 /* ---------- types ---------- */
 export interface Spot {
-  x: number; // normalised 0..1
+  x: number; // normalised 0..1 (bounding box of tissue-containing patches)
   y: number;
+  /** Raw tile grid indices (ix, iy) from the model, before normalisation —
+   * lets the image overlay place a spot at its true pixel position on the
+   * original upload instead of stretching it across the tissue's own
+   * bounding box. Absent for data with no real tiling (e.g. dummy/demo). */
+  gridX?: number;
+  gridY?: number;
   cluster: number;
   /** normalised 0..1 expression per gene */
   expr: Record<string, number>;
