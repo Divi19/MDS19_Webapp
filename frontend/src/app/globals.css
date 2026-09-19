@@ -54,7 +54,7 @@ button,input,textarea{font-family:inherit}
 .replace-btn:hover{border-color:var(--border2);color:var(--text)}
 .replace-btn svg{width:13px;height:13px}
 
-.input-image{aspect-ratio:4/3;border-radius:8px;border:1px solid var(--border);background:var(--surface2);overflow:hidden;display:grid;place-items:center}
+.input-image{aspect-ratio:4/3;width:100%;border-radius:8px;border:1px solid var(--border);background:var(--surface2);overflow:hidden;display:flex;align-items:center;justify-content:center}
 /* On short windows the fixed-ratio preview eats too much of col-1's no-scroll
    budget, starving the gene panel below it — cap it so more room survives. */
 @media (max-height:860px){.input-image{max-height:170px}}
