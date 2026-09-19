@@ -14,6 +14,7 @@ import torch
 from PIL import Image, ImageOps
 
 from app.services.mclstexp.model import mclSTExp_Attention
+from app.services.gradcam import GradCAM, overlay_heatmap, encode_png, tissue_pixel_mask
 
 
 class BasePredictor(ABC):
@@ -42,6 +43,15 @@ class BasePredictor(ABC):
     @abstractmethod
     def is_loaded(self) -> bool:
         ...
+
+    def explain(self, image_bytes: bytes, spot_index: int) -> bytes:
+        """
+        Grad-CAM overlay (PNG bytes) for one tissue patch. Optional — only
+        MclSTExpPredictor implements this; predictors without a real image
+        encoder have nothing for Grad-CAM to visualise.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support Grad-CAM explanations")
 
 
 class DummyPredictor(BasePredictor):
@@ -200,6 +210,7 @@ class MclSTExpPredictor(BasePredictor):
         self.spot_key_n = None
         self.expr_key = None
         self.genes = None
+        self._gradcam = None
 
     def load(self) -> None:
         """Called once at application startup. Never per request."""
@@ -216,6 +227,10 @@ class MclSTExpPredictor(BasePredictor):
         model.eval()
         model.to(self.device)
         self._model = model
+
+        # Grad-CAM hooks the last DenseNet dense block (7x7 spatial resolution
+        # at 224px input) — same target layer used in the exploratory notebook.
+        self._gradcam = GradCAM(model, model.image_encoder.model[0].denseblock4)
 
         # 2. Reference database — 32 sections of spot embeddings paired with
         #    the real expression measured at those same spots.
@@ -387,6 +402,64 @@ class MclSTExpPredictor(BasePredictor):
             "top_genes": top_genes,
             "model_version": self.MODEL_VERSION,
         }
+
+    # ------------------------------------------------------------------
+
+    def explain(self, image_bytes: bytes, spot_index: int) -> bytes:
+        """
+        Grad-CAM overlay (PNG bytes) for one tissue patch.
+
+        spot_index is keyed the same way predict() keys its "spots" list:
+        position within the tissue-only tile list, after background tiles
+        are dropped. Re-tiles and re-masks from scratch rather than caching
+        the previous request's layout, since tiling is a pure function of
+        the image and this endpoint is called standalone.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("Predictor not loaded")
+
+        image = Image.open(io.BytesIO(image_bytes))
+        image.load()
+
+        patches, coords = self._tile(image)
+        if not patches:
+            w, h = image.size
+            raise ValueError(
+                f"Image is {w}x{h}px — too small to tile into "
+                f"{self.PATCH}x{self.PATCH} patches")
+
+        keep = tissue_tile_mask(image, patch=self.PATCH, stride=self.STRIDE)
+        kept = [i for i, c in enumerate(coords) if keep[c]]
+        if not (0 <= spot_index < len(kept)):
+            raise ValueError(
+                f"spot_index {spot_index} out of range — this image has "
+                f"{len(kept)} tissue tiles (0..{len(kept) - 1})")
+
+        patch = patches[kept[spot_index]]
+        patch_tensor = torch.from_numpy(
+            np.array(patch.convert("RGB"), dtype=np.float32) / 255.0
+        ).permute(2, 0, 1).unsqueeze(0).to(self.device)
+
+        # Nearest-neighbour step in embedding space (spot_key), not expression
+        # space (expr_key) — Grad-CAM explains what the encoder is looking at,
+        # not the retrieved genes. Uses the SINGLE nearest neighbour, not the
+        # mean of TOP_K like _retrieve() does: averaging 200 embeddings washes
+        # the target into something generic, which flattens the gradient
+        # signal and produces heatmaps that barely respond to image content.
+        with torch.no_grad():
+            query = self._model.image_projection(
+                self._model.image_encoder(patch_tensor)).cpu().numpy()
+        qn = query / np.linalg.norm(query, axis=1, keepdims=True)
+        sim = qn @ self.spot_key_n.T
+        nn_idx = int(np.argmax(sim[0]))
+        target = torch.from_numpy(
+            self.spot_key[nn_idx:nn_idx + 1]
+        ).float().to(self.device)
+
+        heatmap = self._gradcam.generate(patch_tensor, target)
+        mask = tissue_pixel_mask(patch)
+        overlay = overlay_heatmap(patch, heatmap, tissue_mask=mask)
+        return encode_png(overlay)
 
 
 def get_predictor(settings) -> BasePredictor:

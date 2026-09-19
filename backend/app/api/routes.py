@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Request
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
+from fastapi.responses import Response
 
 from app.models.schemas import PredictionResponse, HealthResponse
 
@@ -48,3 +49,33 @@ async def predict(request: Request, file: UploadFile = File(...)):
         spots=result["spots"],
         top_genes=result["top_genes"],
     )
+
+
+@router.post("/predict/gradcam")
+async def predict_gradcam(
+    request: Request,
+    file: UploadFile = File(...),
+    spot_index: int = Form(...),
+):
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported type {file.content_type}. "
+                   f"Allowed: {sorted(ALLOWED_TYPES)}",
+        )
+
+    image_bytes = await file.read()
+    if len(image_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+
+    predictor = request.app.state.predictor
+    try:
+        png_bytes = predictor.explain(image_bytes, spot_index)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Grad-CAM failed: {exc}")
+
+    return Response(content=png_bytes, media_type="image/png")

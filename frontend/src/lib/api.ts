@@ -41,6 +41,25 @@ export async function predict(file: File): Promise<PredictionResponse> {
   return res.json();
 }
 
+/** Grad-CAM overlay (PNG) for one tissue tile, keyed by its spot_index. */
+export async function explainGradcam(file: File, spotIndex: number): Promise<Blob> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("spot_index", String(spotIndex));
+
+  const res = await fetch(`${API_URL}/api/predict/gradcam`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Grad-CAM failed (${res.status}): ${detail}`);
+  }
+
+  return res.blob();
+}
+
 export async function checkHealth() {
   const res = await fetch(`${API_URL}/api/health`);
   if (!res.ok) throw new Error("API unreachable");

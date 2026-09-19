@@ -9,6 +9,7 @@ import { getPredictionResponse, savePrediction } from "@/lib/history";
 import AuthModal from "./AuthModal";
 import ChatPanel from "./ChatPanel";
 import GenePopover, { type PopoverAnchor } from "./GenePopover";
+import GradCamPanel from "./GradCamPanel";
 import HistoryPanel from "./HistoryPanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
@@ -16,7 +17,7 @@ import UploadModal, { type RunPayload } from "./UploadModal";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type View = "clusters" | "genes";
+type View = "clusters" | "genes" | "gradcam";
 
 /** A Google-style sliding window of page numbers, clamped to the valid
  * range and centred on the current page wherever there's room for it. */
@@ -253,7 +254,9 @@ export default function GeneXApp() {
     ? ""
     : view === "genes"
       ? (pred.geneMeta[gene]?.label ?? "ERBB2")
-      : `k=5 · ${pred.total} spots`;
+      : view === "gradcam"
+        ? "per-tile explanation"
+        : `k=5 · ${pred.total} spots`;
 
   return (
     <div className="app">
@@ -525,6 +528,12 @@ export default function GeneXApp() {
                 >
                   Genes
                 </button>
+                <button
+                  className={view === "gradcam" ? "on" : ""}
+                  onClick={() => changeView("gradcam")}
+                >
+                  Grad-CAM
+                </button>
               </div>
               {view === "genes" && (
                 <div className="gene-combo">
@@ -580,13 +589,17 @@ export default function GeneXApp() {
               {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
             </div>
 
-            <SpatialPlot
-              pred={pred}
-              ready={ready}
-              view={view}
-              gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
-              imageUrl={uploaded?.url}
-            />
+            {view === "gradcam" ? (
+              <GradCamPanel pred={pred} ready={ready} file={uploaded?.file ?? null} />
+            ) : (
+              <SpatialPlot
+                pred={pred}
+                ready={ready}
+                view={view}
+                gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
+                imageUrl={uploaded?.url}
+              />
+            )}
           </div>
 
           <div className="card cluster-card">
