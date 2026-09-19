@@ -97,7 +97,7 @@ button,input,textarea{font-family:inherit}
 /* gene card grid — rows stretch via 1fr so a partial page fills the space
    exactly, instead of leaving dead space above the pagination controls. */
 .gene-grid{flex:1;min-height:0;overflow:hidden;display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));grid-auto-rows:minmax(0,1fr);gap:8px}
-.gene-tile{display:flex;flex-direction:column;gap:5px;padding:8px 9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;text-align:left;font:inherit;min-height:0}
+.gene-tile{display:flex;flex-direction:column;gap:5px;padding:8px 9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;text-align:left;font:inherit;min-height:0;overflow:hidden}
 .gene-tile:hover{border-color:var(--accent);background:var(--accent-soft)}
 .gene-tile-swatch{flex:1;min-height:8px;border-radius:4px}
 .gene-tile-name{font-family:var(--mono);font-weight:600;color:var(--accent);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}

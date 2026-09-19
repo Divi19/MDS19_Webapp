@@ -171,30 +171,55 @@ export default function GeneXApp() {
   // Cards or table — user's choice of how the gene panel is presented.
   const [geneView, setGeneView] = useState<"cards" | "table">("cards");
 
-  // Cards: a fixed, predictable count — measuring-to-fill made swatches
-  // balloon to fill leftover space on tall screens. Table: still measured,
-  // since its rows have no elastic element and fitting them exactly is what
-  // keeps col-1 scroll-free.
-  const CARDS_PER_PAGE = 8;
+  // 8 cards per page normally — but measured and capped, never just assumed.
+  // A hardcoded 8 let the fixed-size name/value text outgrow a short screen's
+  // available height with nowhere to go, spilling the "High" tag past the
+  // card edge. Measuring the tile's natural minimum (swatch at its floor,
+  // not however tall it's currently stretched) and capping at 8 means it
+  // shows 8 whenever there's room and gracefully fewer when there isn't —
+  // never overflow. Table view was already measured the same way.
+  const CARDS_MAX = 8;
   const geneListRef = useRef<HTMLDivElement>(null);
+  const [cardsPerPage, setCardsPerPage] = useState(CARDS_MAX);
   const [tableRowsPerPage, setTableRowsPerPage] = useState(10);
-  const genesPerPage = geneView === "cards" ? CARDS_PER_PAGE : tableRowsPerPage;
+  const genesPerPage = geneView === "cards" ? cardsPerPage : tableRowsPerPage;
 
   useEffect(() => {
     const el = geneListRef.current;
-    if (!el || !ready || geneView !== "table") return;
+    if (!el || !ready) return;
 
     const recompute = () => {
       const ch = el.clientHeight;
       if (!ch) return;
       const styles = getComputedStyle(el);
       const rowGap = parseFloat(styles.rowGap) || 0;
-      const head = el.querySelector<HTMLElement>(".gene-row-head");
-      const row = el.querySelector<HTMLElement>(".gene-row");
-      if (!row) return;
-      const avail = ch - (head?.offsetHeight ?? 0);
-      const rows = Math.max(1, Math.floor((avail + rowGap) / (row.offsetHeight + rowGap)));
-      setTableRowsPerPage((prev) => (rows > 0 && rows !== prev ? rows : prev));
+
+      if (geneView === "cards") {
+        const tile = el.querySelector<HTMLElement>(".gene-tile");
+        const name = tile?.querySelector<HTMLElement>(".gene-tile-name");
+        const meta = tile?.querySelector<HTMLElement>(".gene-tile-meta");
+        const swatch = tile?.querySelector<HTMLElement>(".gene-tile-swatch");
+        if (!tile || !name || !meta || !swatch) return;
+        const tileStyles = getComputedStyle(tile);
+        const swatchMin = parseFloat(getComputedStyle(swatch).minHeight) || 0;
+        const padY = parseFloat(tileStyles.paddingTop) + parseFloat(tileStyles.paddingBottom);
+        const borderY = parseFloat(tileStyles.borderTopWidth) + parseFloat(tileStyles.borderBottomWidth);
+        const innerGap = parseFloat(tileStyles.rowGap) || 0;
+        const naturalHeight = swatchMin + name.offsetHeight + meta.offsetHeight + innerGap * 2 + padY + borderY;
+        const cols = styles.gridTemplateColumns.split(" ").filter(Boolean).length || 1;
+        const rows = Math.max(1, Math.floor((ch + rowGap) / (naturalHeight + rowGap)));
+        setCardsPerPage((prev) => {
+          const next = Math.min(CARDS_MAX, cols * rows);
+          return next > 0 && next !== prev ? next : prev;
+        });
+      } else {
+        const head = el.querySelector<HTMLElement>(".gene-row-head");
+        const row = el.querySelector<HTMLElement>(".gene-row");
+        if (!row) return;
+        const avail = ch - (head?.offsetHeight ?? 0);
+        const rows = Math.max(1, Math.floor((avail + rowGap) / (row.offsetHeight + rowGap)));
+        setTableRowsPerPage((prev) => (rows > 0 && rows !== prev ? rows : prev));
+      }
     };
 
     recompute();
