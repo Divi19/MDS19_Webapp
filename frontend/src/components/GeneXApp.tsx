@@ -36,6 +36,7 @@ export default function GeneXApp() {
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
   const [geneQuery, setGeneQuery] = useState("");
+  const [genePage, setGenePage] = useState(0);
   const [running, setRunning] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [uploaded, setUploaded] = useState<RunPayload | null>(null);
@@ -73,6 +74,7 @@ export default function GeneXApp() {
         const converted = toPrediction(response);
         setPred(converted);
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
+        setGenePage(0);
         setStepIndex(PIPELINE_STEPS.length);
         await sleep(250);
         setReady(true);
@@ -103,6 +105,7 @@ export default function GeneXApp() {
         setUploaded({ name: filename ?? "—", sizeLabel: "—", url: imageUrl, file: null });
         setPred(converted);
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
+        setGenePage(0);
         setView("clusters");
         setReady(true);
         showToast("Loaded from history");
@@ -133,8 +136,8 @@ export default function GeneXApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // The gene dropdown mirrors the "Top predicted genes" table exactly — same
-  // genes, same rank order.
+  // The gene dropdown mirrors the full genes table — every gene found in the
+  // tissue, same rank order.
   const geneOptions = useMemo(
     () =>
       pred.topGenes
@@ -143,12 +146,14 @@ export default function GeneXApp() {
     [pred.topGenes, pred.geneMeta],
   );
 
-  // Substring-filtered view of the dropdown list.
+  // Substring-filtered view of the dropdown list, capped for rendering — the
+  // full list can be hundreds of genes; typing narrows it to any match.
   const geneMatches = useMemo(() => {
     const q = geneQuery.trim().toLowerCase();
-    return q
+    const list = q
       ? geneOptions.filter((o) => o.name.toLowerCase().includes(q))
       : geneOptions;
+    return list.slice(0, 60);
   }, [geneOptions, geneQuery]);
 
   const pickGene = useCallback(
@@ -162,6 +167,14 @@ export default function GeneXApp() {
   );
 
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
+
+  const GENES_PER_PAGE = 10;
+  const geneTotalPages = Math.max(1, Math.ceil(pred.topGenes.length / GENES_PER_PAGE));
+  const genePageClamped = Math.min(genePage, geneTotalPages - 1);
+  const genePageRows = pred.topGenes.slice(
+    genePageClamped * GENES_PER_PAGE,
+    genePageClamped * GENES_PER_PAGE + GENES_PER_PAGE,
+  );
 
   const datasetLabel = !ready
     ? ""
@@ -280,7 +293,8 @@ export default function GeneXApp() {
 
           <div className="card">
             <div className="card-title">
-              Top predicted genes
+              Predicted genes
+              {ready && <span className="meta">{pred.topGenes.length} in this section</span>}
             </div>
             <table className="gene-table">
               <colgroup>
@@ -305,7 +319,7 @@ export default function GeneXApp() {
                 ) : (
                   (() => {
                     const max = Math.max(...pred.topGenes.map((g) => g.value));
-                    return pred.topGenes.map((g) => {
+                    return genePageRows.map((g) => {
                       const cls =
                         g.level === "High"
                           ? "level-high"
@@ -343,6 +357,27 @@ export default function GeneXApp() {
                 )}
               </tbody>
             </table>
+            {ready && geneTotalPages > 1 && (
+              <div className="gene-pagination">
+                <button
+                  className="page-btn"
+                  disabled={genePageClamped === 0}
+                  onClick={() => setGenePage((p) => Math.max(0, p - 1))}
+                >
+                  ← Prev
+                </button>
+                <span className="page-label">
+                  Page {genePageClamped + 1} of {geneTotalPages}
+                </span>
+                <button
+                  className="page-btn"
+                  disabled={genePageClamped >= geneTotalPages - 1}
+                  onClick={() => setGenePage((p) => Math.min(geneTotalPages - 1, p + 1))}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

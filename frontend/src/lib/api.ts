@@ -141,10 +141,18 @@ export function toPrediction(response: PredictionResponse): Prediction {
     );
   }
 
-  const featureGenes = response.top_genes
-    .map((item) => item.gene_name)
-    .filter((gene) => normalisedByGene[gene])
-    .slice(0, 30);
+  // Every gene actually found in the tissue, ranked by its own raw mean
+  // expression across all spots — not just the backend's top-50 shortlist.
+  // This is the full panel, not a slice of it; the UI paginates it rather
+  // than truncating it.
+  const rawMeans: Record<string, number> = {};
+  for (const gene of genes) {
+    const values = response.spots.map((spot) => spot.expression[gene] ?? 0);
+    rawMeans[gene] = values.reduce((a, b) => a + b, 0) / (values.length || 1);
+  }
+  const rankedGenes = genes.slice().sort((a, b) => rawMeans[b] - rawMeans[a]);
+
+  const featureGenes = rankedGenes.filter((gene) => normalisedByGene[gene]).slice(0, 30);
   const vectors = response.spots.map((_, index) =>
     featureGenes.map((gene) => normalisedByGene[gene][index]),
   );
@@ -160,10 +168,11 @@ export function toPrediction(response: PredictionResponse): Prediction {
   const counts = [0, 0, 0, 0, 0];
   for (const spot of spots) counts[spot.cluster]++;
 
-  const topGenes: TopGene[] = response.top_genes.slice(0, 12).map((item, index) => ({
-    name: item.gene_name,
-    value: item.mean_expression,
-    level: index < 4 ? "High" : index < 8 ? "Mid" : "Low",
+  const n = rankedGenes.length || 1;
+  const topGenes: TopGene[] = rankedGenes.map((name, index) => ({
+    name,
+    value: rawMeans[name],
+    level: index / n < 1 / 3 ? "High" : index / n < 2 / 3 ? "Mid" : "Low",
   }));
 
   return {
