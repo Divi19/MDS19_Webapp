@@ -10,11 +10,10 @@ export interface PopoverAnchor {
   bottom: number;
 }
 
-// The popover's summary text scrolls internally past this, so the whole
-// card never grows taller than roughly this regardless of how long a
-// gene's description is — used to decide whether it fits below the click
-// or needs to flip above it.
-const MAX_POPOVER_HEIGHT = 300;
+// The popover's summary text scrolls internally, so it never needs its
+// full 300px to be usable — this is the floor below which "open below"
+// stops being viable and it's worth flipping above the click instead.
+const MIN_USABLE_HEIGHT = 160;
 
 export default function GenePopover({
   anchor,
@@ -66,14 +65,16 @@ export default function GenePopover({
   const margin = 12;
   const left = Math.min(Math.max(anchor.x, margin), window.innerWidth - width - margin);
 
-  // Flip above the clicked row when there isn't room below for even a
-  // short answer — otherwise a click near the bottom of the panel clips
-  // the popover against the viewport edge.
+  // Flip above the clicked row only when below is too cramped to be
+  // usable at all (and above genuinely has more room) — otherwise a
+  // click anywhere but the very bottom of a short panel would flip the
+  // popover up over unrelated UI (e.g. the uploaded image preview).
   const roomBelow = window.innerHeight - anchor.bottom - gap - margin;
-  const opensUp = roomBelow < MAX_POPOVER_HEIGHT && anchor.top > roomBelow;
+  const roomAbove = anchor.top - gap - margin;
+  const opensUp = roomBelow < MIN_USABLE_HEIGHT && roomAbove > roomBelow;
   const style = opensUp
-    ? { left, width, bottom: window.innerHeight - anchor.top + gap, maxHeight: anchor.top - gap - margin }
-    : { left, width, top: anchor.bottom + gap, maxHeight: roomBelow };
+    ? { left, width, bottom: window.innerHeight - anchor.top + gap, maxHeight: Math.max(MIN_USABLE_HEIGHT, roomAbove) }
+    : { left, width, top: anchor.bottom + gap, maxHeight: Math.max(MIN_USABLE_HEIGHT, roomBelow) };
 
   return (
     <div className="gene-popover" ref={ref} style={style} role="dialog" aria-label={`${anchor.gene} details`}>
