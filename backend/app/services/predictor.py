@@ -11,7 +11,7 @@ import io
 
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageOps
 
 from app.services.mclstexp.model import mclSTExp_Attention
 
@@ -320,6 +320,14 @@ class MclSTExpPredictor(BasePredictor):
 
         image = Image.open(io.BytesIO(image_bytes))
         image.load()
+        # Browsers auto-rotate a displayed <img> per its EXIF orientation tag;
+        # PIL does not. Without this, a rotated JPEG (phone/scanner exports
+        # commonly carry this tag) gets tiled in its raw, unrotated pixel
+        # grid while the frontend shows and overlays on the rotated version —
+        # spot positions then land nowhere near the tissue they were
+        # predicted from. Bakes the rotation into the pixels so both sides
+        # agree on the same orientation.
+        image = ImageOps.exif_transpose(image)
 
         patches, coords = self._tile(image)
         if not patches:
