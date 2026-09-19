@@ -8,12 +8,16 @@ export interface RunPayload {
   sizeLabel: string;
   url: string | null;
   file: File | null;
+  her2PositiveBreastTissueConfirmed: boolean;
+  heStainConfirmed: boolean;
+  micronsPerPixel: number;
+  syntheticDemo: boolean;
 }
 
-function fmtBytes(b: number) {
-  if (b < 1024) return `${b} B`;
-  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / 1048576).toFixed(2)} MB`;
+function fmtBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1048576).toFixed(2)} MB`;
 }
 
 const DASH = "—";
@@ -32,62 +36,71 @@ export default function UploadModal({
   const [name, setName] = useState(DASH);
   const [sizeLabel, setSizeLabel] = useState(DASH);
   const [dims, setDims] = useState(DASH);
-  const [status, setStatus] = useState<{ text: string; color: string }>({
-    text: "No file",
-    color: "var(--muted2)",
-  });
   const [url, setUrl] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [her2Confirmed, setHer2Confirmed] = useState(false);
+  const [heConfirmed, setHeConfirmed] = useState(false);
+  const [mpp, setMpp] = useState("");
+  const [syntheticDemo, setSyntheticDemo] = useState(false);
+  const [fileError, setFileError] = useState("");
 
-  function handleFile(f: File | undefined | null) {
-    if (!f) return;
-    if (f.size > 50 * 1024 * 1024) {
+  function handleFile(selected: File | undefined | null) {
+    if (!selected) return;
+    if (selected.size > 50 * 1024 * 1024) {
       setFile(null);
-      setStatus({ text: "Too large (50 MB max)", color: "#c0392b" });
+      setFileError("File exceeds the 50 MB limit");
       return;
     }
-    setFile(f);
-    setName(f.name);
-    setSizeLabel(fmtBytes(f.size));
-    setStatus({ text: "Ready", color: "var(--accent)" });
+    setFile(selected);
+    setName(selected.name);
+    setSizeLabel(fmtBytes(selected.size));
     setDims(DASH);
+    setFileError("");
+    setSyntheticDemo(false);
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const src = e.target?.result as string;
+    reader.onload = (event) => {
+      const src = event.target?.result as string;
       setUrl(src);
-      const im = new Image();
-      im.onload = () => setDims(`${im.naturalWidth} × ${im.naturalHeight}`);
-      im.src = src;
+      const image = new Image();
+      image.onload = () => setDims(`${image.naturalWidth} × ${image.naturalHeight}`);
+      image.src = src;
     };
-    reader.readAsDataURL(f);
+    reader.readAsDataURL(selected);
   }
 
   async function loadDemo() {
     const demoUrl = makeDemoHE();
     const blob = await fetch(demoUrl).then((response) => response.blob());
-    const demoFile = new File([blob], "synthetic-demo.png", { type: "image/png" });
+    const demoFile = new File([blob], "synthetic-canvas-demo.png", { type: "image/png" });
     setFile(demoFile);
     setName(demoFile.name);
     setSizeLabel(fmtBytes(demoFile.size));
     setDims("320 × 240");
-    setStatus({ text: "Synthetic demo ready", color: "var(--accent)" });
     setUrl(demoUrl);
+    setSyntheticDemo(true);
+    setHer2Confirmed(false);
+    setHeConfirmed(false);
+    setMpp("1");
+    setFileError("");
   }
 
-  const canRun = status.text !== "No file";
+  const parsedMpp = Number(mpp);
+  const validMpp = mpp.trim() !== "" && Number.isFinite(parsedMpp) && parsedMpp >= 0.05 && parsedMpp <= 10;
+  const confirmationsComplete = her2Confirmed && heConfirmed;
+  const canRun = Boolean(file) && validMpp && (syntheticDemo || confirmationsComplete);
 
   return (
     <div
       className={`modal-backdrop${open ? " visible" : ""}`}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="modal" role="dialog" aria-modal="true">
+      <div className="modal upload-modal" role="dialog" aria-modal="true" aria-labelledby="upload-title">
         <div className="modal-header">
           <div>
-            <div className="pretitle">Step 1 · Input</div>
-            <h2>Upload an H&amp;E section</h2>
+            <div className="pretitle">Research input · required metadata</div>
+            <h2 id="upload-title">Run model-scale predicted expression</h2>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -98,37 +111,42 @@ export default function UploadModal({
         </div>
 
         <div className="modal-body">
+          <div className="scope-notice">
+            <strong>HER2-positive breast tissue only.</strong>
+            <span>This model is limited to H&amp;E sections within that reference scope. Outputs are for research use only and must not guide clinical decisions.</span>
+          </div>
+
           <label
             className={`dropzone${dragging ? " dragging" : ""}`}
-            onDragEnter={(e) => {
-              e.preventDefault();
+            onDragEnter={(event) => {
+              event.preventDefault();
               setDragging(true);
             }}
-            onDragOver={(e) => {
-              e.preventDefault();
+            onDragOver={(event) => {
+              event.preventDefault();
               setDragging(true);
             }}
-            onDragLeave={(e) => {
-              e.preventDefault();
+            onDragLeave={(event) => {
+              event.preventDefault();
               setDragging(false);
             }}
-            onDrop={(e) => {
-              e.preventDefault();
+            onDrop={(event) => {
+              event.preventDefault();
               setDragging(false);
-              handleFile(e.dataTransfer.files?.[0]);
+              handleFile(event.dataTransfer.files?.[0]);
             }}
           >
             <input
               ref={inputRef}
               type="file"
               accept=".tif,.tiff,.png,.jpg,.jpeg"
-              onChange={(e) => handleFile(e.target.files?.[0])}
+              onChange={(event) => handleFile(event.target.files?.[0])}
             />
             {url ? (
               <div className="dropzone-preview">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="uploaded H&E section preview" />
-                <div className="dropzone-sub">{name} · click to choose a different image</div>
+                <img src={url} alt={syntheticDemo ? "synthetic canvas illustration" : "uploaded H&E section preview"} />
+                <div className="dropzone-sub">{name} · choose a different image</div>
               </div>
             ) : (
               <>
@@ -139,55 +157,74 @@ export default function UploadModal({
                     <line x1="12" y1="3" x2="12" y2="15" />
                   </svg>
                 </div>
-                <div className="dropzone-title">Drop a histology image here</div>
-                <div className="dropzone-sub">or click to browse · max 50 MB</div>
-                <div className="format-pills">
-                  <span>.tif</span>
-                  <span>.tiff</span>
-                  <span>.png</span>
-                  <span>.jpg</span>
-                </div>
+                <div className="dropzone-title">Drop an H&amp;E image here</div>
+                <div className="dropzone-sub">TIFF, PNG, or JPEG · maximum 50 MB</div>
               </>
             )}
           </label>
 
+          {fileError && <div className="form-error">{fileError}</div>}
+          {syntheticDemo && (
+            <div className="synthetic-warning">
+              Synthetic canvas illustration · demo mode only. It is not a tissue section and real mode may reject it.
+            </div>
+          )}
+
           <div className="preview-meta">
-            <div className="meta-tile">
-              <div className="label">Filename</div>
-              <div className="value">{name}</div>
-            </div>
-            <div className="meta-tile">
-              <div className="label">Size</div>
-              <div className="value">{sizeLabel}</div>
-            </div>
-            <div className="meta-tile">
-              <div className="label">Dimensions</div>
-              <div className="value">{dims}</div>
-            </div>
-            <div className="meta-tile">
-              <div className="label">Status</div>
-              <div className="value" style={{ color: status.color }}>
-                {status.text}
-              </div>
-            </div>
+            <div className="meta-tile"><div className="label">Filename</div><div className="value">{name}</div></div>
+            <div className="meta-tile"><div className="label">Size</div><div className="value">{sizeLabel}</div></div>
+            <div className="meta-tile"><div className="label">Dimensions</div><div className="value">{dims}</div></div>
+            <label className="meta-tile mpp-field">
+              <span className="label">Microns per pixel</span>
+              <input
+                type="number"
+                min="0.05"
+                max="10"
+                step="0.01"
+                inputMode="decimal"
+                value={mpp}
+                onChange={(event) => setMpp(event.target.value)}
+                placeholder="e.g. 0.50"
+              />
+            </label>
           </div>
 
+          {!syntheticDemo && (
+            <div className="confirmations">
+              <label>
+                <input type="checkbox" checked={her2Confirmed} onChange={(event) => setHer2Confirmed(event.target.checked)} />
+                <span>I explicitly confirm this is HER2-positive breast tissue.</span>
+              </label>
+              <label>
+                <input type="checkbox" checked={heConfirmed} onChange={(event) => setHeConfirmed(event.target.checked)} />
+                <span>I explicitly confirm this section uses H&amp;E stain.</span>
+              </label>
+            </div>
+          )}
+
           <div className="demo-line">
-            No slide handy? <button onClick={loadDemo}>Load demo section (her2_B1)</button>
+            Interface evaluation only: <button onClick={loadDemo}>load unmistakably synthetic canvas demo</button>
           </div>
         </div>
 
         <div className="modal-footer">
-          <span className="hint" />
-          <button className="btn-secondary" onClick={onClose}>
-            Cancel
-          </button>
+          <span className="hint">Raw metadata is sent with the multipart request.</span>
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
           <button
             className="run-btn"
             disabled={!canRun}
-            onClick={() => onRun({ name, sizeLabel, url, file })}
+            onClick={() => onRun({
+              name,
+              sizeLabel,
+              url,
+              file,
+              her2PositiveBreastTissueConfirmed: her2Confirmed,
+              heStainConfirmed: heConfirmed,
+              micronsPerPixel: parsedMpp,
+              syntheticDemo,
+            })}
           >
-            Run prediction
+            {syntheticDemo ? "Run synthetic demo request" : "Run research prediction"}
           </button>
         </div>
       </div>

@@ -1,203 +1,295 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PredictionResponse, PredictionTile } from "@/lib/types";
 
-const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
+export type ViewerMode = "image" | "gene" | "domains" | "retrieval";
+export type ROIGroup = "A" | "B";
 
-interface Geom {
-  mL: number;
-  mT: number;
-  pw: number;
-  ph: number;
-  gk: string;
+const DOMAIN_COLORS = ["#0f766e", "#c2410c", "#6d28d9", "#0369a1", "#be123c", "#4d7c0f", "#a16207", "#4338ca"];
+const VIRIDIS = [
+  [68, 1, 84],
+  [59, 82, 139],
+  [33, 145, 140],
+  [94, 201, 98],
+  [253, 231, 37],
+];
+
+function colorScale(value: number, low: number, high: number) {
+  const t = high === low ? 0.5 : Math.max(0, Math.min(1, (value - low) / (high - low)));
+  const scaled = t * (VIRIDIS.length - 1);
+  const index = Math.floor(scaled);
+  const fraction = scaled - index;
+  const first = VIRIDIS[index];
+  const second = VIRIDIS[Math.min(index + 1, VIRIDIS.length - 1)];
+  return `rgb(${Math.round(first[0] + (second[0] - first[0]) * fraction)}, ${Math.round(first[1] + (second[1] - first[1]) * fraction)}, ${Math.round(first[2] + (second[2] - first[2]) * fraction)})`;
+}
+
+function numeric(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value) ? "—" : value.toPrecision(5);
+}
+
+interface HoverState {
+  left: number;
+  top: number;
+  tile: PredictionTile;
 }
 
 export default function SpatialPlot({
-  pred,
-  ready,
-  view,
+  prediction,
+  imageUrl,
+  mode,
   gene,
+  onModeChange,
+  selectedA,
+  selectedB,
+  activeROIGroup,
+  onTileToggle,
 }: {
-  pred: Prediction;
-  ready: boolean;
-  view: "clusters" | "genes";
+  prediction: PredictionResponse;
+  imageUrl: string | null;
+  mode: ViewerMode;
   gene: string;
+  onModeChange: (mode: ViewerMode) => void;
+  selectedA: number[];
+  selectedB: number[];
+  activeROIGroup: ROIGroup | null;
+  onTileToggle: (tileIndex: number, group: ROIGroup) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const geomRef = useRef<Geom | null>(null);
-  const [highlight, setHighlight] = useState(-1);
-  const [width, setWidth] = useState(520);
-  const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [loadedImage, setLoadedImage] = useState<{ url: string; element: HTMLImageElement } | null>(null);
+  const [width, setWidth] = useState(760);
+  const [imageOpacity, setImageOpacity] = useState(1);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.7);
+  const [hover, setHover] = useState<HoverState | null>(null);
+
+  const tiles = prediction.prediction_tiles.length ? prediction.prediction_tiles : prediction.spots;
+  const imageWidth = prediction.image_metadata.width_pixels;
+  const imageHeight = prediction.image_metadata.height_pixels;
+  const ratio = imageWidth > 0 ? imageHeight / imageWidth : 0.75;
+  const height = Math.max(220, Math.round(width * ratio));
+  const demoMode = prediction.model_metadata.mode === "demo";
+  const domainByTile = useMemo(
+    () => new Map(prediction.domain_assignments.map((item) => [item.tile_index, item.domain_id])),
+    [prediction.domain_assignments],
+  );
+  const domainIds = useMemo(
+    () => Array.from(new Set(prediction.domain_assignments.map((item) => item.domain_id))).sort(),
+    [prediction.domain_assignments],
+  );
+  const selectedASet = useMemo(() => new Set(selectedA), [selectedA]);
+  const selectedBSet = useMemo(() => new Set(selectedB), [selectedB]);
+  const demoExtent = useMemo(() => {
+    const xs = tiles.map((tile) => tile.x);
+    const ys = tiles.map((tile) => tile.y);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys),
+    };
+  }, [tiles]);
+  const tileGeometry = useCallback((tile: PredictionTile) => {
+    if (!demoMode) {
+      const left = tile.bounds?.left ?? tile.x - imageWidth * 0.006;
+      const top = tile.bounds?.top ?? tile.y - imageHeight * 0.006;
+      const right = tile.bounds?.right ?? tile.x + imageWidth * 0.006;
+      const bottom = tile.bounds?.bottom ?? tile.y + imageHeight * 0.006;
+      return { x: tile.x, y: tile.y, left, top, right, bottom };
+    }
+    const spanX = demoExtent.maxX - demoExtent.minX;
+    const spanY = demoExtent.maxY - demoExtent.minY;
+    const x = imageWidth * (0.04 + 0.92 * (spanX ? (tile.x - demoExtent.minX) / spanX : 0.5));
+    const y = imageHeight * (0.04 + 0.92 * (spanY ? (tile.y - demoExtent.minY) / spanY : 0.5));
+    const size = Math.max(4, Math.min(imageWidth, imageHeight) / Math.max(8, Math.sqrt(tiles.length) * 1.6));
+    return { x, y, left: x - size / 2, top: y - size / 2, right: x + size / 2, bottom: y + size / 2 };
+  }, [demoExtent, demoMode, imageHeight, imageWidth, tiles.length]);
+
+  const scale = useMemo(() => {
+    const values = tiles
+      .map((tile) =>
+        mode === "gene"
+          ? tile.expression[gene]
+          : tile.retrieval_support?.max_selected_cosine_similarity,
+      )
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    return {
+      low: values.length ? Math.min(...values) : 0,
+      high: values.length ? Math.max(...values) : 0,
+    };
+  }, [gene, mode, tiles]);
 
   useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth || 520));
-    ro.observe(el);
-    setWidth(el.clientWidth || 520);
-    return () => ro.disconnect();
+    const element = wrapRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setWidth(element.clientWidth || 760));
+    observer.observe(element);
+    setWidth(element.clientWidth || 760);
+    return () => observer.disconnect();
   }, []);
 
-  const draw = useCallback(() => {
-    const cv = canvasRef.current;
-    if (!cv) return;
-    const dpr = window.devicePixelRatio || 1;
-    const w = width;
-    const h = Math.round(w * 0.72);
-    cv.width = w * dpr;
-    cv.height = h * dpr;
-    cv.style.height = `${h}px`;
-    const ctx = cv.getContext("2d");
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    if (!ready) {
-      geomRef.current = null;
-      return;
-    }
-
-    const mL = 34;
-    const mB = 24;
-    const mT = 10;
-    const mR = 10;
-    const pw = w - mL - mR;
-    const ph = h - mT - mB;
-
-    ctx.strokeStyle = "#efeae0";
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 10; i++) {
-      const x = mL + (i / 10) * pw;
-      ctx.beginPath();
-      ctx.moveTo(x, mT);
-      ctx.lineTo(x, mT + ph);
-      ctx.stroke();
-    }
-    for (let i = 1; i < 8; i++) {
-      const y = mT + (i / 8) * ph;
-      ctx.beginPath();
-      ctx.moveTo(mL, y);
-      ctx.lineTo(mL + pw, y);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = "#c4bba8";
-    ctx.beginPath();
-    ctx.moveTo(mL, mT);
-    ctx.lineTo(mL, mT + ph);
-    ctx.lineTo(mL + pw, mT + ph);
-    ctx.stroke();
-
-    ctx.fillStyle = "#9a978d";
-    ctx.font = `9px ${MONO}`;
-    ctx.textAlign = "center";
-    ctx.fillText("spatial1", mL + pw / 2, h - 6);
-    ctx.save();
-    ctx.translate(11, mT + ph / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText("spatial2", 0, 0);
-    ctx.restore();
-
-    const genesView = view === "genes";
-    let gk = gene;
-    if (!pred.geneMeta[gk]) gk = pred.genes[0] ?? "";
-    const r = Math.max(2.6, pw / 160);
-    for (const s of pred.spots) {
-      const px = mL + s.x * pw;
-      const py = mT + s.y * ph;
-      ctx.beginPath();
-      ctx.arc(px, py, r, 0, 6.2832);
-      const col = genesView ? viridis(s.expr[gk] ?? 0) : CL[s.cluster];
-      ctx.fillStyle =
-        !genesView && highlight >= 0 && s.cluster !== highlight ? `${col}20` : col;
-      ctx.fill();
-    }
-    geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width]);
-
   useEffect(() => {
-    draw();
-  }, [draw]);
+    if (!imageUrl) return;
+    const image = new Image();
+    image.onload = () => setLoadedImage({ url: imageUrl, element: image });
+    image.src = imageUrl;
+    return () => {
+      image.onload = null;
+    };
+  }, [imageUrl]);
 
-  function handleMove(e: React.MouseEvent<HTMLCanvasElement>) {
-    const g = geomRef.current;
-    const cv = canvasRef.current;
-    if (!g || !cv) return;
-    const rect = cv.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    let best: { s: Spot; px: number; py: number } | null = null;
-    let bd = 1e9;
-    for (const s of pred.spots) {
-      const px = g.mL + s.x * g.pw;
-      const py = g.mT + s.y * g.ph;
-      const d = (mx - px) ** 2 + (my - py) ** 2;
-      if (d < bd) {
-        bd = d;
-        best = { s, px, py };
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.height = `${height}px`;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.fillStyle = "#f8f5f2";
+    context.fillRect(0, 0, width, height);
+
+    if (loadedImage?.url === imageUrl) {
+      context.globalAlpha = imageOpacity;
+      context.drawImage(loadedImage.element, 0, 0, width, height);
+      context.globalAlpha = 1;
+    }
+
+    const xScale = width / imageWidth;
+    const yScale = height / imageHeight;
+    for (const tile of tiles) {
+      const tileIndex = tile.tile_index ?? tile.spot_index;
+      const domain = domainByTile.get(tileIndex);
+      const geneValue = tile.expression[gene];
+      const supportValue = tile.retrieval_support?.max_selected_cosine_similarity;
+      let fill: string | null = null;
+      if (mode === "gene" && Number.isFinite(geneValue)) fill = colorScale(geneValue, scale.low, scale.high);
+      if (mode === "retrieval" && Number.isFinite(supportValue)) fill = colorScale(supportValue ?? 0, scale.low, scale.high);
+      if (mode === "domains" && domain) {
+        const domainIndex = domainIds.indexOf(domain);
+        fill = DOMAIN_COLORS[(domainIndex < 0 ? 0 : domainIndex) % DOMAIN_COLORS.length];
+      }
+
+      const geometry = tileGeometry(tile);
+      const left = geometry.left * xScale;
+      const top = geometry.top * yScale;
+      const tileWidth = Math.max(3, (geometry.right - geometry.left) * xScale);
+      const tileHeight = Math.max(3, (geometry.bottom - geometry.top) * yScale);
+
+      if (fill) {
+        context.globalAlpha = overlayOpacity;
+        context.fillStyle = fill;
+        context.fillRect(left, top, tileWidth, tileHeight);
+        context.globalAlpha = 1;
+      }
+
+      if (selectedASet.has(tileIndex) || selectedBSet.has(tileIndex)) {
+        context.strokeStyle = selectedASet.has(tileIndex) ? "#00d4ff" : "#ffb000";
+        context.lineWidth = 2.5;
+        context.strokeRect(left + 1, top + 1, Math.max(1, tileWidth - 2), Math.max(1, tileHeight - 2));
       }
     }
-    if (best && bd < 200) {
-      const text =
-        view === "genes"
-          ? `${pred.geneMeta[g.gk]?.label ?? g.gk} ${(best.s.expr[g.gk] ?? 0).toFixed(2)} · cluster ${best.s.cluster}`
-          : (pred.clusters[best.s.cluster]?.name ?? `cluster ${best.s.cluster}`);
-      setTip({ x: best.px, y: best.py, text });
-    } else {
-      setTip(null);
+  }, [domainByTile, domainIds, gene, height, imageHeight, imageOpacity, imageUrl, imageWidth, loadedImage, mode, overlayOpacity, scale.high, scale.low, selectedASet, selectedBSet, tileGeometry, tiles, width]);
+
+  useEffect(() => draw(), [draw]);
+
+  function locateTile(event: React.MouseEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const sourceX = ((event.clientX - rect.left) / rect.width) * imageWidth;
+    const sourceY = ((event.clientY - rect.top) / rect.height) * imageHeight;
+    const within = tiles.find((tile) => {
+      const geometry = tileGeometry(tile);
+      return sourceX >= geometry.left && sourceX <= geometry.right && sourceY >= geometry.top && sourceY <= geometry.bottom;
+    });
+    if (within) return within;
+    let nearest: PredictionTile | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const tile of tiles) {
+      const geometry = tileGeometry(tile);
+      const distance = (sourceX - geometry.x) ** 2 + (sourceY - geometry.y) ** 2;
+      if (distance < nearestDistance) {
+        nearest = tile;
+        nearestDistance = distance;
+      }
     }
+    const threshold = Math.max(imageWidth, imageHeight) * 0.025;
+    return nearestDistance <= threshold ** 2 ? nearest : null;
   }
 
+  function handleMove(event: React.MouseEvent<HTMLCanvasElement>) {
+    const tile = locateTile(event);
+    if (!tile) {
+      setHover(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setHover({ left: event.clientX - rect.left, top: event.clientY - rect.top, tile });
+  }
+
+  function handleClick(event: React.MouseEvent<HTMLCanvasElement>) {
+    if (!activeROIGroup) return;
+    const tile = locateTile(event);
+    if (tile?.tile_index != null) onTileToggle(tile.tile_index, activeROIGroup);
+  }
+
+  const hoverIndex = hover?.tile.tile_index ?? hover?.tile.spot_index;
+  const hoverDomain = hoverIndex == null ? null : domainByTile.get(hoverIndex);
+  const hoverSupport = hover?.tile.retrieval_support;
+
   return (
-    <div className="plot-body">
-      <div className="canvas-wrap" ref={wrapRef}>
-        <canvas
-          ref={canvasRef}
-          width={520}
-          height={380}
-          onMouseMove={handleMove}
-          onMouseLeave={() => setTip(null)}
-        />
-        {!ready && <div className="canvas-empty">spatial map renders after prediction</div>}
-        <div
-          className="plot-tip"
-          style={{ opacity: tip ? 1 : 0, left: tip?.x ?? 0, top: tip?.y ?? 0 }}
-        >
-          {tip?.text}
+    <section className="viewer-panel" aria-label="H&E and prediction tile viewer">
+      <div className="viewer-toolbar">
+        <div className="viewer-modes" role="group" aria-label="Viewer layer">
+          {(["image", "gene", "domains", "retrieval"] as ViewerMode[]).map((item) => (
+            <button key={item} className={mode === item ? "active" : ""} onClick={() => onModeChange(item)}>
+              {item === "image" ? "H&E" : item === "gene" ? "Gene overlay" : item === "domains" ? "Domains" : "Retrieval support"}
+            </button>
+          ))}
+        </div>
+        <div className="opacity-controls">
+          <label>Image <input type="range" min="0" max="1" step="0.05" value={imageOpacity} onChange={(event) => setImageOpacity(Number(event.target.value))} /></label>
+          <label>Overlay <input type="range" min="0" max="1" step="0.05" value={overlayOpacity} onChange={(event) => setOverlayOpacity(Number(event.target.value))} /></label>
         </div>
       </div>
 
-      {ready && view === "clusters" && (
-        <div className="legend">
-          {CL.map((c, i) => (
-            <div
-              key={i}
-              className="legend-item"
-              onMouseEnter={() => setHighlight(i)}
-              onMouseLeave={() => setHighlight(-1)}
-            >
-              <span className="legend-dot" style={{ background: c }} />
-              <span>
-                {pred.clusters[i]?.name ?? `cluster ${i}`}
-              </span>
-              <span className="legend-count">{pred.counts[i]}</span>
-            </div>
-          ))}
+      <div className={`spatial-canvas-wrap${activeROIGroup ? " selecting" : ""}`} ref={wrapRef}>
+        <canvas
+          ref={canvasRef}
+          onMouseMove={handleMove}
+          onMouseLeave={() => setHover(null)}
+          onClick={handleClick}
+          aria-label="Original H&E image with prediction tile overlay"
+        />
+        {!imageUrl && <div className="image-unavailable">Original image is unavailable for this response.</div>}
+        <div className={`viewer-badge ${demoMode ? "synthetic" : ""}`}>
+          {demoMode ? "Synthetic demo · normalized display grid" : "Original image pixels"}
         </div>
-      )}
+        {activeROIGroup && <div className="selection-badge">Selecting explicit tile group {activeROIGroup}</div>}
+        {hover && (
+          <div className="tile-tooltip" style={{ left: hover.left, top: hover.top }}>
+            <strong>Prediction tile {hoverIndex}</strong>
+            <span>{demoMode ? "Synthetic grid position" : "Original pixels"}: ({numeric(hover.tile.x)}, {numeric(hover.tile.y)})</span>
+            <span>{gene}: {numeric(hover.tile.expression[gene])}</span>
+            <span>Domain: {hoverDomain ?? "not assigned"}</span>
+            <span>Retrieval support max similarity: {numeric(hoverSupport?.max_selected_cosine_similarity)}</span>
+            <span>Retrieval support mean similarity: {numeric(hoverSupport?.mean_selected_cosine_similarity)}</span>
+            <span>Effective neighbors: {numeric(hoverSupport?.effective_neighbor_count)}</span>
+            <span>Expression dispersion: {numeric(hoverSupport?.aggregate_neighbor_expression_dispersion)}</span>
+          </div>
+        )}
+      </div>
 
-      {ready && view === "genes" && (
-        <>
-          <div className="legend">
-            <div className="vbar" />
-          </div>
-          <div className="vscale">
-            <span>low</span>
-            <span>predicted expression</span>
-            <span>high</span>
-          </div>
-        </>
-      )}
-    </div>
+      <div className="viewer-legend">
+        {mode === "gene" && <><span>{gene} model-scale predicted expression</span><div className="raw-gradient" /><span>{numeric(scale.low)}</span><span>to</span><span>{numeric(scale.high)}</span></>}
+        {mode === "retrieval" && <><span>Retrieval support max selected cosine similarity</span><div className="raw-gradient" /><span>{numeric(scale.low)}</span><span>to</span><span>{numeric(scale.high)}</span></>}
+        {mode === "domains" && domainIds.map((id, index) => <span className="domain-key" key={id}><i style={{ background: DOMAIN_COLORS[index % DOMAIN_COLORS.length] }} />{id} · predicted-expression domain</span>)}
+        {mode === "image" && <span>H&amp;E-first view · overlays remain available without replacing the source image.</span>}
+      </div>
+    </section>
   );
 }
