@@ -1,4 +1,4 @@
-import type { PredictionResponse } from "@/lib/api";
+import type { PredictionResponse } from "@/lib/types";
 import { supabase } from "@/lib/supabaseClient";
 
 const BUCKET = "he-images";
@@ -9,6 +9,24 @@ export interface HistoryEntry {
   filename: string | null;
   modelVersion: string | null;
   imagePath: string | null;
+}
+
+interface LegacyStoredPredictionResponse {
+  prediction_id: string;
+  status: string;
+  model_version: string;
+  created_at: string;
+  spots: Array<{
+    spot_index: number;
+    x: number;
+    y: number;
+    expression: Record<string, number>;
+  }>;
+  top_genes: Array<{
+    gene_name: string;
+    mean_expression: number;
+    rank: number;
+  }>;
 }
 
 /** Uploads the original image and persists a completed prediction under the
@@ -105,7 +123,7 @@ export async function listPredictions(userId: string): Promise<
  * downstream of it — needs no history-specific branching. */
 export async function getPredictionResponse(
   predictionId: string,
-): Promise<{ response: PredictionResponse; imageUrl: string | null; filename: string | null }> {
+): Promise<{ response: PredictionResponse | LegacyStoredPredictionResponse; imageUrl: string | null; filename: string | null }> {
   const [{ data: pred, error: predErr }, { data: spots, error: spotsErr }, { data: genes, error: genesErr }] =
     await Promise.all([
       supabase.from("predictions").select("*").eq("id", predictionId).single(),
