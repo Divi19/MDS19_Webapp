@@ -148,6 +148,7 @@ export interface EmbeddingResult {
 }
 
 export interface AnalysisMethod {
+  analysis_version: "spatial-analysis-v1";
   result_type: "predicted-expression domains";
   variable_gene_selection: string;
   variable_gene_limit: number;

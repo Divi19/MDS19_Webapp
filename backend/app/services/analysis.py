@@ -430,6 +430,7 @@ def analyze_prediction_tiles(
             "tiles": embedding_rows,
         },
         "analysis_method": {
+            "analysis_version": "spatial-analysis-v1",
             "result_type": "predicted-expression domains",
             "variable_gene_selection": "highest_population_variance",
             "variable_gene_limit": max_variable_genes,

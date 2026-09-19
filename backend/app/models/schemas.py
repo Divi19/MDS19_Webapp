@@ -156,6 +156,7 @@ class EmbeddingResult(BaseModel):
 
 
 class AnalysisMethod(BaseModel):
+    analysis_version: Literal["spatial-analysis-v1"]
     result_type: Literal["predicted-expression domains"]
     variable_gene_selection: str
     variable_gene_limit: int
