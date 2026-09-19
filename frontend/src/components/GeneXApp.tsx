@@ -46,6 +46,7 @@ export default function GeneXApp() {
 
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("clusters");
+  const [showOverlay, setShowOverlay] = useState(true);
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
@@ -586,6 +587,16 @@ export default function GeneXApp() {
                   )}
                 </div>
               )}
+              {view === "genes" && uploaded?.url && (
+                <label className="overlay-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showOverlay}
+                    onChange={(e) => setShowOverlay(e.target.checked)}
+                  />
+                  Show overlay
+                </label>
+              )}
               {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
             </div>
 
@@ -598,6 +609,7 @@ export default function GeneXApp() {
                 view={view}
                 gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
                 imageUrl={uploaded?.url}
+                showOverlay={showOverlay}
               />
             )}
           </div>

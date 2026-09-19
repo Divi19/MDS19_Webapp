@@ -50,12 +50,17 @@ export default function SpatialPlot({
   view,
   gene,
   imageUrl,
+  showOverlay = true,
 }: {
   pred: Prediction;
   ready: boolean;
   view: "clusters" | "genes";
   gene: string;
   imageUrl?: string | null;
+  /** Only meaningful in the Genes view overlaying a real image — lets the
+   * user see the plain uploaded section without the predicted-expression
+   * dots on top of it. */
+  showOverlay?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -147,16 +152,18 @@ export default function SpatialPlot({
       const geom: Geom = { mL: 0, mT: 0, pw: w, ph: h, gk, img: { sx, sy, sw, sh, w, h } };
       geomRef.current = geom;
 
-      const r = Math.max(2.4, w / 130);
-      ctx.globalAlpha = 0.72;
-      for (const s of pred.spots) {
-        const [px, py] = spotXY(s, geom);
-        ctx.beginPath();
-        ctx.arc(px, py, r, 0, 6.2832);
-        ctx.fillStyle = viridis(s.expr[gk] ?? 0);
-        ctx.fill();
+      if (showOverlay) {
+        const r = Math.max(2.4, w / 130);
+        ctx.globalAlpha = 0.72;
+        for (const s of pred.spots) {
+          const [px, py] = spotXY(s, geom);
+          ctx.beginPath();
+          ctx.arc(px, py, r, 0, 6.2832);
+          ctx.fillStyle = viridis(s.expr[gk] ?? 0);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = 1;
       return;
     }
 
@@ -212,7 +219,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl]);
+  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showOverlay]);
 
   useEffect(() => {
     draw();
@@ -221,7 +228,7 @@ export default function SpatialPlot({
   function handleMove(e: React.MouseEvent<HTMLCanvasElement>) {
     const g = geomRef.current;
     const cv = canvasRef.current;
-    if (!g || !cv) return;
+    if (!g || !cv || (view === "genes" && g.img && !showOverlay)) return;
     const rect = cv.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
@@ -284,7 +291,7 @@ export default function SpatialPlot({
         </div>
       )}
 
-      {ready && view === "genes" && (
+      {ready && view === "genes" && showOverlay && (
         <>
           <div className="legend">
             <div className="vbar" />

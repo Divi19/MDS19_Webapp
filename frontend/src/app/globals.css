@@ -142,6 +142,8 @@ button,input,textarea{font-family:inherit}
 .gene-menu li.on{background:var(--accent-soft);color:var(--accent)}
 .gene-menu .gm-tag{font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.04em}
 .plot-header .dataset-label{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted)}
+.overlay-toggle{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap}
+.overlay-toggle input{accent-color:var(--accent);width:13px;height:13px;cursor:pointer;margin:0}
 .plot-body{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .canvas-wrap{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;flex:1;min-height:0}
 canvas{display:block;width:100%;height:auto}
