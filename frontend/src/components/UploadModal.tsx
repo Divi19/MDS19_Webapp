@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { makeDemoHE } from "@/lib/demoImage";
 
 export interface RunPayload {
   name: string;
@@ -60,18 +59,6 @@ export default function UploadModal({
       im.src = src;
     };
     reader.readAsDataURL(f);
-  }
-
-  async function loadDemo() {
-    const demoUrl = makeDemoHE();
-    const blob = await fetch(demoUrl).then((response) => response.blob());
-    const demoFile = new File([blob], "synthetic-demo.png", { type: "image/png" });
-    setFile(demoFile);
-    setName(demoFile.name);
-    setSizeLabel(fmtBytes(demoFile.size));
-    setDims("320 × 240");
-    setStatus({ text: "Synthetic demo ready", color: "var(--accent)" });
-    setUrl(demoUrl);
   }
 
   const canRun = status.text !== "No file";
@@ -172,9 +159,6 @@ export default function UploadModal({
             </div>
           </div>
 
-          <div className="demo-line">
-            No slide handy? <button onClick={loadDemo}>Load demo section (her2_B1)</button>
-          </div>
         </div>
 
         <div className="modal-footer">
