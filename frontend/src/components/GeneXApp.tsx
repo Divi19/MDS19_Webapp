@@ -99,9 +99,12 @@ export default function GeneXApp() {
       applyPrediction(response, payload.url);
       showToast("Prediction response loaded.");
       if (user) {
-        savePrediction(user.id, payload.file, response).catch((error: unknown) => {
-          showToast(error instanceof Error ? error.message : "Could not save to history");
-        });
+        void savePrediction(user.id, payload.file, response)
+          .then(() => showToast("Prediction saved to history."))
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "Could not save to history";
+            showToast(`Prediction loaded, but history persistence failed: ${message}`);
+          });
       }
     } catch (error) {
       setUploaded(null);

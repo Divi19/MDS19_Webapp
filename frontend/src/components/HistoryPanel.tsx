@@ -103,6 +103,13 @@ export default function HistoryPanel({
                 <div className="history-meta">
                   <div className="history-filename">{e.filename ?? "untitled"}</div>
                   <div className="history-sub">{fmtDate(e.createdAt)}</div>
+                  <div className="history-sub">
+                    Model {e.modelVersion ?? "unknown"} · {e.predictorMode ?? "unknown mode"} · {e.tileCount ?? "—"} tiles
+                  </div>
+                  <div className="history-sub" title={e.referenceScope ?? undefined}>
+                    {e.referenceScope ?? "Scope unavailable"} · {e.applicabilityStatus === "within_scope" ? "within scope" : e.applicabilityStatus === "outside_scope" ? "outside scope" : "applicability unavailable"}
+                  </div>
+                  {e.legacyIncompatible && <div className="history-sub"><span className="scope-status out">Legacy / incompatible</span></div>}
                 </div>
               </button>
             ))}
