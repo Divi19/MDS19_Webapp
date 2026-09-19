@@ -29,14 +29,19 @@ export default function SpatialPlot({
   const geomRef = useRef<Geom | null>(null);
   const [highlight, setHighlight] = useState(-1);
   const [width, setWidth] = useState(520);
+  const [height, setHeight] = useState(0);
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
 
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth || 520));
+    const measure = () => {
+      setWidth(el.clientWidth || 520);
+      setHeight(el.clientHeight || 0);
+    };
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    setWidth(el.clientWidth || 520);
+    measure();
     return () => ro.disconnect();
   }, []);
 
@@ -45,7 +50,9 @@ export default function SpatialPlot({
     if (!cv) return;
     const dpr = window.devicePixelRatio || 1;
     const w = width;
-    const h = Math.round(w * 0.72);
+    // Fill the flex-allotted wrapper (col-2 must never scroll) but never
+    // exceed the natural 4:3-ish aspect ratio when there's room to spare.
+    const h = height > 0 ? Math.min(Math.round(w * 0.72), height) : Math.round(w * 0.72);
     cv.width = w * dpr;
     cv.height = h * dpr;
     cv.style.height = `${h}px`;
@@ -113,7 +120,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width]);
+  }, [pred, ready, view, gene, highlight, width, height]);
 
   useEffect(() => {
     draw();

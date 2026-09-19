@@ -26,10 +26,19 @@ button,input,textarea{font-family:inherit}
 
 /* layout */
 .grid{flex:1;display:grid;grid-template-columns:340px 1fr 480px;min-height:0}
-.col{min-height:0;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+/* Only the ChatBot column scrolls internally (its own .chat-messages does
+   that). Col-1 and col-2 must fit the viewport — their content adapts to
+   the available space instead of overflowing. */
+.col{min-height:0;overflow:hidden;padding:14px;display:flex;flex-direction:column;gap:14px}
 .col-1{border-right:1px solid var(--border)}
 .col-2{border-right:1px solid var(--border);background:var(--surface2)}
-.col-3{background:var(--surface);display:flex;flex-direction:column;padding:0;gap:0}
+.col-3{background:var(--surface);display:flex;flex-direction:column;padding:0;gap:0;overflow:hidden}
+
+.col-1 .upload-action,.col-1 .input-card{flex-shrink:0}
+.col-1 .gene-card{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.col-1 .gene-card .card-title{flex-shrink:0}
+.col-1 .gene-card .gene-pagination{flex-shrink:0}
+.col-1 .gene-card .empty-row{flex:1;display:flex;align-items:center;justify-content:center}
 
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:13px 14px;box-shadow:var(--shadow-sm)}
 .card-title{font-size:12px;font-weight:600;letter-spacing:.01em;display:flex;align-items:center;gap:8px;margin-bottom:10px}
@@ -46,6 +55,10 @@ button,input,textarea{font-family:inherit}
 .replace-btn svg{width:13px;height:13px}
 
 .input-image{aspect-ratio:4/3;border-radius:8px;border:1px solid var(--border);background:var(--surface2);overflow:hidden;display:grid;place-items:center}
+/* On short windows the fixed-ratio preview eats too much of col-1's no-scroll
+   budget, starving the gene panel below it — cap it so more room survives. */
+@media (max-height:860px){.input-image{max-height:170px}}
+@media (max-height:720px){.input-image{max-height:110px}}
 .input-image img{width:100%;height:100%;object-fit:cover;display:block}
 .empty-hint{text-align:center;color:var(--muted2);padding:20px}
 .empty-hint svg{width:34px;height:34px;margin-bottom:8px;opacity:.6}
@@ -70,29 +83,47 @@ button,input,textarea{font-family:inherit}
 .metric-tile .sub{font-family:var(--mono);font-size:9px;color:var(--muted2)}
 
 /* gene table */
-.gene-table{width:100%;border-collapse:collapse;font-size:12px}
-.gene-table th{text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted2);font-weight:500;padding:0 6px 7px;border-bottom:1px solid var(--border)}
-.gene-table td{padding:6px;border-bottom:1px solid var(--surface3)}
-.gene-row{cursor:pointer}
-.gene-row:hover{background:var(--accent-soft)}
 .gene-name{font-family:var(--mono);font-weight:600;color:var(--accent)}
-.gene-value{font-family:var(--mono);color:var(--text)}
-.bar-track{height:6px;background:var(--surface3);border-radius:999px;overflow:hidden}
-.bar-fill{height:100%;background:linear-gradient(90deg,#3b528b,#21918c);border-radius:999px}
 .level-tag{font-family:var(--mono);font-size:9.5px;padding:2px 6px;border-radius:5px;font-weight:600}
 .level-high{background:rgba(214,39,40,.12);color:#a3232a}
 .level-mid{background:rgba(12,122,138,.12);color:var(--accent)}
 .level-low{background:var(--surface3);color:var(--muted)}
-.empty-row td{text-align:center;color:var(--muted2);font-family:var(--mono);font-size:11px;padding:16px 6px}
-.gene-pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px}
+.empty-row{text-align:center;color:var(--muted2);font-family:var(--mono);font-size:11px;padding:16px 6px}
+
+/* card view <-> table view toggle */
+.gene-view-seg{display:flex;align-self:stretch;margin-bottom:8px;flex-shrink:0}
+.gene-view-seg button{flex:1;text-align:center}
+
+/* gene card grid — rows stretch via 1fr so a partial page fills the space
+   exactly, instead of leaving dead space above the pagination controls. */
+.gene-grid{flex:1;min-height:0;overflow:hidden;display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));grid-auto-rows:minmax(0,1fr);gap:8px}
+.gene-tile{display:flex;flex-direction:column;gap:5px;padding:8px 9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;text-align:left;font:inherit;min-height:0}
+.gene-tile:hover{border-color:var(--accent);background:var(--accent-soft)}
+.gene-tile-swatch{flex:1;min-height:8px;border-radius:4px}
+.gene-tile-name{font-family:var(--mono);font-weight:600;color:var(--accent);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.gene-tile-meta{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-shrink:0}
+.gene-tile-value{font-family:var(--mono);font-size:11px;color:var(--text)}
+
+/* gene table view — same fill-the-space rule, one row per gene */
+.gene-rows{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.gene-row-head,.gene-row{display:grid;grid-template-columns:1fr 44px 1fr 44px;gap:8px;align-items:center}
+.gene-row-head{flex-shrink:0;padding:0 4px 6px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted2);font-weight:500;border-bottom:1px solid var(--border)}
+.gene-row{flex:1;min-height:0;padding:0 4px;border:none;border-bottom:1px solid var(--surface3);background:none;cursor:pointer;text-align:left;font:inherit}
+.gene-row:hover{background:var(--accent-soft)}
+.gene-row:last-child{border-bottom:none}
+.gene-value{font-family:var(--mono);color:var(--text);font-size:12px}
+.bar-track{height:6px;background:var(--surface3);border-radius:999px;overflow:hidden}
+.bar-fill{display:block;height:100%;background:linear-gradient(90deg,#3b528b,#21918c);border-radius:999px}
+
+.gene-pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px;flex-shrink:0}
 .page-btn{border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:11.5px;font-weight:500;padding:5px 11px;border-radius:7px;cursor:pointer}
 .page-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
 .page-btn:disabled{color:var(--muted2);cursor:not-allowed;opacity:.5}
 .page-label{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
 
 /* plot */
-.plot-card{display:flex;flex-direction:column}
-.plot-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.plot-card{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+.plot-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0}
 .plot-header h3{font-size:13px;font-weight:600}
 .seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
 .seg button{border:none;background:var(--surface);color:var(--muted);padding:6px 13px;font-size:12px;font-weight:500;cursor:pointer}
@@ -108,19 +139,20 @@ button,input,textarea{font-family:inherit}
 .gene-menu li.on{background:var(--accent-soft);color:var(--accent)}
 .gene-menu .gm-tag{font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.04em}
 .plot-header .dataset-label{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted)}
-.plot-body{position:relative}
-.canvas-wrap{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.plot-body{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.canvas-wrap{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;flex:1;min-height:0}
 canvas{display:block;width:100%;height:auto}
 .canvas-empty{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono);font-size:11px;color:var(--muted2)}
 .plot-tip{position:absolute;pointer-events:none;opacity:0;transform:translate(-50%,-135%);background:#1a1f2b;color:#fff;border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:10.5px;white-space:nowrap;transition:opacity .1s;z-index:3}
-.legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;flex-shrink:0}
 .legend-item{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;cursor:pointer;background:var(--surface)}
 .legend-item:hover{border-color:var(--accent)}
 .legend-dot{width:9px;height:9px;border-radius:50%}
 .legend-count{color:var(--muted2)}
 .vbar{flex:1;min-width:120px;height:9px;border-radius:5px;background:linear-gradient(90deg,#440154,#3b528b,#21918c,#5ec962,#fde725)}
-.vscale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:4px}
+.vscale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:4px;flex-shrink:0}
 
+.cluster-card{flex-shrink:0}
 .cluster-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
 .cluster-tile{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 6px;text-align:center}
 .cluster-tile .head{display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:4px}
@@ -233,4 +265,4 @@ canvas{display:block;width:100%;height:auto}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
 @media (max-width:1200px){.grid{grid-template-columns:300px 1fr 400px}}
-@media (max-width:980px){.grid{grid-template-columns:1fr;overflow-y:auto}.col{overflow:visible}.col-1,.col-2{border-right:none;border-bottom:1px solid var(--border)}.col-3{min-height:520px}}
+@media (max-width:980px){.grid{grid-template-columns:1fr;overflow-y:auto}.col{overflow:visible}.col-1,.col-2{border-right:none;border-bottom:1px solid var(--border)}.col-3{min-height:520px}.col-1 .gene-card{flex:none}.gene-grid{overflow:visible}}

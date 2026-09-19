@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CL, type Prediction } from "@/lib/mockPrediction";
+import { CL, viridis, type Prediction } from "@/lib/mockPrediction";
 import { predict, toPrediction } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { getPredictionResponse, savePrediction } from "@/lib/history";
@@ -168,12 +168,46 @@ export default function GeneXApp() {
 
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
 
-  const GENES_PER_PAGE = 10;
-  const geneTotalPages = Math.max(1, Math.ceil(pred.topGenes.length / GENES_PER_PAGE));
+  // Cards or table — user's choice of how the gene panel is presented.
+  const [geneView, setGeneView] = useState<"cards" | "table">("cards");
+
+  // Cards: a fixed, predictable count — measuring-to-fill made swatches
+  // balloon to fill leftover space on tall screens. Table: still measured,
+  // since its rows have no elastic element and fitting them exactly is what
+  // keeps col-1 scroll-free.
+  const CARDS_PER_PAGE = 8;
+  const geneListRef = useRef<HTMLDivElement>(null);
+  const [tableRowsPerPage, setTableRowsPerPage] = useState(10);
+  const genesPerPage = geneView === "cards" ? CARDS_PER_PAGE : tableRowsPerPage;
+
+  useEffect(() => {
+    const el = geneListRef.current;
+    if (!el || !ready || geneView !== "table") return;
+
+    const recompute = () => {
+      const ch = el.clientHeight;
+      if (!ch) return;
+      const styles = getComputedStyle(el);
+      const rowGap = parseFloat(styles.rowGap) || 0;
+      const head = el.querySelector<HTMLElement>(".gene-row-head");
+      const row = el.querySelector<HTMLElement>(".gene-row");
+      if (!row) return;
+      const avail = ch - (head?.offsetHeight ?? 0);
+      const rows = Math.max(1, Math.floor((avail + rowGap) / (row.offsetHeight + rowGap)));
+      setTableRowsPerPage((prev) => (rows > 0 && rows !== prev ? rows : prev));
+    };
+
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ready, pred.topGenes.length, geneView]);
+
+  const geneTotalPages = Math.max(1, Math.ceil(pred.topGenes.length / genesPerPage));
   const genePageClamped = Math.min(genePage, geneTotalPages - 1);
   const genePageRows = pred.topGenes.slice(
-    genePageClamped * GENES_PER_PAGE,
-    genePageClamped * GENES_PER_PAGE + GENES_PER_PAGE,
+    genePageClamped * genesPerPage,
+    genePageClamped * genesPerPage + genesPerPage,
   );
 
   const datasetLabel = !ready
@@ -250,7 +284,7 @@ export default function GeneXApp() {
             </button>
           </div>
 
-          <div className="card">
+          <div className="card input-card">
             <div className="card-title">
               Input section
               <span className="meta">{ready ? fileName : "no file loaded"}</span>
@@ -277,7 +311,6 @@ export default function GeneXApp() {
                 <span className="pulse" />
                 <div className="alert-text">
                   Top predicted gene: {pred.topGenes[0]?.name ?? "unavailable"}
-                  <small>returned by the deployed mclSTExp API · not a diagnosis</small>
                 </div>
               </div>
             ) : (
@@ -291,72 +324,87 @@ export default function GeneXApp() {
             )}
           </div>
 
-          <div className="card">
+          <div className="card gene-card">
             <div className="card-title">
-              Predicted genes
-              {ready && <span className="meta">{pred.topGenes.length} in this section</span>}
+              Predicted Gene Expression
             </div>
-            <table className="gene-table">
-              <colgroup>
-                <col style={{ width: 60 }} />
-                <col style={{ width: 48 }} />
-                <col />
-                <col style={{ width: 44 }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Gene</th>
-                  <th>Value</th>
-                  <th>Expression</th>
-                  <th>Level</th>
-                </tr>
-              </thead>
-              <tbody>
-                {!ready ? (
-                  <tr className="empty-row">
-                    <td colSpan={4}>no predictions yet — upload a section</td>
-                  </tr>
+            {ready && (
+              <div className="seg gene-view-seg">
+                <button
+                  className={geneView === "cards" ? "on" : ""}
+                  onClick={() => {
+                    setGeneView("cards");
+                    setGenePage(0);
+                  }}
+                >
+                  Cards
+                </button>
+                <button
+                  className={geneView === "table" ? "on" : ""}
+                  onClick={() => {
+                    setGeneView("table");
+                    setGenePage(0);
+                  }}
+                >
+                  Table
+                </button>
+              </div>
+            )}
+            {!ready ? (
+              <div className="empty-row">no predictions yet — upload a section</div>
+            ) : (
+              (() => {
+                const max = Math.max(...pred.topGenes.map((g) => g.value)) || 1;
+                const levelClass = (g: (typeof genePageRows)[number]) =>
+                  g.level === "High" ? "level-high" : g.level === "Mid" ? "level-mid" : "level-low";
+                const pick = (g: (typeof genePageRows)[number]) => {
+                  if (pred.geneMeta[g.name]) {
+                    setGene(g.name);
+                    changeView("genes");
+                  }
+                };
+
+                return geneView === "cards" ? (
+                  <div className="gene-grid" ref={geneListRef}>
+                    {genePageRows.map((g) => (
+                      <button key={g.name} className="gene-tile" onClick={() => pick(g)}>
+                        <div
+                          className="gene-tile-swatch"
+                          style={{ background: viridis(g.value / max) }}
+                        />
+                        <div className="gene-tile-name">{g.name}</div>
+                        <div className="gene-tile-meta">
+                          <span className="gene-tile-value">{g.value.toFixed(2)}</span>
+                          <span className={`level-tag ${levelClass(g)}`}>{g.level}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 ) : (
-                  (() => {
-                    const max = Math.max(...pred.topGenes.map((g) => g.value));
-                    return genePageRows.map((g) => {
-                      const cls =
-                        g.level === "High"
-                          ? "level-high"
-                          : g.level === "Mid"
-                            ? "level-mid"
-                            : "level-low";
-                      return (
-                        <tr
-                          key={g.name}
-                          className="gene-row"
-                          onClick={() => {
-                            if (pred.geneMeta[g.name]) {
-                              setGene(g.name);
-                              changeView("genes");
-                            }
-                          }}
-                        >
-                          <td className="gene-name">{g.name}</td>
-                          <td className="gene-value">{g.value.toFixed(2)}</td>
-                          <td>
-                            <div className="bar-track">
-                              <div
-                                className="bar-fill"
-                                style={{ width: `${((g.value / max) * 100).toFixed(0)}%` }}
-                              />
-                            </div>
-                          </td>
-                          <td>
-                            <span className={`level-tag ${cls}`}>{g.level}</span>
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()
-                )}
-              </tbody>
-            </table>
+                  <div className="gene-rows" ref={geneListRef}>
+                    <div className="gene-row-head">
+                      <span>Gene</span>
+                      <span>Value</span>
+                      <span>Expression</span>
+                      <span>Level</span>
+                    </div>
+                    {genePageRows.map((g) => (
+                      <button key={g.name} className="gene-row" onClick={() => pick(g)}>
+                        <span className="gene-name">{g.name}</span>
+                        <span className="gene-value">{g.value.toFixed(2)}</span>
+                        <span className="bar-track">
+                          <span
+                            className="bar-fill"
+                            style={{ width: `${((g.value / max) * 100).toFixed(0)}%` }}
+                          />
+                        </span>
+                        <span className={`level-tag ${levelClass(g)}`}>{g.level}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()
+            )}
             {ready && geneTotalPages > 1 && (
               <div className="gene-pagination">
                 <button
@@ -461,7 +509,7 @@ export default function GeneXApp() {
             />
           </div>
 
-          <div className="card">
+          <div className="card cluster-card">
             <div className="card-title">
               Cluster breakdown
               <span className="meta">click a gene row or legend to explore</span>
