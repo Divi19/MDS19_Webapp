@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { getPredictionResponse, savePrediction } from "@/lib/history";
 import AuthModal from "./AuthModal";
 import ChatPanel from "./ChatPanel";
+import GenePopover, { type PopoverAnchor } from "./GenePopover";
 import HistoryPanel from "./HistoryPanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
@@ -30,6 +31,7 @@ export default function GeneXApp() {
   const { user, enabled: authEnabled, signOut } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
   const [pred, setPred] = useState<Prediction>({
     spots: [],
     genes: [],
@@ -73,6 +75,7 @@ export default function GeneXApp() {
         return;
       }
       setModalOpen(false);
+      setPopoverAnchor(null);
       setUploaded(payload);
       setRunning(true);
       setReady(false);
@@ -392,17 +395,22 @@ export default function GeneXApp() {
                 const max = Math.max(...pred.topGenes.map((g) => g.value)) || 1;
                 const levelClass = (g: (typeof genePageRows)[number]) =>
                   g.level === "High" ? "level-high" : g.level === "Mid" ? "level-mid" : "level-low";
-                const pick = (g: (typeof genePageRows)[number]) => {
+                const pick = (
+                  g: (typeof genePageRows)[number],
+                  e: React.MouseEvent<HTMLButtonElement>,
+                ) => {
                   if (pred.geneMeta[g.name]) {
                     setGene(g.name);
                     changeView("genes");
                   }
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setPopoverAnchor({ gene: g.name, x: rect.left, top: rect.top, bottom: rect.bottom });
                 };
 
                 return geneView === "cards" ? (
                   <div className="gene-grid" ref={geneListRef}>
                     {genePageRows.map((g) => (
-                      <button key={g.name} className="gene-tile" onClick={() => pick(g)}>
+                      <button key={g.name} className="gene-tile" onClick={(e) => pick(g, e)}>
                         <div
                           className="gene-tile-swatch"
                           style={{ background: viridis(g.value / max) }}
@@ -424,7 +432,7 @@ export default function GeneXApp() {
                       <span>Level</span>
                     </div>
                     {genePageRows.map((g) => (
-                      <button key={g.name} className="gene-row" onClick={() => pick(g)}>
+                      <button key={g.name} className="gene-row" onClick={(e) => pick(g, e)}>
                         <span className="gene-name">{g.name}</span>
                         <span className="gene-value">{g.value.toFixed(2)}</span>
                         <span className="bar-track">
@@ -624,6 +632,7 @@ export default function GeneXApp() {
         onClose={() => setHistoryOpen(false)}
         onSelect={loadFromHistory}
       />
+      <GenePopover anchor={popoverAnchor} onClose={() => setPopoverAnchor(null)} />
       <div className={`toast${toast ? " show" : ""}`}>{toast}</div>
     </div>
   );
