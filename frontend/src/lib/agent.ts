@@ -80,9 +80,9 @@ export function answer(qRaw: string, prediction: PredictionResponse | null): str
   const question = qRaw.trim().toLowerCase();
   if (!question) return "Annotated: Ask about QC and applicability, a returned gene's highest predicted tile, a domain such as domain_1, retrieval methods, or limitations.";
   if (/\b(qc|quality|applicab|scope|accepted|rejected)\b/.test(question)) return answerQC(prediction);
-  if (/\b(limit|warning|caution|research use|measured|diagnos|confidence)\b/.test(question)) return answerLimitations(prediction);
+  if (/\b(limit\w*|warn\w*|caution|research use|measured|diagnos\w*|confidence)\b/.test(question)) return answerLimitations(prediction);
   if (/\b(retrieval|method|model|neighbor|weighting|analysis|pca|k-means|kmeans)\b/.test(question)) return answerMethods(prediction);
-  if (/\b(domain|cluster)\b/.test(question)) {
+  if (/\b(domain|cluster)(?:\b|[_-])/.test(question)) {
     const domain = domainInQuestion(question, prediction);
     return domain
       ? answerDomain(domain)
