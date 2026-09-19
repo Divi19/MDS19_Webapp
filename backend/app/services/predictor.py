@@ -178,7 +178,7 @@ class MclSTExpPredictor(BasePredictor):
     # Ceiling on tissue tiles the synchronous request path will accept. Sized
     # for the deployment host, not the model: one shared vCPU at 50-150ms per
     # patch puts anything larger past the platform request timeout.
-    MAX_PATCHES = 470
+    MAX_PATCHES = 600
 
     N_GENES = 785
     N_SPOTS = 11548
