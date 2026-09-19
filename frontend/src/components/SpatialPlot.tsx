@@ -50,7 +50,7 @@ export default function SpatialPlot({
   view,
   gene,
   imageUrl,
-  showOverlay = true,
+  showImage = true,
 }: {
   pred: Prediction;
   ready: boolean;
@@ -58,9 +58,9 @@ export default function SpatialPlot({
   gene: string;
   imageUrl?: string | null;
   /** Only meaningful in the Genes view overlaying a real image — lets the
-   * user see the plain uploaded section without the predicted-expression
-   * dots on top of it. */
-  showOverlay?: boolean;
+   * user strip the tissue background and see just the spatial dot map,
+   * with the dots still at their real pixel-accurate positions. */
+  showImage?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -147,23 +147,26 @@ export default function SpatialPlot({
         sx = 0;
         sy = (img.naturalHeight - sh) / 2;
       }
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+      if (showImage) {
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+      } else {
+        ctx.fillStyle = "#faf8f3";
+        ctx.fillRect(0, 0, w, h);
+      }
 
       const geom: Geom = { mL: 0, mT: 0, pw: w, ph: h, gk, img: { sx, sy, sw, sh, w, h } };
       geomRef.current = geom;
 
-      if (showOverlay) {
-        const r = Math.max(2.4, w / 130);
-        ctx.globalAlpha = 0.72;
-        for (const s of pred.spots) {
-          const [px, py] = spotXY(s, geom);
-          ctx.beginPath();
-          ctx.arc(px, py, r, 0, 6.2832);
-          ctx.fillStyle = viridis(s.expr[gk] ?? 0);
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1;
+      const r = Math.max(2.4, w / 130);
+      ctx.globalAlpha = 0.72;
+      for (const s of pred.spots) {
+        const [px, py] = spotXY(s, geom);
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, 6.2832);
+        ctx.fillStyle = viridis(s.expr[gk] ?? 0);
+        ctx.fill();
       }
+      ctx.globalAlpha = 1;
       return;
     }
 
@@ -219,7 +222,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showOverlay]);
+  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage]);
 
   useEffect(() => {
     draw();
@@ -228,7 +231,7 @@ export default function SpatialPlot({
   function handleMove(e: React.MouseEvent<HTMLCanvasElement>) {
     const g = geomRef.current;
     const cv = canvasRef.current;
-    if (!g || !cv || (view === "genes" && g.img && !showOverlay)) return;
+    if (!g || !cv) return;
     const rect = cv.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
@@ -291,7 +294,7 @@ export default function SpatialPlot({
         </div>
       )}
 
-      {ready && view === "genes" && showOverlay && (
+      {ready && view === "genes" && (
         <>
           <div className="legend">
             <div className="vbar" />
