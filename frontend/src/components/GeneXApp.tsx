@@ -169,7 +169,7 @@ export default function GeneXApp() {
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
 
   // Cards or table — user's choice of how the gene panel is presented.
-  const [geneView, setGeneView] = useState<"cards" | "table">("cards");
+  const [geneView, setGeneView] = useState<"cards" | "table">("table");
 
   // 8 cards per page normally — but measured and capped, never just assumed.
   // A hardcoded 8 let the fixed-size name/value text outgrow a short screen's
@@ -356,15 +356,6 @@ export default function GeneXApp() {
             {ready && (
               <div className="seg gene-view-seg">
                 <button
-                  className={geneView === "cards" ? "on" : ""}
-                  onClick={() => {
-                    setGeneView("cards");
-                    setGenePage(0);
-                  }}
-                >
-                  Cards
-                </button>
-                <button
                   className={geneView === "table" ? "on" : ""}
                   onClick={() => {
                     setGeneView("table");
@@ -372,6 +363,15 @@ export default function GeneXApp() {
                   }}
                 >
                   Table
+                </button>
+                <button
+                  className={geneView === "cards" ? "on" : ""}
+                  onClick={() => {
+                    setGeneView("cards");
+                    setGenePage(0);
+                  }}
+                >
+                  Cards
                 </button>
               </div>
             )}
