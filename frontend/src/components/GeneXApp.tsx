@@ -571,6 +571,7 @@ export default function GeneXApp() {
               ready={ready}
               view={view}
               gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
+              imageUrl={uploaded?.url}
             />
           </div>
 

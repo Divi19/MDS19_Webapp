@@ -18,18 +18,22 @@ export default function SpatialPlot({
   ready,
   view,
   gene,
+  imageUrl,
 }: {
   pred: Prediction;
   ready: boolean;
   view: "clusters" | "genes";
   gene: string;
+  imageUrl?: string | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const geomRef = useRef<Geom | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const [highlight, setHighlight] = useState(-1);
   const [width, setWidth] = useState(520);
   const [height, setHeight] = useState(0);
+  const [imgTick, setImgTick] = useState(0);
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
 
   useEffect(() => {
@@ -44,6 +48,26 @@ export default function SpatialPlot({
     measure();
     return () => ro.disconnect();
   }, []);
+
+  // Load the uploaded section itself, so the Genes view can overlay
+  // predicted expression directly on the real tissue instead of a blank grid.
+  useEffect(() => {
+    if (!imageUrl) {
+      imgRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    const img = new window.Image();
+    img.onload = () => {
+      if (cancelled) return;
+      imgRef.current = img;
+      setImgTick((t) => t + 1);
+    };
+    img.src = imageUrl;
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl]);
 
   const draw = useCallback(() => {
     const cv = canvasRef.current;
@@ -62,6 +86,45 @@ export default function SpatialPlot({
     ctx.clearRect(0, 0, w, h);
     if (!ready) {
       geomRef.current = null;
+      return;
+    }
+
+    const genesView = view === "genes";
+    let gk = gene;
+    if (!pred.geneMeta[gk]) gk = pred.genes[0] ?? "";
+
+    // Genes view with a real section loaded: overlay predicted expression
+    // directly on the tissue instead of an abstract grid.
+    if (genesView && imgRef.current) {
+      const img = imgRef.current;
+      const ir = img.naturalWidth / img.naturalHeight;
+      const cr = w / h;
+      let sx: number, sy: number, sw: number, sh: number;
+      if (ir > cr) {
+        sh = img.naturalHeight;
+        sw = sh * cr;
+        sy = 0;
+        sx = (img.naturalWidth - sw) / 2;
+      } else {
+        sw = img.naturalWidth;
+        sh = sw / cr;
+        sx = 0;
+        sy = (img.naturalHeight - sh) / 2;
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+
+      const r = Math.max(2.4, w / 130);
+      ctx.globalAlpha = 0.72;
+      for (const s of pred.spots) {
+        const px = s.x * w;
+        const py = s.y * h;
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, 6.2832);
+        ctx.fillStyle = viridis(s.expr[gk] ?? 0);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      geomRef.current = { mL: 0, mT: 0, pw: w, ph: h, gk };
       return;
     }
 
@@ -105,9 +168,6 @@ export default function SpatialPlot({
     ctx.fillText("spatial2", 0, 0);
     ctx.restore();
 
-    const genesView = view === "genes";
-    let gk = gene;
-    if (!pred.geneMeta[gk]) gk = pred.genes[0] ?? "";
     const r = Math.max(2.6, pw / 160);
     for (const s of pred.spots) {
       const px = mL + s.x * pw;
@@ -120,7 +180,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height]);
+  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl]);
 
   useEffect(() => {
     draw();
