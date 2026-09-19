@@ -1,145 +1,105 @@
-/**
- * Agentic layer — a rule-based reader that turns the prediction (gene
- * values, spot locations, cluster labels) into biological narrative,
- * cross-referencing GeneCards / Gene Ontology annotation.
- *
- * Every answer is derived from the loaded `Prediction`; nothing is
- * fabricated beyond the standard annotation for known markers.
- */
-import {
-  centroid,
-  geneStats,
-  locationOf,
-  NAMED_GENES,
-  type Prediction,
-} from "./mockPrediction";
+import type { DomainSummary, PredictionResponse } from "@/lib/types";
 
-const clusterName = (pred: Prediction, index: number) =>
-  pred.clusters[index]?.name ?? `cluster ${index}`;
-
-function clusterMean(pred: Prediction, gene: string, cluster: number) {
-  const spots = pred.spots.filter((spot) => spot.cluster === cluster);
-  if (!spots.length) return 0;
-  return spots.reduce((sum, spot) => sum + (spot.expr[gene] ?? 0), 0) / spots.length;
+function raw(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? "not returned" : String(value);
 }
 
-export function answer(qRaw: string, pred: Prediction | null): string {
-  const q = qRaw.toLowerCase();
+function geneInQuestion(question: string, prediction: PredictionResponse): string | null {
+  const normalized = question.toUpperCase();
+  const genes = prediction.all_gene_summary.genes
+    .map((item) => item.gene_name)
+    .sort((first, second) => second.length - first.length || first.localeCompare(second));
+  return genes.find((gene) => {
+    const escaped = gene.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^A-Z0-9])${escaped}([^A-Z0-9]|$)`).test(normalized);
+  }) ?? null;
+}
 
-  if (!pred) {
-    return "Upload and run a section first. Once the prediction is loaded I can profile clusters, locate genes, compare regions, and flag biomarkers — all from the predicted values.";
+function domainInQuestion(question: string, prediction: PredictionResponse): DomainSummary | null {
+  const normalized = question.toLowerCase();
+  const exact = prediction.domain_summaries.find((domain) => normalized.includes(domain.domain_id.toLowerCase()));
+  if (exact) return exact;
+  const number = normalized.match(/domain[\s_-]*(\d+)/)?.[1];
+  return number
+    ? prediction.domain_summaries.find((domain) => domain.domain_id.toLowerCase() === `domain_${number}`) ?? null
+    : null;
+}
+
+function answerQC(prediction: PredictionResponse): string {
+  const qc = prediction.qc;
+  const warningText = qc.warnings.length ? qc.warnings.join("; ") : "none returned";
+  return `Calculated: QC returned tissue fraction ${raw(qc.tissue_fraction)}, brightness ${raw(qc.brightness)}, contrast ${raw(qc.contrast)}, mean saturation ${raw(qc.mean_saturation)}, focus proxy ${raw(qc.focus_proxy)}, ${qc.accepted_tile_count} accepted tiles, and ${qc.rejected_tile_count} rejected tiles.\nAnnotated: QC warnings: ${warningText}.\nAnnotated: The loaded request is ${prediction.applicability.within_reference_scope ? "marked within" : "marked outside"} the declared reference scope: ${prediction.applicability.reference_scope}. HER2-positive breast tissue confirmation: ${prediction.applicability.her2_positive_breast_tissue_confirmed ? "yes" : "no"}; H&E confirmation: ${prediction.applicability.he_stain_confirmed ? "yes" : "no"}.`;
+}
+
+function answerGene(gene: string, prediction: PredictionResponse): string {
+  const candidates = prediction.prediction_tiles
+    .flatMap((tile) => {
+      const value = tile.expression[gene];
+      return Number.isFinite(value) ? [{ tile, value }] : [];
+    })
+    .sort((first, second) => second.value - first.value || (first.tile.tile_index ?? first.tile.spot_index) - (second.tile.tile_index ?? second.tile.spot_index));
+  const highest = candidates[0];
+  if (!highest) return `Annotated: ${gene} is in the returned gene summary, but no finite tile-level predicted value was returned.`;
+  const index = highest.tile.tile_index ?? highest.tile.spot_index;
+  const bounds = highest.tile.bounds;
+  const boundsText = bounds
+    ? ` Bounds in ${prediction.coordinate_metadata.bounds_units}: left ${raw(bounds.left)}, top ${raw(bounds.top)}, right ${raw(bounds.right)}, bottom ${raw(bounds.bottom)}.`
+    : " Tile bounds were not returned.";
+  return `Predicted: ${gene} has its highest returned raw model-scale predicted value at tile ${index}: ${raw(highest.value)}.\nAnnotated: Returned position is (${raw(highest.tile.x)}, ${raw(highest.tile.y)}) in ${prediction.coordinate_metadata.x_y_units}.${boundsText}\nAnnotated: This locates a model prediction; it is not a measured assay value or biological interpretation.`;
+}
+
+function answerDomain(domain: DomainSummary): string {
+  const markerLines = domain.markers.slice(0, 5).map(
+    (marker) => `Calculated: ${marker.gene_name} rank ${marker.rank}, effect ${raw(marker.effect_size)}, q ${raw(marker.q_value)}, predicted domain mean ${raw(marker.domain_mean)}, predicted rest mean ${raw(marker.rest_mean)}.`,
+  );
+  const markers = markerLines.length ? markerLines.join("\n") : "Calculated: No marker contrasts were returned for this domain.";
+  return `Calculated: ${domain.domain_id} contains ${domain.tile_count} tiles grouped as a ${domain.label}.\n${markers}\nAnnotated: These are contrasts of predicted values returned by the backend, not measured markers, cell types, or validated biomarkers.`;
+}
+
+function answerMethods(prediction: PredictionResponse): string {
+  const metadata = prediction.model_metadata;
+  const supports = prediction.prediction_tiles.flatMap((tile) => tile.retrieval_support ? [tile.retrieval_support] : []);
+  const supportSummary = supports.length
+    ? `Calculated: Retrieval support was returned for ${supports.length} of ${prediction.prediction_tiles.length} tiles. Mean of returned max selected cosine similarity values: ${raw(supports.reduce((sum, item) => sum + item.max_selected_cosine_similarity, 0) / supports.length)}; mean effective neighbor count: ${raw(supports.reduce((sum, item) => sum + item.effective_neighbor_count, 0) / supports.length)}.`
+    : "Annotated: Tile-level retrieval support was not returned.";
+  const analysis = prediction.analysis_method;
+  const analysisText = analysis
+    ? `Calculated: Predicted-expression domains use ${analysis.variable_gene_selection}, ${analysis.standardization}, PCA solver ${analysis.pca_solver}, and K-means with requested k ${analysis.kmeans_requested_k}, fitted k ${analysis.kmeans_fitted_k}, seed ${analysis.kmeans_seed}, and ${analysis.kmeans_n_init} initializations. Returned marker method: ${analysis.marker_effect_size}; ${analysis.marker_test}.`
+    : "Annotated: Domain analysis method metadata was not returned.";
+  return `Annotated: Model ${metadata.model_version} returned ${metadata.output_type} for a ${metadata.panel_size}-gene panel in ${metadata.mode} mode. Declared reference scope: ${metadata.reference_scope}.\nAnnotated: Retrieval neighbor selection: ${metadata.retrieval_neighbor_selection ?? "not returned"}. Retrieval weighting: ${metadata.retrieval_weighting ?? "not returned"}.\n${supportSummary}\n${analysisText}\nAnnotated: Retrieval diagnostics describe support for predicted values; they are not calibrated confidence or laboratory measurements.`;
+}
+
+function answerLimitations(prediction: PredictionResponse): string {
+  const warnings = Array.from(new Set([...prediction.warnings, ...prediction.qc.warnings, ...prediction.analysis_warnings]));
+  const warningText = warnings.length ? warnings.map((item) => `Annotated: ${item}`).join("\n") : "Annotated: No pipeline, QC, or analysis warnings were returned.";
+  return `${warningText}\nAnnotated: Research use only. Values are predicted, not measured. The response does not establish diagnosis, cell type, biomarker status, laboratory equivalence, or calibrated confidence.\nHypothesis: Any biological explanation requires separate evidence and validation; this reader does not generate one.`;
+}
+
+export function answer(qRaw: string, prediction: PredictionResponse | null): string {
+  if (!prediction) return "Annotated: Load an expanded PredictionResponse before asking this evidence reader about returned QC, genes, domains, retrieval support, methods, or limitations.";
+  const question = qRaw.trim().toLowerCase();
+  if (!question) return "Annotated: Ask about QC and applicability, a returned gene's highest predicted tile, a domain such as domain_1, retrieval methods, or limitations.";
+  if (/\b(qc|quality|applicab|scope|accepted|rejected)\b/.test(question)) return answerQC(prediction);
+  if (/\b(limit|warning|caution|research use|measured|diagnos|confidence)\b/.test(question)) return answerLimitations(prediction);
+  if (/\b(retrieval|method|model|neighbor|weighting|analysis|pca|k-means|kmeans)\b/.test(question)) return answerMethods(prediction);
+  if (/\b(domain|cluster)\b/.test(question)) {
+    const domain = domainInQuestion(question, prediction);
+    return domain
+      ? answerDomain(domain)
+      : `Annotated: Name a returned predicted-expression domain: ${prediction.domain_summaries.map((item) => item.domain_id).join(", ") || "none were returned"}.`;
   }
-
-  const { total } = pred;
-
-  if (q.includes("profile") && /[0-4]/.test(q)) {
-    const c = Number(q.match(/[0-4]/)![0]);
-    const cen = centroid(pred, c);
-    const mk = NAMED_GENES.filter((k) => geneStats(pred, k).dom === c).map(
-      (k) => pred.geneMeta[k].label,
-    );
-    return `Cluster ${c} (${clusterName(pred, c)}) — ${pred.counts[c]} spots (${(
-      (pred.counts[c] / total) *
-      100
-    ).toFixed(1)}%), centred on ${locationOf(cen.x, cen.y)} of the section.
-Among tracked markers, ${
-      mk.length ? mk.join(", ") : "no single marker"
-    } peak${mk.length === 1 ? "s" : ""} here. The label is a reading of the predicted profile, not a pathology call.`;
-  }
-
-  if (q.includes("where") && (q.includes("erbb2") || q.includes("her2"))) {
-    if (!pred.geneMeta.ERBB2) return "ERBB2 is not present in this model's gene panel.";
-    const st = geneStats(pred, "ERBB2");
-    const c = centroid(pred, st.dom);
-    return `Predicted ERBB2 (HER2) is highest in cluster ${st.dom}, around ${locationOf(
-      c.x,
-      c.y,
-    )} (mean ${st.avg.toFixed(
-      2,
-    )} after 0–1 scaling). Switch the map to Genes and search ERBB2 to see the viridis gradient.`;
-  }
-
-  if (q.includes("where")) {
-    for (const k of pred.genes) {
-      if (q.includes(k.toLowerCase())) {
-        const st = geneStats(pred, k);
-        const c = centroid(pred, st.dom);
-        return `Predicted ${pred.geneMeta[k].label} is highest in cluster ${st.dom}, around ${locationOf(
-          c.x,
-          c.y,
-        )} (mean ${st.avg.toFixed(2)}).`;
-      }
-    }
-    return 'Name a gene from the panel and I will locate its predicted peak, e.g. "where is MKI67 highest?".';
-  }
-
-  if (q.includes("compare")) {
-    const m = q.match(/[0-4]/g);
-    if (m && m.length >= 2) {
-      const a = Number(m[0]);
-      const b = Number(m[1]);
-      const ca = centroid(pred, a);
-      const cb = centroid(pred, b);
-      const differences = pred.genes
-        .map((gene) => ({
-          gene,
-          difference: Math.abs(clusterMean(pred, gene, a) - clusterMean(pred, gene, b)),
-        }))
-        .sort((x, y) => y.difference - x.difference)
-        .slice(0, 3)
-        .map((item) => item.gene)
-        .join(", ");
-      return `Cluster ${a} (${clusterName(pred, a)}, ${pred.counts[a]} spots, ${locationOf(
-        ca.x,
-        ca.y,
-      )}) vs cluster ${b} (${clusterName(pred, b)}, ${pred.counts[b]} spots, ${locationOf(cb.x, cb.y)}).
-The largest normalised expression differences are ${differences || "not available"}. These are model predictions, not biological labels or clinical findings.`;
-    }
-    return 'Give me two cluster numbers, e.g. "compare cluster 3 and cluster 0".';
-  }
-
-  if (q.includes("flag") || q.includes("biomarker")) {
-    const tracked = ["ERBB2", "MKI67", "CD74"].filter((gene) => pred.geneMeta[gene]);
-    if (!tracked.length) {
-      return "None of the currently tracked annotation markers (ERBB2, MKI67, CD74) are present in this model panel.";
-    }
-    const annotations: Record<string, string> = {
-      ERBB2: "HER2 receptor",
-      MKI67: "proliferation-associated marker",
-      CD74: "antigen-presentation-associated marker",
-    };
-    const lines = tracked.map((gene) => {
-      const stats = geneStats(pred, gene);
-      return `• ${gene} — ${annotations[gene]}, highest mean normalised prediction in cluster ${stats.dom}.`;
-    });
-    return `Tracked-marker summary:\n${lines.join("\n")}\nThese are annotations of model predictions, not clinical findings.`;
-  }
-
-  if (q.includes("colour") || q.includes("color")) {
-    return `Each colour is one K-means cluster of spots with similar predicted gene profiles (tab10 palette):
-• 0 blue — ${clusterName(pred, 0)}
-• 1 orange — ${clusterName(pred, 1)}
-• 2 green — ${clusterName(pred, 2)}
-• 3 red — ${clusterName(pred, 3)}
-• 4 purple — ${clusterName(pred, 4)}
-Colours are arbitrary labels; meaning comes from the gene profiles inside each cluster.`;
-  }
-
-  if (q.includes("report")) {
-    return "Report drafted: it summarises the 5 clusters, their sizes and locations, the dominant predicted markers per cluster, and the flagged biomarkers with GeneCards / GO annotation. Use the Export button to download it alongside the raw values.";
-  }
-
-  return "I can profile a cluster, locate a gene, compare two clusters, flag biomarkers, or draft a report — all from the predicted values. Try a quick prompt above.";
+  const gene = geneInQuestion(qRaw, prediction);
+  if (gene) return answerGene(gene, prediction);
+  return "Annotated: I only route to evidence returned in the loaded response. Ask about QC and applicability, name a panel gene to locate its highest raw prediction tile, name a predicted-expression domain, ask about retrieval methods, or ask for limitations.";
 }
 
 export const INTRO_MESSAGE =
-  "I'm the GeneX ChatBot. I translate the model's predictions — the gene values, spot locations, and cluster labels — into biological meaning, using GeneCards and Gene Ontology. The model ranks the genes; I explain what the pattern means. Pick a prompt or ask in your own words.";
+  "Evidence-only, rule-based reader. Answers are deterministic and limited to the loaded PredictionResponse; no generative model or external biological annotation is used.";
 
 export const QUICK_QUESTIONS = [
-  "Profile cluster 3",
+  "Summarize QC and applicability",
   "Where is ERBB2 highest?",
-  "Compare cluster 3 and cluster 0",
-  "Flag any biomarkers",
-  "What do the cluster colours mean?",
-  "Generate full report",
+  "Summarize domain_1",
+  "Explain retrieval support and methods",
+  "State warnings and limitations",
 ];
