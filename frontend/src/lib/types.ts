@@ -239,6 +239,21 @@ export interface PathwayResponse {
   warnings: string[];
 }
 
+export interface ExportROIGeometry {
+  roi_id: string;
+  tile_indices: number[];
+  geometry: {
+    type: "Polygon" | "MultiPolygon";
+    coordinates: number[][][] | number[][][][];
+  };
+  properties: Record<string, unknown>;
+}
+
+export interface ExportRequest {
+  prediction: PredictionResponse;
+  roi_geometries: ExportROIGeometry[];
+}
+
 export interface HealthResponse {
   status: string;
   model_loaded: boolean;

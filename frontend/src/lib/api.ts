@@ -1,4 +1,5 @@
 import type {
+  ExportRequest,
   HealthResponse,
   PathwayRequest,
   PathwayResponse,
@@ -8,6 +9,7 @@ import type {
 } from "@/lib/types";
 
 export type {
+  ExportRequest,
   HealthResponse,
   PathwayRequest,
   PathwayResponse,
@@ -18,22 +20,47 @@ export type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-async function apiError(response: Response, fallback: string): Promise<Error> {
-  let detail = "";
-  try {
-    const body = (await response.json()) as { detail?: unknown };
-    if (typeof body.detail === "string") detail = body.detail;
-    else if (Array.isArray(body.detail)) {
-      detail = body.detail
-        .map((item) =>
-          typeof item === "object" && item && "msg" in item ? String(item.msg) : String(item),
-        )
-        .join("; ");
-    }
-  } catch {
-    detail = await response.text().catch(() => "");
+function detailMessage(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) =>
+        typeof item === "object" && item && "msg" in item ? String(item.msg) : String(item),
+      )
+      .join("; ");
   }
-  return new Error(detail || `${fallback} (${response.status})`);
+  if (detail && typeof detail === "object") return JSON.stringify(detail);
+  return "";
+}
+
+export class APIError extends Error {
+  readonly status: number;
+  readonly detail: unknown;
+
+  constructor(message: string, status: number, detail: unknown) {
+    super(message);
+    this.name = "APIError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+async function apiError(response: Response, fallback: string): Promise<APIError> {
+  const bodyText = await response.text().catch(() => "");
+  let detail: unknown = bodyText;
+  if (bodyText) {
+    try {
+      const parsed = JSON.parse(bodyText) as { detail?: unknown };
+      detail = Object.hasOwn(parsed, "detail") ? parsed.detail : parsed;
+    } catch {
+      detail = bodyText;
+    }
+  }
+  return new APIError(
+    detailMessage(detail) || `${fallback} (${response.status})`,
+    response.status,
+    detail,
+  );
 }
 
 async function postJSON<T>(path: string, payload: unknown, fallback: string): Promise<T> {
@@ -79,6 +106,18 @@ export function analyzePathways(payload: PathwayRequest): Promise<PathwayRespons
     payload,
     "Pathway analysis failed",
   );
+}
+
+export async function requestExportBundle(payload: ExportRequest): Promise<Blob> {
+  const response = await fetch(`${API_URL}/api/analysis/exports/bundle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw await apiError(response, "Export bundle request failed");
+  const blob = await response.blob();
+  if (!blob.size) throw new Error("The backend returned an empty export bundle.");
+  return blob;
 }
 
 export async function checkHealth(): Promise<HealthResponse> {
