@@ -7,13 +7,20 @@ DummyPredictor for the real model requires no changes anywhere else.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-import io
+import math
 
 import numpy as np
-import torch
 from PIL import Image
 
-from app.services.mclstexp.model import mclSTExp_Attention
+from app.services.analysis import analyze_prediction_tiles
+from app.services.qc import build_qc_report, decode_image, tissue_tile_mask as qc_tissue_tile_mask
+
+
+REFERENCE_SCOPE = "HER2-positive breast tissue reference cohort"
+
+
+class PredictionInputError(ValueError):
+    pass
 
 
 class BasePredictor(ABC):
@@ -25,7 +32,7 @@ class BasePredictor(ABC):
         ...
 
     @abstractmethod
-    def predict(self, image_bytes: bytes) -> dict:
+    def predict(self, image_bytes: bytes, sample_metadata: dict | None = None) -> dict:
         """
         Returns:
             {
@@ -58,6 +65,10 @@ class DummyPredictor(BasePredictor):
         "ESR1", "PGR", "MKI67", "CD8A", "COL1A1",
         "KRT5", "KRT14", "ACTA2", "VWF", "PTPRC",
     ]
+    mode = "demo"
+    model_version = "dummy-v1"
+    reference_scope = REFERENCE_SCOPE
+    panel_size = len(GENES)
 
     def __init__(self, grid_size: int = 20):
         self.grid_size = grid_size
@@ -71,10 +82,13 @@ class DummyPredictor(BasePredictor):
     def is_loaded(self) -> bool:
         return self._loaded
 
-    def predict(self, image_bytes: bytes) -> dict:
+    def predict(self, image_bytes: bytes, sample_metadata: dict | None = None) -> dict:
         if not self._loaded:
             raise RuntimeError("Predictor not loaded")
 
+        image, image_format = decode_image(image_bytes)
+        qc = build_qc_report(image)
+        metadata = sample_metadata or {}
         spots = []
         idx = 0
         for row in range(self.grid_size):
@@ -112,11 +126,60 @@ class DummyPredictor(BasePredictor):
             for i, (g, v) in enumerate(ranked)
         ]
 
-        return {
+        gene_summary = [
+            {
+                "gene_name": gene,
+                "mean_expression": means[gene],
+                "variance_expression": float(np.var([s["expression"][gene] for s in spots])),
+            }
+            for gene in self.GENES
+        ]
+        warnings = list(qc["warnings"])
+        warnings.append("Demo mode returns synthetic values and does not run the real model")
+        result = {
             "spots": spots,
+            "prediction_tiles": spots,
             "top_genes": top_genes,
-            "model_version": "dummy-v1",
+            "model_version": self.model_version,
+            "model_metadata": {
+                "mode": self.mode,
+                "model_version": self.model_version,
+                "reference_scope": self.reference_scope,
+                "panel_size": self.panel_size,
+                "output_type": "prediction_tiles",
+            },
+            "image_metadata": {
+                "format": image_format,
+                "width_pixels": image.width,
+                "height_pixels": image.height,
+                "pixel_count": image.width * image.height,
+                "microns_per_pixel": metadata.get("microns_per_pixel"),
+                "target_microns_per_pixel": None,
+                "resampled_width_pixels": image.width,
+                "resampled_height_pixels": image.height,
+            },
+            "coordinate_metadata": {
+                "x_y_units": "demo_grid_units",
+                "bounds_units": "original_image_pixels",
+                "origin": "top_left",
+                "x_y_semantics": "synthetic_demo_grid_position",
+            },
+            "qc": qc,
+            "applicability": {
+                "reference_scope": self.reference_scope,
+                "her2_positive_breast_tissue_confirmed": bool(metadata.get("her2_positive_breast_tissue")),
+                "he_stain_confirmed": metadata.get("stain") == "H&E",
+                "within_reference_scope": False,
+            },
+            "warnings": warnings,
+            "all_gene_summary": {
+                "authoritative": True,
+                "statistics": ["mean", "variance"],
+                "genes": gene_summary,
+            },
         }
+        result.update(analyze_prediction_tiles(spots))
+        return result
 
 
 def tissue_tile_mask(image: Image.Image, patch: int = 224, stride: int = 224,
@@ -159,6 +222,12 @@ class MclSTExpPredictor(BasePredictor):
     """
 
     MODEL_VERSION = "mclstexp-her2st-best_0"
+    mode = "real"
+    model_version = MODEL_VERSION
+    reference_scope = REFERENCE_SCOPE
+    panel_size = 785
+    TARGET_MICRONS_PER_PIXEL = 100.0 / 224.0
+    MAX_RESAMPLED_PIXELS = 100_000_000
 
     TOP_K = 200      # fixed by the training config — not a tuning knob
     PATCH = 224      # the model was trained on 224x224 crops
@@ -186,6 +255,7 @@ class MclSTExpPredictor(BasePredictor):
         self.data_root = data_root
         self.device = "cpu"
         self._model = None
+        self._torch = None
         self.spot_key = None
         self.spot_key_n = None
         self.expr_key = None
@@ -194,13 +264,20 @@ class MclSTExpPredictor(BasePredictor):
     def load(self) -> None:
         """Called once at application startup. Never per request."""
         db = Path(self.data_root)
+        missing = missing_required_artifacts(self.data_root, self.checkpoint_path)
+        if missing:
+            raise RuntimeError(f"Required model artifacts are missing or empty: {', '.join(missing)}")
+        import torch
+        from app.services.mclstexp.model import mclSTExp_Attention
+
+        self._torch = torch
 
         # 1. Model
         model = mclSTExp_Attention(
             encoder_name='densenet121', spot_dim=785, temperature=1.0,
             image_dim=1024, projection_dim=256,
             heads_num=8, heads_dim=64, head_layers=2, dropout=0.)
-        sd = torch.load(self.checkpoint_path, map_location='cpu')
+        sd = self._torch.load(self.checkpoint_path, map_location='cpu')
         sd = {k.replace('module.', '').replace('well', 'spot'): v for k, v in sd.items()}
         model.load_state_dict(sd)
         model.eval()
@@ -268,12 +345,12 @@ class MclSTExpPredictor(BasePredictor):
         """
         batch_size = self.BATCH_SIZE if batch_size is None else batch_size
         out = []
-        with torch.no_grad():
+        with self._torch.no_grad():
             for i in range(0, len(patches), batch_size):
                 chunk = patches[i:i + batch_size]
                 # ToTensor() equivalent only. Do NOT add transforms.Normalize.
-                batch = torch.stack([
-                    torch.from_numpy(np.array(p.convert("RGB"), dtype=np.float32) / 255.0)
+                batch = self._torch.stack([
+                    self._torch.from_numpy(np.array(p.convert("RGB"), dtype=np.float32) / 255.0)
                          .permute(2, 0, 1)
                     for p in chunk
                 ]).to(self.device)
@@ -286,13 +363,14 @@ class MclSTExpPredictor(BasePredictor):
                 out.append(embs.cpu().numpy())
         return np.concatenate(out, axis=0)
 
-    def _retrieve(self, query: np.ndarray) -> np.ndarray:
+    def _retrieve(self, query: np.ndarray) -> tuple[np.ndarray, list[dict]]:
         """Query embeddings -> predicted expression. No learned parameters here."""
         qn = query / np.linalg.norm(query, axis=1, keepdims=True)
         sim = qn @ self.spot_key_n.T                                     # (n_query, 11548)
         idx = np.argpartition(-sim, self.TOP_K, axis=1)[:, :self.TOP_K]  # top-200
 
         pred = np.zeros((query.shape[0], self.expr_key.shape[1]), dtype=np.float32)
+        support = []
         for i in range(query.shape[0]):
             nb = idx[i]
             # inverse squared L1 distance, on the UNNORMALISED embeddings
@@ -300,62 +378,91 @@ class MclSTExpPredictor(BasePredictor):
             w = np.reciprocal(np.maximum(d, 1e-12) ** 2)   # clamp guards 1/0 -> nan
             w = w / w.sum()
             pred[i] = np.average(self.expr_key[nb], axis=0, weights=w)
-        return pred
+            selected_similarity = sim[i, nb]
+            expression_delta = self.expr_key[nb] - pred[i]
+            per_gene_dispersion = np.average(expression_delta ** 2, axis=0, weights=w)
+            support.append({
+                "max_selected_cosine_similarity": float(np.max(selected_similarity)),
+                "mean_selected_cosine_similarity": float(np.mean(selected_similarity)),
+                "effective_neighbor_count": float(1.0 / np.sum(w ** 2)),
+                "aggregate_neighbor_expression_dispersion": float(np.mean(per_gene_dispersion)),
+            })
+        return pred, support
 
     # ------------------------------------------------------------------
 
-    def predict(self, image_bytes: bytes) -> dict:
+    def predict(self, image_bytes: bytes, sample_metadata: dict | None = None) -> dict:
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
 
-        image = Image.open(io.BytesIO(image_bytes))
-        image.load()
+        metadata = sample_metadata or {}
+        microns_per_pixel = metadata.get("microns_per_pixel")
+        if not isinstance(microns_per_pixel, (int, float)) or not math.isfinite(microns_per_pixel) or microns_per_pixel <= 0:
+            raise PredictionInputError("A valid microns-per-pixel value is required for real inference")
+        image, image_format = decode_image(image_bytes)
+        scale = microns_per_pixel / self.TARGET_MICRONS_PER_PIXEL
+        resampled_width = max(1, round(image.width * scale))
+        resampled_height = max(1, round(image.height * scale))
+        if resampled_width * resampled_height > self.MAX_RESAMPLED_PIXELS:
+            raise PredictionInputError("The image exceeds the supported pixel count after target-scale resampling")
+        resampled = image.resize((resampled_width, resampled_height), Image.Resampling.LANCZOS)
+        qc = build_qc_report(image, tile_image=resampled, patch=self.PATCH, stride=self.STRIDE)
 
-        patches, coords = self._tile(image)
+        patches, coords = self._tile(resampled)
         if not patches:
             w, h = image.size
-            raise ValueError(
-                f"Image is {w}x{h}px — too small to tile into "
-                f"{self.PATCH}x{self.PATCH} patches")
+            raise PredictionInputError(
+                f"Image is {w}x{h}px and is too small to produce a prediction tile at the target scale")
 
         # Background tiles are dropped before encoding: each one costs a
         # forward pass, and the expression retrieved for a patch of glass
         # would otherwise pull the top_genes means toward whatever the
         # reference set happens to say about off-tissue spots.
-        keep = tissue_tile_mask(image, patch=self.PATCH, stride=self.STRIDE)
+        keep = qc_tissue_tile_mask(resampled, patch=self.PATCH, stride=self.STRIDE)
         kept = [i for i, c in enumerate(coords) if keep[c]]
         if not kept:
-            raise ValueError(
-                f"No tissue detected in any of the {len(patches)} tiles — "
-                f"the slide may be blank, or the saturation threshold too high")
+            raise PredictionInputError(
+                f"No tissue was detected in any of the {len(patches)} prediction tiles")
 
         # Checked against tissue tiles, not raw grid tiles: the mask is what
         # decides the real cost of the request. Refused outright rather than
         # truncated — a partial slide would return a prediction that silently
         # covers only part of the tissue.
         if len(kept) > self.MAX_PATCHES:
-            raise ValueError(
-                f"Slide requires {len(kept)} tissue patches, exceeding the "
-                f"{self.MAX_PATCHES} limit for synchronous processing. "
-                f"Full whole-slide support is planned post-deadline.")
+            raise PredictionInputError(
+                f"The image requires {len(kept)} tissue prediction tiles, exceeding the {self.MAX_PATCHES} tile limit")
 
         patches = [patches[i] for i in kept]
         coords = [coords[i] for i in kept]
 
         query = self._encode(patches)                    # tissue tiles only
-        pred = self._retrieve(query)                     # (n_tissue, 785)
+        pred, support = self._retrieve(query)            # (n_tissue, 785)
 
-        spots = [
-            {
+        scale_x = resampled_width / image.width
+        scale_y = resampled_height / image.height
+        spots = []
+        for i, (cx, cy) in enumerate(coords):
+            left = cx * self.STRIDE / scale_x
+            top = cy * self.STRIDE / scale_y
+            right = min(image.width, (cx * self.STRIDE + self.PATCH) / scale_x)
+            bottom = min(image.height, (cy * self.STRIDE + self.PATCH) / scale_y)
+            spots.append({
                 "spot_index": i,
-                "x": float(cx),
-                "y": float(cy),
+                "tile_index": i,
+                "x": float((left + right) / 2.0),
+                "y": float((top + bottom) / 2.0),
+                "bounds": {
+                    "left": float(left),
+                    "top": float(top),
+                    "right": float(right),
+                    "bottom": float(bottom),
+                },
                 "expression": {g: float(v) for g, v in zip(self.genes, pred[i])},
-            }
-            for i, (cx, cy) in enumerate(coords)
-        ]
+                "retrieval_support": support[i],
+            })
 
         mean_expr = pred.mean(axis=0)                    # tissue tiles only
+        variance_expr = pred.var(axis=0)
         order = np.argsort(-mean_expr)
         top_genes = [
             {"gene_name": self.genes[g],
@@ -363,15 +470,90 @@ class MclSTExpPredictor(BasePredictor):
              "rank": r + 1}
             for r, g in enumerate(order[:50])
         ]
+        gene_summary = [
+            {
+                "gene_name": gene,
+                "mean_expression": float(mean_expr[index]),
+                "variance_expression": float(variance_expr[index]),
+            }
+            for index, gene in enumerate(self.genes)
+        ]
 
-        return {
+        result = {
             "spots": spots,
+            "prediction_tiles": spots,
             "top_genes": top_genes,
             "model_version": self.MODEL_VERSION,
+            "model_metadata": {
+                "mode": self.mode,
+                "model_version": self.MODEL_VERSION,
+                "reference_scope": self.reference_scope,
+                "panel_size": len(self.genes),
+                "output_type": "prediction_tiles",
+                "retrieval_support_label": "retrieval_support",
+                "retrieval_neighbor_selection": "top_200_cosine_similarity",
+                "retrieval_weighting": "inverse_squared_l1_distance",
+            },
+            "image_metadata": {
+                "format": image_format,
+                "width_pixels": image.width,
+                "height_pixels": image.height,
+                "pixel_count": image.width * image.height,
+                "microns_per_pixel": float(microns_per_pixel),
+                "target_microns_per_pixel": self.TARGET_MICRONS_PER_PIXEL,
+                "resampled_width_pixels": resampled_width,
+                "resampled_height_pixels": resampled_height,
+            },
+            "coordinate_metadata": {
+                "x_y_units": "original_image_pixels",
+                "bounds_units": "original_image_pixels",
+                "origin": "top_left",
+                "x_y_semantics": "prediction_tile_center",
+            },
+            "qc": qc,
+            "applicability": {
+                "reference_scope": self.reference_scope,
+                "her2_positive_breast_tissue_confirmed": metadata.get("her2_positive_breast_tissue") is True,
+                "he_stain_confirmed": metadata.get("stain") == "H&E",
+                "within_reference_scope": metadata.get("her2_positive_breast_tissue") is True and metadata.get("stain") == "H&E",
+            },
+            "warnings": list(qc["warnings"]),
+            "all_gene_summary": {
+                "authoritative": True,
+                "statistics": ["mean", "variance"],
+                "genes": gene_summary,
+            },
         }
+        result.update(analyze_prediction_tiles(spots))
+        return result
+
+
+def required_artifact_paths(data_root: str | Path, checkpoint_path: str | Path) -> list[Path]:
+    root = Path(data_root)
+    paths = [Path(checkpoint_path), root / "her_hvg_cut_1000.npy"]
+    paths.extend(root / f"spot_embeddings_{index}.npy" for index in range(1, 33))
+    paths.extend(
+        root / "preprocessed_expression_matrices" / "her2st" / section / "preprocessed_matrix.npy"
+        for section in MclSTExpPredictor.SECTIONS
+    )
+    return paths
+
+
+def missing_required_artifacts(data_root: str | Path, checkpoint_path: str | Path) -> list[str]:
+    root = Path(data_root)
+    missing = []
+    for path in required_artifact_paths(root, checkpoint_path):
+        if not path.is_file() or path.stat().st_size == 0:
+            try:
+                missing.append(str(path.relative_to(root)))
+            except ValueError:
+                missing.append(str(path))
+    return missing
 
 
 def get_predictor(settings) -> BasePredictor:
-    if settings.use_dummy_predictor:
+    if settings.mode == "demo":
         return DummyPredictor()
-    return MclSTExpPredictor(settings.model_checkpoint_path, settings.model_data_root)
+    if settings.mode == "real":
+        return MclSTExpPredictor(settings.model_checkpoint_path, settings.model_data_root)
+    raise ValueError("Predictor mode must be either 'real' or 'demo'")
