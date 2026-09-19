@@ -120,13 +120,23 @@ class DummyPredictor(BasePredictor):
 
 
 def tissue_tile_mask(image: Image.Image, patch: int = 224, stride: int = 224,
-                     sat_thresh: float = 0.10, min_frac: float = 0.10,
+                     sat_thresh: float = 0.18, min_frac: float = 0.25,
                      downsample: int = 8) -> dict[tuple[int, int], bool]:
     """
     Decide which grid tiles contain tissue.
 
     Returns a dict keyed by (ix, iy) -> bool, using the SAME (ix, iy) indexing
     as _tile(), so coords stay consistent with the heatmap.
+
+    sat_thresh/min_frac were raised from 0.10/0.10 (web app deployment,
+    2026-09) after real uploads showed a wedge of false-positive tiles
+    fading out beyond the true tissue edge — faint peripheral staining and
+    scan artifacts were clearing the old 10% saturation bar over just 10%
+    of a tile's pixels. These values are a reasoned first pass, not
+    validated against a held-out slide set; if a thin/faint real tissue
+    edge starts getting excluded, loosen min_frac before sat_thresh, since
+    min_frac controls how much of a tile must qualify, sat_thresh how
+    strongly.
     """
     w, h = image.size
     # .convert("RGB") first: PIL will not go straight from RGBA or palette mode
