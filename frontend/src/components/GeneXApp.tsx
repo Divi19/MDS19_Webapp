@@ -16,6 +16,16 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type View = "clusters" | "genes";
 
+/** A Google-style sliding window of page numbers, clamped to the valid
+ * range and centred on the current page wherever there's room for it. */
+function pageWindow(current: number, total: number, size: number) {
+  if (total <= size) return Array.from({ length: total }, (_, i) => i + 1);
+  let start = Math.max(1, current - Math.floor(size / 2));
+  const end = Math.min(total, start + size - 1);
+  start = Math.max(1, end - size + 1);
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+}
+
 export default function GeneXApp() {
   const { user, enabled: authEnabled, signOut } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -435,19 +445,49 @@ export default function GeneXApp() {
                 <button
                   className="page-btn"
                   disabled={genePageClamped === 0}
-                  onClick={() => setGenePage((p) => Math.max(0, p - 1))}
+                  onClick={() => setGenePage(0)}
+                  aria-label="First page"
+                  title="First page"
                 >
-                  ← Prev
+                  «
                 </button>
-                <span className="page-label">
-                  Page {genePageClamped + 1} of {geneTotalPages}
-                </span>
+                <button
+                  className="page-btn"
+                  disabled={genePageClamped === 0}
+                  onClick={() => setGenePage((p) => Math.max(0, p - 1))}
+                  aria-label="Previous page"
+                  title="Previous page"
+                >
+                  ‹
+                </button>
+                <div className="page-numbers">
+                  {pageWindow(genePageClamped + 1, geneTotalPages, 5).map((n) => (
+                    <button
+                      key={n}
+                      className={`page-num${n === genePageClamped + 1 ? " on" : ""}`}
+                      onClick={() => setGenePage(n - 1)}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
                 <button
                   className="page-btn"
                   disabled={genePageClamped >= geneTotalPages - 1}
                   onClick={() => setGenePage((p) => Math.min(geneTotalPages - 1, p + 1))}
+                  aria-label="Next page"
+                  title="Next page"
                 >
-                  Next →
+                  ›
+                </button>
+                <button
+                  className="page-btn"
+                  disabled={genePageClamped >= geneTotalPages - 1}
+                  onClick={() => setGenePage(geneTotalPages - 1)}
+                  aria-label="Last page"
+                  title="Last page"
+                >
+                  »
                 </button>
               </div>
             )}
