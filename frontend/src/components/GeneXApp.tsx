@@ -591,10 +591,10 @@ export default function GeneXApp() {
                 <label className="overlay-toggle">
                   <input
                     type="checkbox"
-                    checked={showOverlay}
-                    onChange={(e) => setShowOverlay(e.target.checked)}
+                    checked={!showOverlay}
+                    onChange={(e) => setShowOverlay(!e.target.checked)}
                   />
-                  Show overlay
+                  Show image
                 </label>
               )}
               {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
