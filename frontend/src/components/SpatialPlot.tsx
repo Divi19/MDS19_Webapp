@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { PredictionResponse, PredictionTile } from "@/lib/types";
 
 export type ViewerMode = "image" | "gene" | "domains" | "retrieval";
@@ -45,6 +45,7 @@ export default function SpatialPlot({
   selectedB,
   activeROIGroup,
   onTileToggle,
+  canvasRef,
 }: {
   prediction: PredictionResponse;
   imageUrl: string | null;
@@ -55,9 +56,9 @@ export default function SpatialPlot({
   selectedB: number[];
   activeROIGroup: ROIGroup | null;
   onTileToggle: (tileIndex: number, group: ROIGroup) => void;
+  canvasRef: RefObject<HTMLCanvasElement | null>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loadedImage, setLoadedImage] = useState<{ url: string; element: HTMLImageElement } | null>(null);
   const [width, setWidth] = useState(760);
   const [imageOpacity, setImageOpacity] = useState(1);
@@ -192,7 +193,7 @@ export default function SpatialPlot({
         context.strokeRect(left + 1, top + 1, Math.max(1, tileWidth - 2), Math.max(1, tileHeight - 2));
       }
     }
-  }, [domainByTile, domainIds, gene, height, imageHeight, imageOpacity, imageUrl, imageWidth, loadedImage, mode, overlayOpacity, scale.high, scale.low, selectedASet, selectedBSet, tileGeometry, tiles, width]);
+  }, [canvasRef, domainByTile, domainIds, gene, height, imageHeight, imageOpacity, imageUrl, imageWidth, loadedImage, mode, overlayOpacity, scale.high, scale.low, selectedASet, selectedBSet, tileGeometry, tiles, width]);
 
   useEffect(() => draw(), [draw]);
 

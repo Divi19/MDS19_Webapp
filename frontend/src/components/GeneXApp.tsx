@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { predict } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { downloadBackendBundle, downloadCurrentViewPNG } from "@/lib/export";
 import { getPredictionResponse, savePrediction } from "@/lib/history";
 import type { PredictionResponse } from "@/lib/types";
 import AuthModal from "./AuthModal";
@@ -36,6 +37,10 @@ function hasExpandedContract(value: unknown): value is PredictionResponse {
   );
 }
 
+function failureMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : String(reason);
+}
+
 export default function GeneXApp() {
   const { user, enabled: authEnabled, signOut } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -52,8 +57,10 @@ export default function GeneXApp() {
   const [selectedB, setSelectedB] = useState<number[]>([]);
   const [activeROIGroup, setActiveROIGroup] = useState<ROIGroup | null>(null);
   const [running, setRunning] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | undefined>(undefined);
+  const viewerCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -190,6 +197,25 @@ export default function GeneXApp() {
     setActiveROIGroup(null);
   }
 
+  async function exportCurrentResponse() {
+    if (!prediction || running || exporting) return;
+    setExporting(true);
+    const [bundleResult, pngResult] = await Promise.allSettled([
+      downloadBackendBundle(prediction, selectedA, selectedB),
+      downloadCurrentViewPNG(viewerCanvasRef.current, prediction.prediction_id),
+    ]);
+    if (bundleResult.status === "fulfilled" && pngResult.status === "fulfilled") {
+      showToast(`Download started for ${bundleResult.value} and ${pngResult.value}.`);
+    } else if (bundleResult.status === "rejected" && pngResult.status === "rejected") {
+      showToast(`ZIP failed: ${failureMessage(bundleResult.reason)} PNG failed: ${failureMessage(pngResult.reason)}`);
+    } else if (bundleResult.status === "rejected") {
+      showToast(`PNG download started; ZIP failed: ${failureMessage(bundleResult.reason)}`);
+    } else if (pngResult.status === "rejected") {
+      showToast(`ZIP download started; PNG failed: ${failureMessage(pngResult.reason)}`);
+    }
+    setExporting(false);
+  }
+
   return (
     <div className="science-app">
       <header className="science-header">
@@ -212,6 +238,7 @@ export default function GeneXApp() {
         <div className="header-scope">HER2-positive breast H&amp;E · research use only</div>
         <div className="header-actions">
           <button className="header-btn" onClick={() => setModalOpen(true)}>New prediction <kbd>U</kbd></button>
+          <button className="header-btn" onClick={exportCurrentResponse} disabled={!prediction || running || exporting}>{exporting ? "Exporting…" : "Export ZIP + PNG"}</button>
           {authEnabled && user ? (
             <>
               <button className="header-btn" onClick={() => setHistoryOpen(true)}>History</button>
@@ -264,13 +291,13 @@ export default function GeneXApp() {
 
             {/* Column 2 — spatial map + clustering */}
             <div className="workspace-main">
-              <SpatialPlot prediction={prediction} imageUrl={imageUrl} mode={viewerMode} gene={gene} onModeChange={setViewerMode} selectedA={selectedA} selectedB={selectedB} activeROIGroup={activeTab === "roi" ? activeROIGroup : null} onTileToggle={toggleROITile} />
+              <SpatialPlot prediction={prediction} imageUrl={imageUrl} mode={viewerMode} gene={gene} onModeChange={setViewerMode} selectedA={selectedA} selectedB={selectedB} activeROIGroup={activeTab === "roi" ? activeROIGroup : null} onTileToggle={toggleROITile} canvasRef={viewerCanvasRef} />
               <ScientificPanels key={prediction.prediction_id} activeTab={activeTab} prediction={prediction} gene={gene} onGeneChange={chooseGene} selectedA={selectedA} selectedB={selectedB} activeROIGroup={activeROIGroup} onActiveROIGroupChange={setActiveROIGroup} onClearROI={clearROI} />
             </div>
           </div>
 
           {/* Column 3 — agentic assistant */}
-          <ChatPanel />
+          <ChatPanel key={prediction.prediction_id} prediction={prediction} />
         </main>
       )}
 
