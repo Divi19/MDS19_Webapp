@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CL, viridis, type Prediction } from "@/lib/mockPrediction";
 import { predict, toPrediction } from "@/lib/api";
+import { exportGeneExpressionExcel } from "@/lib/exportExcel";
 import { useAuth } from "@/lib/auth";
 import { getPredictionResponse, savePrediction } from "@/lib/history";
 import AuthModal from "./AuthModal";
@@ -274,9 +275,14 @@ export default function GeneXApp() {
         <div className="header-spacer" />
         <button
           className="header-btn"
-          onClick={() =>
-            showToast(ready ? "Exported map image + predicted values" : "Run a section first")
-          }
+          onClick={() => {
+            if (!ready || !pred.topGenes.length) {
+              showToast("Run a section first");
+              return;
+            }
+            exportGeneExpressionExcel(pred, uploaded?.file?.name);
+            showToast(`Exported ${pred.topGenes.length} genes to Excel`);
+          }}
         >
           Export
         </button>
