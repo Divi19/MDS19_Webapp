@@ -40,6 +40,8 @@ export default function GeneXApp() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
   const [pred, setPred] = useState<Prediction>({
     spots: [],
@@ -161,6 +163,25 @@ export default function GeneXApp() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Dismiss the account menu on an outside click or Escape.
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    function handlePointer(e: MouseEvent) {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setAccountMenuOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [accountMenuOpen]);
 
   // The gene dropdown mirrors the full genes table — every gene found in the
   // tissue, same rank order.
@@ -314,12 +335,42 @@ export default function GeneXApp() {
             <button className="header-btn" onClick={() => setHistoryOpen(true)}>
               History
             </button>
-            <button className="header-btn" onClick={() => setProfileOpen(true)}>
-              Profile
-            </button>
-            <button className="header-btn" onClick={() => signOut()} title={user.email ?? undefined}>
-              Sign out
-            </button>
+            <div className="account-menu-wrap" ref={accountMenuRef}>
+              <button
+                className="account-avatar"
+                onClick={() => setAccountMenuOpen((v) => !v)}
+                aria-label="Account menu"
+                aria-expanded={accountMenuOpen}
+                title={user.email ?? undefined}
+              >
+                {(user.email?.[0] ?? "?").toUpperCase()}
+              </button>
+              {accountMenuOpen && (
+                <div className="account-menu" role="menu">
+                  <div className="account-menu-email">{user.email}</div>
+                  <button
+                    className="account-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setProfileOpen(true);
+                      setAccountMenuOpen(false);
+                    }}
+                  >
+                    Profile
+                  </button>
+                  <button
+                    className="account-menu-item danger"
+                    role="menuitem"
+                    onClick={() => {
+                      signOut();
+                      setAccountMenuOpen(false);
+                    }}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <button className="header-btn" onClick={() => setAuthModalOpen(true)}>
