@@ -19,5 +19,4 @@ einops>=0.7.0
 
 # Model data fetched from Drive at startup (app/main.py)
 gdown>=6.0.0        # 5.x caps download_folder at 50 files; this folder has 98
-pytest>=8.0.0
 httpx>=0.27.0
