@@ -239,8 +239,9 @@ canvas{display:block;width:100%;height:auto}
 /* auth */
 .field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
 .field-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
-.field input{border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:13px;background:var(--surface);color:var(--text)}
-.field input:focus{outline:none;border-color:var(--accent)}
+.field input,.field select{border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:13px;background:var(--surface);color:var(--text)}
+.field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+.field input:disabled{color:var(--muted);cursor:not-allowed}
 .field-error{background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.25);color:#c0392b;font-size:12px;padding:8px 11px;border-radius:8px;margin-bottom:12px}
 .field-info{background:var(--accent-soft);border:1px solid var(--accent-ring);color:var(--accent);font-size:12px;padding:8px 11px;border-radius:8px;margin-bottom:12px}
 .auth-warning{background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-size:12px;padding:8px 11px;border-radius:8px;margin-bottom:14px}
@@ -257,6 +258,16 @@ canvas{display:block;width:100%;height:auto}
 .history-meta{min-width:0}
 .history-filename{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .history-sub{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px}
+
+/* profile */
+.profile-modal{width:480px}
+.profile-stats{display:flex;gap:10px;margin-bottom:18px}
+.profile-stat{flex:1;border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;background:var(--surface2)}
+.profile-stat-value{display:block;font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent)}
+.profile-stat-label{display:block;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:3px}
+.profile-actions{display:flex;justify-content:flex-end;margin-bottom:4px}
+.profile-divider{height:1px;background:var(--border);margin:22px 0 16px}
+.profile-section-label{margin-bottom:10px}
 
 /* progress */
 .progress-overlay{position:fixed;inset:0;background:rgba(244,241,236,.85);backdrop-filter:blur(8px);display:grid;place-items:center;z-index:80;opacity:0;pointer-events:none;transition:opacity .25s}

@@ -11,6 +11,7 @@ import ChatPanel from "./ChatPanel";
 import GenePopover, { type PopoverAnchor } from "./GenePopover";
 import GradCamPanel from "./GradCamPanel";
 import HistoryPanel from "./HistoryPanel";
+import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
 import UploadModal, { type RunPayload } from "./UploadModal";
@@ -38,6 +39,7 @@ export default function GeneXApp() {
   const { user, enabled: authEnabled, signOut } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
   const [pred, setPred] = useState<Prediction>({
     spots: [],
@@ -311,6 +313,9 @@ export default function GeneXApp() {
           <>
             <button className="header-btn" onClick={() => setHistoryOpen(true)}>
               History
+            </button>
+            <button className="header-btn" onClick={() => setProfileOpen(true)}>
+              Profile
             </button>
             <button className="header-btn" onClick={() => signOut()} title={user.email ?? undefined}>
               Sign out
@@ -706,6 +711,7 @@ export default function GeneXApp() {
         onClose={() => setHistoryOpen(false)}
         onSelect={loadFromHistory}
       />
+      <ProfilePanel open={profileOpen} onClose={() => setProfileOpen(false)} />
       <GenePopover anchor={popoverAnchor} onClose={() => setPopoverAnchor(null)} />
       <div className={`toast${toast ? " show" : ""}`}>{toast}</div>
     </div>
