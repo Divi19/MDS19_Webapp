@@ -6,6 +6,10 @@ import type { PredictionResponse, PredictionTile } from "@/lib/types";
 export type ViewerMode = "image" | "gene" | "domains" | "retrieval";
 export type ROIGroup = "A" | "B";
 
+export function tileIdentifier(tile: PredictionTile): number {
+  return tile.tile_index ?? tile.spot_index;
+}
+
 const DOMAIN_COLORS = ["#0f766e", "#c2410c", "#6d28d9", "#0369a1", "#be123c", "#4d7c0f", "#a16207", "#4338ca"];
 const VIRIDIS = [
   [68, 1, 84],
@@ -162,7 +166,7 @@ export default function SpatialPlot({
     const xScale = width / imageWidth;
     const yScale = height / imageHeight;
     for (const tile of tiles) {
-      const tileIndex = tile.tile_index ?? tile.spot_index;
+      const tileIndex = tileIdentifier(tile);
       const domain = domainByTile.get(tileIndex);
       const geneValue = tile.expression[gene];
       const supportValue = tile.retrieval_support?.max_selected_cosine_similarity;
@@ -235,10 +239,10 @@ export default function SpatialPlot({
   function handleClick(event: React.MouseEvent<HTMLCanvasElement>) {
     if (!activeROIGroup) return;
     const tile = locateTile(event);
-    if (tile?.tile_index != null) onTileToggle(tile.tile_index, activeROIGroup);
+    if (tile) onTileToggle(tileIdentifier(tile), activeROIGroup);
   }
 
-  const hoverIndex = hover?.tile.tile_index ?? hover?.tile.spot_index;
+  const hoverIndex = hover ? tileIdentifier(hover.tile) : null;
   const hoverDomain = hoverIndex == null ? null : domainByTile.get(hoverIndex);
   const hoverSupport = hover?.tile.retrieval_support;
 
