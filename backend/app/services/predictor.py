@@ -44,7 +44,7 @@ class BasePredictor(ABC):
     def is_loaded(self) -> bool:
         ...
 
-    def explain(self, image_bytes: bytes, spot_index: int) -> bytes:
+    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
         """
         Grad-CAM overlay (PNG bytes) for one tissue patch. Optional — only
         MclSTExpPredictor implements this; predictors without a real image
@@ -405,7 +405,7 @@ class MclSTExpPredictor(BasePredictor):
 
     # ------------------------------------------------------------------
 
-    def explain(self, image_bytes: bytes, spot_index: int) -> bytes:
+    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
         """
         Grad-CAM overlay (PNG bytes) for one tissue patch.
 
@@ -414,6 +414,14 @@ class MclSTExpPredictor(BasePredictor):
         are dropped. Re-tiles and re-masks from scratch rather than caching
         the previous request's layout, since tiling is a pure function of
         the image and this endpoint is called standalone.
+
+        gene, if given, changes what Grad-CAM explains: instead of "why does
+        this patch resemble its single nearest retrieved neighbour" (generic,
+        gene-agnostic), it explains "why does this patch resemble tissue
+        known to express {gene} highly" — the target embedding becomes the
+        one reference spot with the highest REAL measured expression of that
+        gene, rather than the reference spot nearest to this patch's own
+        embedding.
         """
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
@@ -440,21 +448,35 @@ class MclSTExpPredictor(BasePredictor):
             np.array(patch.convert("RGB"), dtype=np.float32) / 255.0
         ).permute(2, 0, 1).unsqueeze(0).to(self.device)
 
-        # Nearest-neighbour step in embedding space (spot_key), not expression
-        # space (expr_key) — Grad-CAM explains what the encoder is looking at,
-        # not the retrieved genes. Uses the SINGLE nearest neighbour, not the
-        # mean of TOP_K like _retrieve() does: averaging 200 embeddings washes
-        # the target into something generic, which flattens the gradient
-        # signal and produces heatmaps that barely respond to image content.
-        with torch.no_grad():
-            query = self._model.image_projection(
-                self._model.image_encoder(patch_tensor)).cpu().numpy()
-        qn = query / np.linalg.norm(query, axis=1, keepdims=True)
-        sim = qn @ self.spot_key_n.T
-        nn_idx = int(np.argmax(sim[0]))
-        target = torch.from_numpy(
-            self.spot_key[nn_idx:nn_idx + 1]
-        ).float().to(self.device)
+        if gene is not None:
+            if gene not in self.genes:
+                raise ValueError(f"Unknown gene {gene!r}")
+            gene_idx = self.genes.index(gene)
+            # Single reference spot, not an average — averaging even a
+            # handful of embeddings washes the target into something
+            # generic and flattens the gradient signal (see the
+            # single-nearest-neighbour note below, same lesson applied here).
+            top_idx = int(np.argmax(self.expr_key[:, gene_idx]))
+            target = torch.from_numpy(
+                self.spot_key[top_idx:top_idx + 1]
+            ).float().to(self.device)
+        else:
+            # Nearest-neighbour step in embedding space (spot_key), not
+            # expression space (expr_key) — Grad-CAM explains what the
+            # encoder is looking at, not the retrieved genes. Uses the
+            # SINGLE nearest neighbour, not the mean of TOP_K like
+            # _retrieve() does: averaging 200 embeddings washes the target
+            # into something generic, which flattens the gradient signal and
+            # produces heatmaps that barely respond to image content.
+            with torch.no_grad():
+                query = self._model.image_projection(
+                    self._model.image_encoder(patch_tensor)).cpu().numpy()
+            qn = query / np.linalg.norm(query, axis=1, keepdims=True)
+            sim = qn @ self.spot_key_n.T
+            nn_idx = int(np.argmax(sim[0]))
+            target = torch.from_numpy(
+                self.spot_key[nn_idx:nn_idx + 1]
+            ).float().to(self.device)
 
         heatmap = self._gradcam.generate(patch_tensor, target)
         mask = tissue_pixel_mask(patch)

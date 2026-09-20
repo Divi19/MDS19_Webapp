@@ -116,7 +116,14 @@ button,input,textarea{font-family:inherit}
 .gene-rows{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
 .gene-row-head,.gene-row{display:grid;grid-template-columns:1fr 44px 1fr 44px;gap:8px;align-items:center}
 .gene-row-head{flex-shrink:0;padding:0 4px 6px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted2);font-weight:500;border-bottom:1px solid var(--border)}
-.gene-row{flex:1;min-height:0;padding:0 4px;border:none;border-bottom:1px solid var(--surface3);background:none;cursor:pointer;text-align:left;font:inherit}
+/* flex:0 0 auto, not flex:1 — a row must size to its own natural content
+   height, never stretch to fill the container. Letting it stretch created a
+   self-reinforcing bug: when only one row rendered, that row grew to fill
+   100% of the available space, then the dynamic row-count measurement read
+   that inflated height back as "one row's height", divided available space
+   by it, and got exactly 1 every time — permanently stuck regardless of how
+   much room the panel actually had. */
+.gene-row{flex:0 0 auto;padding:0 4px;border:none;border-bottom:1px solid var(--surface3);background:none;cursor:pointer;text-align:left;font:inherit}
 .gene-row:hover{background:var(--accent-soft)}
 .gene-row:last-child{border-bottom:none}
 .gene-value{font-family:var(--mono);color:var(--text);font-size:12px}
@@ -168,12 +175,19 @@ canvas{display:block;width:100%;height:auto}
 .gradcam-controls{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .gradcam-image{min-height:320px;display:grid;place-items:center}
 .gradcam-image img{width:100%;max-width:520px;height:auto;display:block;border-radius:8px}
+.gradcam-spot-detail{margin-top:14px}
+.gradcam-spot-header{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:6px}
+.gradcam-spot-crop{min-height:200px;display:grid;place-items:center}
+.gradcam-spot-crop img{width:224px;max-width:100%;height:auto;display:block;border-radius:8px}
 .legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;flex-shrink:0}
 .legend-item{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;cursor:pointer;background:var(--surface)}
 .legend-item:hover{border-color:var(--accent)}
 .legend-dot{width:9px;height:9px;border-radius:50%}
 .legend-count{color:var(--muted2)}
 .vbar{flex:1;min-width:120px;height:9px;border-radius:5px;background:linear-gradient(90deg,#440154,#3b528b,#21918c,#5ec962,#fde725)}
+/* jetRGB()'s exact stops (ExpressionHeatmap.tsx) — kept separate from .vbar
+   so the Genes tab's viridis legend is unaffected. */
+.vbar-jet{background:linear-gradient(90deg,#00007f,#007fff,#7fff7f,#ff7f00,#7f0000)}
 .vscale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:4px;flex-shrink:0}
 
 .cluster-card{flex-shrink:0}

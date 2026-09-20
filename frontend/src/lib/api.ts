@@ -42,10 +42,11 @@ export async function predict(file: File): Promise<PredictionResponse> {
 }
 
 /** Grad-CAM overlay (PNG) for one tissue tile, keyed by its spot_index. */
-export async function explainGradcam(file: File, spotIndex: number): Promise<Blob> {
+export async function explainGradcam(file: File, spotIndex: number, gene?: string): Promise<Blob> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("spot_index", String(spotIndex));
+  if (gene) formData.append("gene", gene);
 
   const res = await fetch(`${API_URL}/api/predict/gradcam`, {
     method: "POST",

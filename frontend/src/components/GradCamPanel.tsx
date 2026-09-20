@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { explainGradcam } from "@/lib/api";
 import type { Prediction } from "@/lib/mockPrediction";
 
@@ -8,56 +8,77 @@ export default function GradCamPanel({
   pred,
   ready,
   file,
+  gene,
 }: {
   pred: Prediction;
   ready: boolean;
   file: File | null;
+  gene: string;
 }) {
-  const [spotIndex, setSpotIndex] = useState(0);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const urlRef = useRef<string | null>(null);
+  const seqRef = useRef(0);
 
-  const maxIndex = Math.max(0, pred.spots.length - 1);
+  // The single tile predicted to express this gene most strongly — replaces
+  // blindly paging through hundreds of tiles with "Next tile". Grad-CAM then
+  // explains why THAT specific hotspot looks the way it does for this gene.
+  const spotIndex = useMemo(() => {
+    if (!pred.spots.length) return 0;
+    let best = 0;
+    let bestVal = -Infinity;
+    pred.spots.forEach((s, i) => {
+      const v = s.expr[gene] ?? -Infinity;
+      if (v > bestVal) {
+        bestVal = v;
+        best = i;
+      }
+    });
+    return best;
+  }, [pred, gene]);
 
-  // A new upload invalidates whatever tile/overlay was showing for the
-  // previous one — spot_index is only meaningful for the file it came from.
+  // Runs automatically whenever the upload or the selected gene changes —
+  // no manual "Show Grad-CAM" click. seq guards against an older, slower
+  // request resolving after a newer one if the gene is switched again
+  // before the first call finishes.
   useEffect(() => {
-    setSpotIndex(0);
+    const seq = ++seqRef.current;
     setImgUrl(null);
     setError("");
     if (urlRef.current) {
       URL.revokeObjectURL(urlRef.current);
       urlRef.current = null;
     }
-  }, [file]);
+
+    if (!ready || !pred.spots.length) return;
+    if (!file) {
+      setError("Grad-CAM needs the original uploaded image — re-upload the section (history-loaded predictions don't keep the file)");
+      return;
+    }
+
+    setLoading(true);
+    explainGradcam(file, spotIndex, gene)
+      .then((blob) => {
+        if (seq !== seqRef.current) return;
+        const url = URL.createObjectURL(blob);
+        urlRef.current = url;
+        setImgUrl(url);
+      })
+      .catch((e) => {
+        if (seq !== seqRef.current) return;
+        setError(e instanceof Error ? e.message : "Grad-CAM failed");
+      })
+      .finally(() => {
+        if (seq === seqRef.current) setLoading(false);
+      });
+  }, [file, gene, spotIndex, ready, pred.spots.length]);
 
   useEffect(() => {
     return () => {
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     };
   }, []);
-
-  async function load() {
-    if (!file) {
-      setError("Grad-CAM needs the original uploaded image — re-upload the section (history-loaded predictions don't keep the file)");
-      return;
-    }
-    setLoading(true);
-    setError("");
-    try {
-      const blob = await explainGradcam(file, spotIndex);
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-      const url = URL.createObjectURL(blob);
-      urlRef.current = url;
-      setImgUrl(url);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Grad-CAM failed");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   if (!ready) {
     return (
@@ -72,35 +93,16 @@ export default function GradCamPanel({
   return (
     <div className="plot-body gradcam-body">
       <div className="gradcam-controls">
-        <button
-          className="page-btn"
-          disabled={spotIndex <= 0}
-          onClick={() => setSpotIndex((i) => Math.max(0, i - 1))}
-        >
-          ← Prev tile
-        </button>
         <span className="page-label">
-          tile {spotIndex + 1} of {maxIndex + 1}
+          highest predicted {gene} · tile {spotIndex + 1} of {pred.spots.length}
         </span>
-        <button
-          className="page-btn"
-          disabled={spotIndex >= maxIndex}
-          onClick={() => setSpotIndex((i) => Math.min(maxIndex, i + 1))}
-        >
-          Next tile →
-        </button>
-        <button className="upload-btn" onClick={load} disabled={loading}>
-          {loading ? "Running Grad-CAM…" : "Show Grad-CAM"}
-        </button>
       </div>
       <div className="canvas-wrap gradcam-image">
         {error && <div className="canvas-empty">{error}</div>}
-        {!error && imgUrl && (
+        {!error && loading && <div className="canvas-empty">running Grad-CAM…</div>}
+        {!error && !loading && imgUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imgUrl} alt={`Grad-CAM overlay for tile ${spotIndex}`} />
-        )}
-        {!error && !imgUrl && !loading && (
-          <div className="canvas-empty">pick a tile and click &quot;Show Grad-CAM&quot;</div>
+          <img src={imgUrl} alt={`Grad-CAM overlay for ${gene}'s top tile`} />
         )}
       </div>
     </div>

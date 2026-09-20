@@ -56,6 +56,7 @@ async def predict_gradcam(
     request: Request,
     file: UploadFile = File(...),
     spot_index: int = Form(...),
+    gene: str | None = Form(None),
 ):
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
@@ -70,7 +71,7 @@ async def predict_gradcam(
 
     predictor = request.app.state.predictor
     try:
-        png_bytes = predictor.explain(image_bytes, spot_index)
+        png_bytes = predictor.explain(image_bytes, spot_index, gene)
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:

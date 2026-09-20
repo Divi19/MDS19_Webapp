@@ -217,9 +217,11 @@ export default function GeneXApp() {
       setGene(name);
       setGeneQuery("");
       setGeneMenuOpen(false);
-      changeView("genes");
+      // Picking from the dropdown while already on Grad-CAM should keep
+      // you there — only the sidebar gene-table click forces "genes".
+      changeView(view === "gradcam" ? "gradcam" : "genes");
     },
-    [changeView],
+    [changeView, view],
   );
 
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
@@ -293,11 +295,9 @@ export default function GeneXApp() {
 
   const datasetLabel = !ready
     ? ""
-    : view === "genes"
+    : view === "genes" || view === "gradcam"
       ? (pred.geneMeta[gene]?.label ?? "ERBB2")
-      : view === "gradcam"
-        ? "per-tile explanation"
-        : `k=5 · ${pred.total} spots`;
+      : `k=5 · ${pred.total} spots`;
 
   return (
     <div className="app">
@@ -607,7 +607,7 @@ export default function GeneXApp() {
                   Grad-CAM
                 </button>
               </div>
-              {view === "genes" && (
+              {(view === "genes" || view === "gradcam") && (
                 <div className="gene-combo">
                   <input
                     className="gsel"
@@ -700,7 +700,12 @@ export default function GeneXApp() {
             </div>
 
             {view === "gradcam" ? (
-              <GradCamPanel pred={pred} ready={ready} file={uploaded?.file ?? null} />
+              <GradCamPanel
+                pred={pred}
+                ready={ready}
+                file={uploaded?.file ?? null}
+                gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
+              />
             ) : (
               <SpatialPlot
                 pred={pred}
