@@ -88,3 +88,7 @@ The second migration stores each expanded response atomically through an authent
 - Current tissue-view PNG
 
 Within-section tests operate on predicted, spatially autocorrelated tiles and do not substitute for biological replication.
+
+## Alternate-design handoff
+
+`ALTERNATE_DESIGN_HANDOFF.md` documents every change relative to the original screenshot-linked implementation, dependencies between changes, and a selective adoption plan for `main`.
