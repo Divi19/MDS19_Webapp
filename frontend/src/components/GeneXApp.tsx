@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CL, viridis, type Prediction } from "@/lib/mockPrediction";
+import { CL, NAMED_GENES, viridis, type Level, type Prediction } from "@/lib/mockPrediction";
 import { predict, toPrediction } from "@/lib/api";
 import { exportGeneExpressionExcel } from "@/lib/exportExcel";
 import { useAuth } from "@/lib/auth";
@@ -18,6 +18,11 @@ import UploadModal, { type RunPayload } from "./UploadModal";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type View = "clusters" | "genes" | "gradcam";
+type GeneFilter = "all" | "High" | "Mid" | "Low" | "markers";
+
+function levelClass(level: Level): string {
+  return level === "High" ? "level-high" : level === "Mid" ? "level-mid" : "level-low";
+}
 
 /** A Google-style sliding window of page numbers, clamped to the valid
  * range and centred on the current page wherever there's room for it. */
@@ -51,6 +56,7 @@ export default function GeneXApp() {
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
   const [geneQuery, setGeneQuery] = useState("");
+  const [geneFilter, setGeneFilter] = useState<GeneFilter>("all");
   const [genePage, setGenePage] = useState(0);
   const [running, setRunning] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
@@ -91,6 +97,7 @@ export default function GeneXApp() {
         setPred(converted);
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setGenePage(0);
+        setGeneFilter("all");
         setStepIndex(PIPELINE_STEPS.length);
         await sleep(250);
         setReady(true);
@@ -122,6 +129,7 @@ export default function GeneXApp() {
         setPred(converted);
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setGenePage(0);
+        setGeneFilter("all");
         setView("clusters");
         setReady(true);
         showToast("Loaded from history");
@@ -158,19 +166,28 @@ export default function GeneXApp() {
     () =>
       pred.topGenes
         .filter((g) => pred.geneMeta[g.name])
-        .map((g, i) => ({ name: g.name, label: `#${i + 1}` })),
+        .map((g, i) => ({ name: g.name, label: `#${i + 1}`, level: g.level, value: g.value })),
     [pred.topGenes, pred.geneMeta],
   );
 
-  // Substring-filtered view of the dropdown list, capped for rendering — the
-  // full list can be hundreds of genes; typing narrows it to any match.
+  const maxGeneValue = useMemo(
+    () => Math.max(...pred.topGenes.map((g) => g.value)) || 1,
+    [pred.topGenes],
+  );
+
+  // Level/marker filter, then substring search — the full list can be
+  // hundreds of genes; either narrows it, both combine.
   const geneMatches = useMemo(() => {
     const q = geneQuery.trim().toLowerCase();
-    const list = q
-      ? geneOptions.filter((o) => o.name.toLowerCase().includes(q))
-      : geneOptions;
+    let list = geneOptions;
+    if (geneFilter === "markers") {
+      list = list.filter((o) => NAMED_GENES.includes(o.name));
+    } else if (geneFilter !== "all") {
+      list = list.filter((o) => o.level === geneFilter);
+    }
+    if (q) list = list.filter((o) => o.name.toLowerCase().includes(q));
     return list.slice(0, 60);
-  }, [geneOptions, geneQuery]);
+  }, [geneOptions, geneQuery, geneFilter]);
 
   const pickGene = useCallback(
     (name: string) => {
@@ -402,9 +419,7 @@ export default function GeneXApp() {
               <div className="empty-row">no predictions yet — upload a section</div>
             ) : (
               (() => {
-                const max = Math.max(...pred.topGenes.map((g) => g.value)) || 1;
-                const levelClass = (g: (typeof genePageRows)[number]) =>
-                  g.level === "High" ? "level-high" : g.level === "Mid" ? "level-mid" : "level-low";
+                const max = maxGeneValue;
                 const pick = (
                   g: (typeof genePageRows)[number],
                   e: React.MouseEvent<HTMLButtonElement>,
@@ -428,7 +443,7 @@ export default function GeneXApp() {
                         <div className="gene-tile-name">{g.name}</div>
                         <div className="gene-tile-meta">
                           <span className="gene-tile-value">{g.value.toFixed(2)}</span>
-                          <span className={`level-tag ${levelClass(g)}`}>{g.level}</span>
+                          <span className={`level-tag ${levelClass(g.level)}`}>{g.level}</span>
                         </div>
                       </button>
                     ))}
@@ -451,7 +466,7 @@ export default function GeneXApp() {
                             style={{ width: `${((g.value / max) * 100).toFixed(0)}%` }}
                           />
                         </span>
-                        <span className={`level-tag ${levelClass(g)}`}>{g.level}</span>
+                        <span className={`level-tag ${levelClass(g.level)}`}>{g.level}</span>
                       </button>
                     ))}
                   </div>
@@ -566,24 +581,52 @@ export default function GeneXApp() {
                   <span className="gsel-caret" aria-hidden>
                     ▾
                   </span>
-                  {geneMenuOpen && geneMatches.length > 0 && (
-                    <ul className="gene-menu" role="listbox">
-                      {geneMatches.map((o) => (
-                        <li
-                          key={o.name}
-                          role="option"
-                          aria-selected={o.name === gene}
-                          className={o.name === gene ? "on" : ""}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            pickGene(o.name);
-                          }}
-                        >
-                          <span className="gm-name">{o.name}</span>
-                          {o.label && <span className="gm-tag">{o.label}</span>}
-                        </li>
-                      ))}
-                    </ul>
+                  {geneMenuOpen && (
+                    <div className="gene-dropdown-panel">
+                      <div className="gene-filter-chips">
+                        {(["all", "High", "Mid", "Low", "markers"] as GeneFilter[]).map((f) => (
+                          <button
+                            key={f}
+                            type="button"
+                            className={geneFilter === f ? "on" : ""}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setGeneFilter(f)}
+                          >
+                            {f === "all" ? "All" : f === "markers" ? "Markers" : f}
+                          </button>
+                        ))}
+                      </div>
+                      {geneMatches.length > 0 ? (
+                        <ul className="gene-menu" role="listbox">
+                          {geneMatches.map((o) => (
+                            <li
+                              key={o.name}
+                              role="option"
+                              aria-selected={o.name === gene}
+                              className={o.name === gene ? "on" : ""}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                pickGene(o.name);
+                              }}
+                            >
+                              <span className="gm-left">
+                                <span
+                                  className="gm-swatch"
+                                  style={{ background: viridis(o.value / maxGeneValue) }}
+                                />
+                                <span className="gm-name">{o.name}</span>
+                              </span>
+                              <span className="gm-right">
+                                <span className={`level-tag ${levelClass(o.level)}`}>{o.level}</span>
+                                <span className="gm-tag">{o.label}</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="gene-menu-empty">no genes match</div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
