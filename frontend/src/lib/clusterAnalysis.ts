@@ -5,6 +5,11 @@ export interface ClusterMarker {
   diff: number;
 }
 
+/** Below this many spots, a mean-difference estimate is easily dominated by
+ * one or two outliers — flag it rather than presenting it with the same
+ * confidence as a well-populated cluster. */
+const LOW_SAMPLE_THRESHOLD = 10;
+
 export interface ClusterAnalysis {
   index: number;
   count: number;
@@ -13,6 +18,7 @@ export interface ClusterAnalysis {
    * everywhere else) — a differential signal, not a cell-type identity. */
   markers: ClusterMarker[];
   summary: string;
+  lowSample: boolean;
 }
 
 /** Every spot already carries its cluster id and its normalised expression
@@ -54,14 +60,16 @@ export function analyzeClusters(pred: Prediction, topN = 5): ClusterAnalysis[] {
     const top = markers.slice(0, topN);
     const fraction = pred.total ? nIn / pred.total : 0;
     const first = top[0];
+    const lowSample = nIn > 0 && nIn < LOW_SAMPLE_THRESHOLD;
     const summary =
       nIn === 0
         ? "No spots assigned to this cluster."
         : `${nIn} spot${nIn === 1 ? "" : "s"} (${(fraction * 100).toFixed(1)}% of tissue).` +
           (first
             ? ` Top gene ${first.name} is ${first.diff >= 0 ? "elevated" : "reduced"} by ${Math.abs(first.diff).toFixed(2)} vs. the rest of the tissue.`
-            : "");
+            : "") +
+          (lowSample ? " Small sample — interpret with caution." : "");
 
-    return { index: c, count: nIn, fraction, markers: top, summary };
+    return { index: c, count: nIn, fraction, markers: top, summary, lowSample };
   });
 }

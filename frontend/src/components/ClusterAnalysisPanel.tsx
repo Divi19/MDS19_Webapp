@@ -7,9 +7,11 @@ import { analyzeClusters } from "@/lib/clusterAnalysis";
 export default function ClusterAnalysisPanel({
   pred,
   ready,
+  onGeneClick,
 }: {
   pred: Prediction;
   ready: boolean;
+  onGeneClick: (gene: string, rect: DOMRect) => void;
 }) {
   const analysis = useMemo(() => (ready ? analyzeClusters(pred) : []), [pred, ready]);
 
@@ -40,6 +42,7 @@ export default function ClusterAnalysisPanel({
                 <div className="cluster-analysis-head">
                   <span className="dot" style={{ background: CL[a.index] }} />
                   <span className="name">Cluster {a.index}</span>
+                  {a.lowSample && <span className="cluster-analysis-warn">small sample</span>}
                   <span className="count">
                     {a.count} spots · {(a.fraction * 100).toFixed(1)}%
                   </span>
@@ -49,9 +52,14 @@ export default function ClusterAnalysisPanel({
                 <div className="cluster-analysis-genes">
                   {a.markers.length ? (
                     a.markers.map((m) => (
-                      <span key={m.name} className="cluster-analysis-gene">
+                      <button
+                        key={m.name}
+                        type="button"
+                        className="cluster-analysis-gene"
+                        onClick={(e) => onGeneClick(m.name, e.currentTarget.getBoundingClientRect())}
+                      >
                         {m.name}
-                      </span>
+                      </button>
                     ))
                   ) : (
                     <span className="cluster-analysis-text">none</span>

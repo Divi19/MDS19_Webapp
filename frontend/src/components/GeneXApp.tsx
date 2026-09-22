@@ -756,7 +756,13 @@ export default function GeneXApp() {
         </div>
 
         {/* Column 3 — cluster analysis */}
-        <ClusterAnalysisPanel pred={pred} ready={ready} />
+        <ClusterAnalysisPanel
+          pred={pred}
+          ready={ready}
+          onGeneClick={(name, rect) =>
+            setPopoverAnchor({ gene: name, x: rect.left, top: rect.top, bottom: rect.bottom })
+          }
+        />
       </main>
 
       <UploadModal open={modalOpen} onClose={() => setModalOpen(false)} onRun={runPrediction} />
