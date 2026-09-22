@@ -7,7 +7,7 @@ import { exportGeneExpressionExcel } from "@/lib/exportExcel";
 import { useAuth } from "@/lib/auth";
 import { getPredictionResponse, savePrediction } from "@/lib/history";
 import AuthModal from "./AuthModal";
-import ChatPanel from "./ChatPanel";
+import ClusterAnalysisPanel from "./ClusterAnalysisPanel";
 import GenePopover, { type PopoverAnchor } from "./GenePopover";
 import GradCamPanel from "./GradCamPanel";
 import HistoryPanel from "./HistoryPanel";
@@ -755,8 +755,8 @@ export default function GeneXApp() {
           </div>
         </div>
 
-        {/* Column 3 — agentic assistant */}
-        <ChatPanel pred={ready ? pred : null} />
+        {/* Column 3 — cluster analysis */}
+        <ClusterAnalysisPanel pred={pred} ready={ready} />
       </main>
 
       <UploadModal open={modalOpen} onClose={() => setModalOpen(false)} onRun={runPrediction} />
