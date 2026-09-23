@@ -8,7 +8,6 @@ DummyPredictor for the real model requires no changes anywhere else.
 from abc import ABC, abstractmethod
 from pathlib import Path
 import io
-import logging
 
 import numpy as np
 import torch
@@ -16,8 +15,6 @@ from PIL import Image, ImageOps
 
 from app.services.mclstexp.model import mclSTExp_Attention
 from app.services.gradcam import GradCAM, overlay_heatmap, encode_png, tissue_pixel_mask
-
-logger = logging.getLogger(__name__)
 
 
 class BasePredictor(ABC):
@@ -47,7 +44,7 @@ class BasePredictor(ABC):
     def is_loaded(self) -> bool:
         ...
 
-    def explain(self, image_bytes: bytes, spot_index: int) -> bytes:
+    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
         """
         Grad-CAM overlay (PNG bytes) for one tissue patch. Optional — only
         MclSTExpPredictor implements this; predictors without a real image
@@ -169,49 +166,6 @@ def tissue_tile_mask(image: Image.Image, patch: int = 224, stride: int = 224,
     return keep
 
 
-def smooth(pred: np.ndarray, coords: np.ndarray,
-           alpha: float = 0.6, radius: float = 1.5) -> np.ndarray:
-    """
-    Spatial smoothing over the tile grid: blend each spot's prediction with the
-    mean of its immediate neighbours.
-
-    Neighbouring spots in real tissue are strongly correlated, while the
-    retrieval step's error is largely independent between them, so averaging
-    over a small neighbourhood cancels noise faster than it blurs signal.
-    Measured at +0.0125 HVG PCC on the tau020 base and +0.0153 on the h0mini
-    base (32-fold LOO). It has NOT been measured on the DenseNet baseline this
-    backend actually runs — expected to help for the same reason, but no
-    quotable number until that CPU run is done. Do not cite the tau020 figure
-    for the deployed system.
-
-    Transductive, not leakage: it uses the uploaded slide's own tile
-    coordinates and no ground truth. It does require the whole slide at
-    inference, which is already how predict() works.
-
-    `coords` MUST be tile grid indices (integers, adjacent tiles 1 apart), not
-    pixels. With radius 1.5 on a unit grid that is 8-connectivity: 8 neighbours
-    for an interior tile, 5 along an edge, 3 at a corner. Passing pixel coords
-    silently yields zero neighbours everywhere and the function becomes a
-    no-op — predict() logs the mean neighbour count so that shows up.
-
-    alpha is fixed at the deployed default rather than selected per slide. It
-    was tuned on the ST array at 200um spot spacing; contiguous 224px tiles sit
-    closer together, so neighbours are slightly more correlated here. 0.6
-    remains a sensible fixed value, but the tuned number does not transfer
-    exactly.
-
-    O(n^2) in the number of tiles, bounded by MAX_PATCHES — at 600 tiles the
-    distance matrix is under 2MB, so this stays negligible next to encoding.
-    """
-    d = np.linalg.norm(coords[:, None, :] - coords[None, :, :], axis=-1)
-    W = ((d > 0) & (d <= radius)).astype(np.float32)
-    s = W.sum(1, keepdims=True); s[s == 0] = 1.0
-    nbr = (W / s) @ pred
-    # Isolated tiles (no neighbour within radius) keep their raw prediction
-    # rather than being blended toward themselves.
-    return np.where((W.sum(1) > 0)[:, None], (1 - alpha) * pred + alpha * nbr, pred)
-
-
 class MclSTExpPredictor(BasePredictor):
     """
     Backed by the mclSTExp checkpoint (best_0.pt) trained on the HER2+
@@ -225,12 +179,6 @@ class MclSTExpPredictor(BasePredictor):
     """
 
     MODEL_VERSION = "mclstexp-her2st-best_0"
-
-    # Spatial smoothing (Path A). Deployed defaults — alpha is fixed rather
-    # than selected per slide; see smooth() for why the tuned value does not
-    # transfer exactly to this tile spacing.
-    SMOOTHING_ALPHA = 0.6
-    SMOOTHING_RADIUS = 1.5
 
     TOP_K = 200      # fixed by the training config — not a tuning knob
     PATCH = 224      # the model was trained on 224x224 crops
@@ -253,8 +201,7 @@ class MclSTExpPredictor(BasePredictor):
         "D6", "E1", "E2", "E3", "F1", "F2", "F3", "G1", "G2", "G3",
     ]
 
-    def __init__(self, checkpoint_path: str, data_root: str,
-                 enable_smoothing: bool = True, smoothing_alpha: float | None = None):
+    def __init__(self, checkpoint_path: str, data_root: str):
         self.checkpoint_path = checkpoint_path
         self.data_root = data_root
         self.device = "cpu"
@@ -264,20 +211,6 @@ class MclSTExpPredictor(BasePredictor):
         self.expr_key = None
         self.genes = None
         self._gradcam = None
-
-        # Env-controlled so smoothing can be switched off on the host without
-        # a redeploy if it misbehaves — the same rollback property the
-        # checkpoint/data-root pair already has.
-        self.enable_smoothing = enable_smoothing
-        self.smoothing_alpha = (self.SMOOTHING_ALPHA if smoothing_alpha is None
-                                else float(smoothing_alpha))
-
-        # Reported to the API and persisted per prediction, so a stored row
-        # says which pipeline produced it. With smoothing off this is exactly
-        # the previous string.
-        self.model_version = (
-            f"{self.MODEL_VERSION}+smooth{self.smoothing_alpha:g}"
-            if self.enable_smoothing else self.MODEL_VERSION)
 
     def load(self) -> None:
         """Called once at application startup. Never per request."""
@@ -445,24 +378,6 @@ class MclSTExpPredictor(BasePredictor):
         query = self._encode(patches)                    # tissue tiles only
         pred = self._retrieve(query)                     # (n_tissue, 785)
 
-        # Smoothing runs on the tissue-masked set only. Built from the already
-        # filtered `coords`, so background tiles cannot bleed into edge spots —
-        # they are not in the neighbour graph at all.
-        if self.enable_smoothing:
-            grid = np.asarray(coords, dtype=np.float32)  # tile indices, not pixels
-            pred = smooth(pred, grid, alpha=self.smoothing_alpha,
-                          radius=self.SMOOTHING_RADIUS)
-
-            # Diagnostic for the coords-are-pixels failure mode: on a tile grid
-            # this should land around 6-8. ~0 means pixel coords slipped in and
-            # smoothing silently did nothing.
-            d = np.linalg.norm(grid[:, None, :] - grid[None, :, :], axis=-1)
-            n_nbr = ((d > 0) & (d <= self.SMOOTHING_RADIUS)).sum(1)
-            logger.info(
-                "smoothing: alpha=%s tiles=%d mean_neighbours=%.2f isolated=%d",
-                self.smoothing_alpha, len(coords), float(n_nbr.mean()),
-                int((n_nbr == 0).sum()))
-
         spots = [
             {
                 "spot_index": i,
@@ -485,12 +400,12 @@ class MclSTExpPredictor(BasePredictor):
         return {
             "spots": spots,
             "top_genes": top_genes,
-            "model_version": self.model_version,
+            "model_version": self.MODEL_VERSION,
         }
 
     # ------------------------------------------------------------------
 
-    def explain(self, image_bytes: bytes, spot_index: int) -> bytes:
+    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
         """
         Grad-CAM overlay (PNG bytes) for one tissue patch.
 
@@ -499,6 +414,14 @@ class MclSTExpPredictor(BasePredictor):
         are dropped. Re-tiles and re-masks from scratch rather than caching
         the previous request's layout, since tiling is a pure function of
         the image and this endpoint is called standalone.
+
+        gene, if given, changes what Grad-CAM explains: instead of "why does
+        this patch resemble its single nearest retrieved neighbour" (generic,
+        gene-agnostic), it explains "why does this patch resemble tissue
+        known to express {gene} highly" — the target embedding becomes the
+        one reference spot with the highest REAL measured expression of that
+        gene, rather than the reference spot nearest to this patch's own
+        embedding.
         """
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
@@ -525,21 +448,35 @@ class MclSTExpPredictor(BasePredictor):
             np.array(patch.convert("RGB"), dtype=np.float32) / 255.0
         ).permute(2, 0, 1).unsqueeze(0).to(self.device)
 
-        # Nearest-neighbour step in embedding space (spot_key), not expression
-        # space (expr_key) — Grad-CAM explains what the encoder is looking at,
-        # not the retrieved genes. Uses the SINGLE nearest neighbour, not the
-        # mean of TOP_K like _retrieve() does: averaging 200 embeddings washes
-        # the target into something generic, which flattens the gradient
-        # signal and produces heatmaps that barely respond to image content.
-        with torch.no_grad():
-            query = self._model.image_projection(
-                self._model.image_encoder(patch_tensor)).cpu().numpy()
-        qn = query / np.linalg.norm(query, axis=1, keepdims=True)
-        sim = qn @ self.spot_key_n.T
-        nn_idx = int(np.argmax(sim[0]))
-        target = torch.from_numpy(
-            self.spot_key[nn_idx:nn_idx + 1]
-        ).float().to(self.device)
+        if gene is not None:
+            if gene not in self.genes:
+                raise ValueError(f"Unknown gene {gene!r}")
+            gene_idx = self.genes.index(gene)
+            # Single reference spot, not an average — averaging even a
+            # handful of embeddings washes the target into something
+            # generic and flattens the gradient signal (see the
+            # single-nearest-neighbour note below, same lesson applied here).
+            top_idx = int(np.argmax(self.expr_key[:, gene_idx]))
+            target = torch.from_numpy(
+                self.spot_key[top_idx:top_idx + 1]
+            ).float().to(self.device)
+        else:
+            # Nearest-neighbour step in embedding space (spot_key), not
+            # expression space (expr_key) — Grad-CAM explains what the
+            # encoder is looking at, not the retrieved genes. Uses the
+            # SINGLE nearest neighbour, not the mean of TOP_K like
+            # _retrieve() does: averaging 200 embeddings washes the target
+            # into something generic, which flattens the gradient signal and
+            # produces heatmaps that barely respond to image content.
+            with torch.no_grad():
+                query = self._model.image_projection(
+                    self._model.image_encoder(patch_tensor)).cpu().numpy()
+            qn = query / np.linalg.norm(query, axis=1, keepdims=True)
+            sim = qn @ self.spot_key_n.T
+            nn_idx = int(np.argmax(sim[0]))
+            target = torch.from_numpy(
+                self.spot_key[nn_idx:nn_idx + 1]
+            ).float().to(self.device)
 
         heatmap = self._gradcam.generate(patch_tensor, target)
         mask = tissue_pixel_mask(patch)
@@ -550,7 +487,4 @@ class MclSTExpPredictor(BasePredictor):
 def get_predictor(settings) -> BasePredictor:
     if settings.use_dummy_predictor:
         return DummyPredictor()
-    return MclSTExpPredictor(
-        settings.model_checkpoint_path, settings.model_data_root,
-        enable_smoothing=settings.enable_smoothing,
-        smoothing_alpha=settings.smoothing_alpha)
+    return MclSTExpPredictor(settings.model_checkpoint_path, settings.model_data_root)
