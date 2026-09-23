@@ -1,3 +1,4 @@
+import base64
 import uuid
 from datetime import datetime, timezone
 
@@ -80,3 +81,45 @@ async def predict_gradcam(
         raise HTTPException(status_code=500, detail=f"Grad-CAM failed: {exc}")
 
     return Response(content=png_bytes, media_type="image/png")
+
+
+@router.post("/predict/gradcam/batch")
+async def predict_gradcam_batch(
+    request: Request,
+    file: UploadFile = File(...),
+    spot_indices: str = Form(...),  # comma-separated ints, e.g. "0,1,2,3"
+):
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported type {file.content_type}. "
+                   f"Allowed: {sorted(ALLOWED_TYPES)}",
+        )
+
+    image_bytes = await file.read()
+    if len(image_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+
+    try:
+        indices = [int(x) for x in spot_indices.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="spot_indices must be comma-separated integers")
+    if not indices:
+        raise HTTPException(status_code=400, detail="spot_indices must not be empty")
+
+    predictor = request.app.state.predictor
+    try:
+        pngs = predictor.explain_batch(image_bytes, indices)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Grad-CAM batch failed: {exc}")
+
+    return {
+        "tiles": [
+            {"spot_index": i, "png_base64": base64.b64encode(png).decode("ascii")}
+            for i, png in zip(indices, pngs)
+        ]
+    }

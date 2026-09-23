@@ -55,6 +55,12 @@ export default function GeneXApp() {
 
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("clusters");
+  // Once true, GradCamPanel stays mounted (just visually hidden) even when
+  // the user switches to another tab — it loads real per-tile Grad-CAM in
+  // the background over minutes, and unmounting it on every tab switch
+  // used to throw away every loaded tile and the in-flight fetch loop,
+  // forcing a full restart on returning to the tab.
+  const [gradcamMounted, setGradcamMounted] = useState(false);
   const [showImage, setShowImage] = useState(true);
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
@@ -76,7 +82,9 @@ export default function GeneXApp() {
 
   const changeView = useCallback(
     (v: View) => {
-      if (ready) setView(v);
+      if (!ready) return;
+      setView(v);
+      if (v === "gradcam") setGradcamMounted(true);
     },
     [ready],
   );
@@ -217,11 +225,11 @@ export default function GeneXApp() {
       setGene(name);
       setGeneQuery("");
       setGeneMenuOpen(false);
-      // Picking from the dropdown while already on Grad-CAM should keep
-      // you there — only the sidebar gene-table click forces "genes".
-      changeView(view === "gradcam" ? "gradcam" : "genes");
+      // Only reachable from the Genes-tab dropdown now — Grad-CAM no
+      // longer has gene selection, so this always lands on "genes".
+      changeView("genes");
     },
-    [changeView, view],
+    [changeView],
   );
 
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
@@ -295,7 +303,7 @@ export default function GeneXApp() {
 
   const datasetLabel = !ready
     ? ""
-    : view === "genes" || view === "gradcam"
+    : view === "genes"
       ? (pred.geneMeta[gene]?.label ?? "ERBB2")
       : `k=5 · ${pred.total} spots`;
 
@@ -607,7 +615,7 @@ export default function GeneXApp() {
                   Grad-CAM
                 </button>
               </div>
-              {(view === "genes" || view === "gradcam") && (
+              {view === "genes" && (
                 <div className="gene-combo">
                   <input
                     className="gsel"
@@ -699,14 +707,16 @@ export default function GeneXApp() {
               {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
             </div>
 
-            {view === "gradcam" ? (
+            {gradcamMounted && (
               <GradCamPanel
                 pred={pred}
                 ready={ready}
                 file={uploaded?.file ?? null}
-                gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
+                imageUrl={uploaded?.url}
+                hidden={view !== "gradcam"}
               />
-            ) : (
+            )}
+            {view !== "gradcam" && (
               <SpatialPlot
                 pred={pred}
                 ready={ready}

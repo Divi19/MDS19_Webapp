@@ -173,6 +173,13 @@ canvas{display:block;width:100%;height:auto}
 .canvas-empty{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono);font-size:11px;color:var(--muted2)}
 .plot-tip{position:absolute;pointer-events:none;opacity:0;transform:translate(-50%,-135%);background:#1a1f2b;color:#fff;border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:10.5px;white-space:nowrap;transition:opacity .1s;z-index:3}
 .gradcam-controls{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.gradcam-progress-track{flex:1;min-width:100px;height:6px;border-radius:4px;background:var(--surface2);overflow:hidden}
+.gradcam-progress-fill{height:100%;background:var(--accent);transition:width .15s ease-out}
+.gradcam-hint{font-family:var(--mono);font-size:10px;color:var(--muted2)}
+.gradcam-reset-btn{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px solid var(--border);background:var(--surface);border-radius:6px;padding:3px 9px;cursor:pointer}
+.gradcam-reset-btn:hover{border-color:var(--accent);color:var(--accent)}
+.gradcam-zoom-controls{display:flex;gap:4px}
+.gradcam-zoom-controls .gradcam-reset-btn{width:24px;padding:3px 0;text-align:center;font-size:13px;line-height:1}
 .gradcam-image{min-height:320px;display:grid;place-items:center}
 .gradcam-image img{width:100%;max-width:520px;height:auto;display:block;border-radius:8px}
 .gradcam-spot-detail{margin-top:14px}

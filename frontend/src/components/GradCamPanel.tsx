@@ -1,88 +1,430 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { explainGradcam } from "@/lib/api";
-import type { Prediction } from "@/lib/mockPrediction";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { explainGradcamBatch } from "@/lib/api";
+import type { Prediction, Spot } from "@/lib/mockPrediction";
+
+// Fixed by the model's training config (see predictor.py) — mirrors the same
+// constants SpatialPlot.tsx uses to place a spot at its true pixel position.
+const PATCH = 224;
+const STRIDE = 224;
+
+// How many tiles go in one /gradcam/batch request — one forward/backward
+// pass covers the whole group, instead of paying the encoder's per-call
+// overhead once per tile. Keep roughly matched to the backend's own
+// encode BATCH_SIZE (predictor.py) — no hard coupling, just a shared
+// assumption about a sane batch size for this model on a CPU host.
+const REQUEST_BATCH_SIZE = 16;
+
+// How far a wheel tick (or the +/- buttons) may zoom in, and the minimum
+// (fit-to-view) scale.
+const MAX_SCALE = 8;
+const MIN_SCALE = 1;
+const ZOOM_STEP = 1.4;
+
+interface ImgGeom {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+  w: number;
+  h: number;
+}
+
+interface ViewState {
+  scale: number;
+  panX: number;
+  panY: number;
+}
+
+function computeGeom(img: HTMLImageElement, w: number, h: number): ImgGeom {
+  // Cover-fit the real image into the canvas — same transform SpatialPlot
+  // uses for its image-overlay view, so tile positions line up identically.
+  const ir = img.naturalWidth / img.naturalHeight;
+  const cr = w / h;
+  let sx: number, sy: number, sw: number, sh: number;
+  if (ir > cr) {
+    sh = img.naturalHeight;
+    sw = sh * cr;
+    sy = 0;
+    sx = (img.naturalWidth - sw) / 2;
+  } else {
+    sw = img.naturalWidth;
+    sh = sw / cr;
+    sx = 0;
+    sy = (img.naturalHeight - sh) / 2;
+  }
+  return { sx, sy, sw, sh, w, h };
+}
+
+/** A tile's bounding box on the canvas, from its true grid position on the
+ * real image — same cover-fit transform SpatialPlot.tsx uses. Position
+ * steps by STRIDE (tile spacing); size is the patch's own footprint
+ * (PATCH) — equal by the model's config (non-overlapping tiles), but
+ * kept as separate constants for what each one actually means. */
+function tileRect(s: Spot, g: ImgGeom) {
+  const ox = (s.gridX ?? 0) * STRIDE;
+  const oy = (s.gridY ?? 0) * STRIDE;
+  const x = ((ox - g.sx) / g.sw) * g.w;
+  const y = ((oy - g.sy) / g.sh) * g.h;
+  const w = (PATCH / g.sw) * g.w;
+  const h = (PATCH / g.sh) * g.h;
+  return { x, y, w, h };
+}
+
+function clampPan(view: ViewState, w: number, h: number) {
+  const minX = w * (1 - view.scale);
+  const minY = h * (1 - view.scale);
+  view.panX = Math.min(0, Math.max(minX, view.panX));
+  view.panY = Math.min(0, Math.max(minY, view.panY));
+}
+
+function base64ToBlob(b64: string, type = "image/png"): Blob {
+  const bytes = atob(b64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], { type });
+}
+
+function loadTileImage(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("tile image failed to decode"));
+    };
+    img.src = url;
+  });
+}
 
 export default function GradCamPanel({
   pred,
   ready,
   file,
-  gene,
+  imageUrl,
+  hidden,
 }: {
   pred: Prediction;
   ready: boolean;
   file: File | null;
-  gene: string;
+  imageUrl?: string | null;
+  // Visually hides the panel without unmounting it — the loading effect
+  // keeps running and already-loaded tiles stay in memory while another
+  // tab is showing, instead of losing all progress on every tab switch.
+  hidden?: boolean;
 }) {
-  const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const detailCanvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const seqRef = useRef(0);
+  const tileImgsRef = useRef<(HTMLImageElement | null)[]>([]);
+  const viewRef = useRef<ViewState>({ scale: 1, panX: 0, panY: 0 });
+  const dragRef = useRef<{ moved: boolean; lastX: number; lastY: number } | null>(null);
+
+  const [width, setWidth] = useState(520);
+  const [height, setHeight] = useState(0);
+  const [imgTick, setImgTick] = useState(0);
+  const [loadedCount, setLoadedCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const urlRef = useRef<string | null>(null);
-  const seqRef = useRef(0);
+  const [selectedTile, setSelectedTile] = useState<number | null>(null);
+  const [zoomed, setZoomed] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
-  // The single tile predicted to express this gene most strongly — replaces
-  // blindly paging through hundreds of tiles with "Next tile". Grad-CAM then
-  // explains why THAT specific hotspot looks the way it does for this gene.
-  const spotIndex = useMemo(() => {
-    if (!pred.spots.length) return 0;
-    let best = 0;
-    let bestVal = -Infinity;
-    pred.spots.forEach((s, i) => {
-      const v = s.expr[gene] ?? -Infinity;
-      if (v > bestVal) {
-        bestVal = v;
-        best = i;
-      }
-    });
-    return best;
-  }, [pred, gene]);
+  const total = pred.spots.length;
+  const pct = total ? Math.round((loadedCount / total) * 100) : 0;
 
-  // Runs automatically whenever the upload or the selected gene changes —
-  // no manual "Show Grad-CAM" click. seq guards against an older, slower
-  // request resolving after a newer one if the gene is switched again
-  // before the first call finishes.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      setWidth(el.clientWidth || 520);
+      setHeight(el.clientHeight || 0);
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!imageUrl) {
+      imgRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    const img = new window.Image();
+    img.onload = () => {
+      if (cancelled) return;
+      imgRef.current = img;
+      setImgTick((t) => t + 1);
+    };
+    img.src = imageUrl;
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl]);
+
+  const draw = useCallback(() => {
+    const cv = canvasRef.current;
+    const img = imgRef.current;
+    if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = width;
+    const h = height > 0 ? Math.min(Math.round(w * 0.72), height) : Math.round(w * 0.72);
+    cv.width = w * dpr;
+    cv.height = h * dpr;
+    cv.style.height = `${h}px`;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    const view = viewRef.current;
+    ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.panX, dpr * view.panY);
+    ctx.clearRect(-view.panX / view.scale, -view.panY / view.scale, w / view.scale, h / view.scale);
+    if (!img) return;
+
+    const geom = computeGeom(img, w, h);
+    ctx.drawImage(img, geom.sx, geom.sy, geom.sw, geom.sh, 0, 0, w, h);
+
+    for (let i = 0; i < pred.spots.length; i++) {
+      const tileImg = tileImgsRef.current[i];
+      if (!tileImg) continue;
+      const s = pred.spots[i];
+      if (s.gridX == null || s.gridY == null) continue;
+      const r = tileRect(s, geom);
+      ctx.drawImage(tileImg, r.x, r.y, r.w, r.h);
+    }
+  }, [pred, width, height]);
+
+  useEffect(() => {
+    draw();
+  }, [draw, imgTick]);
+
+  // Real per-tile Grad-CAM (one backward pass per tile — see predictor.py's
+  // explain_batch()), fetched in batches of REQUEST_BATCH_SIZE across every
+  // tissue tile and painted into the mosaic as each batch arrives. No gene
+  // target: each tile explains "why does this patch resemble its own
+  // single nearest retrieved neighbour" — generic, not tied to any one
+  // gene. This is still genuinely slow (real backward passes, on a single
+  // shared CPU host) — batching cuts the per-tile overhead, not the actual
+  // compute — so a full slide can still take minutes; the mosaic fills in
+  // batch by batch rather than blocking on one giant request.
   useEffect(() => {
     const seq = ++seqRef.current;
-    setImgUrl(null);
+    const controller = new AbortController();
+    tileImgsRef.current = new Array(pred.spots.length).fill(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting to the loading state on every upload change, guarded by seq against stale runs
+    setLoadedCount(0);
+    setFailedCount(0);
     setError("");
-    if (urlRef.current) {
-      URL.revokeObjectURL(urlRef.current);
-      urlRef.current = null;
-    }
+    setSelectedTile(null);
+    viewRef.current = { scale: 1, panX: 0, panY: 0 };
+    setZoomed(false);
+    draw();
 
     if (!ready || !pred.spots.length) return;
     if (!file) {
-      setError("Grad-CAM needs the original uploaded image — re-upload the section (history-loaded predictions don't keep the file)");
+      setError("This needs the original uploaded image. Re-upload the section (history-loaded predictions don't keep the file).");
       return;
     }
 
     setLoading(true);
-    explainGradcam(file, spotIndex, gene)
-      .then((blob) => {
+    (async () => {
+      let failed = 0;
+      for (let start = 0; start < pred.spots.length; start += REQUEST_BATCH_SIZE) {
         if (seq !== seqRef.current) return;
-        const url = URL.createObjectURL(blob);
-        urlRef.current = url;
-        setImgUrl(url);
-      })
-      .catch((e) => {
+        const indices = Array.from(
+          { length: Math.min(REQUEST_BATCH_SIZE, pred.spots.length - start) },
+          (_, k) => start + k,
+        );
+        try {
+          const tiles = await explainGradcamBatch(file, indices, controller.signal);
+          if (seq !== seqRef.current) return;
+          for (const t of tiles) {
+            tileImgsRef.current[t.spot_index] = await loadTileImage(base64ToBlob(t.png_base64));
+          }
+        } catch {
+          if (controller.signal.aborted || seq !== seqRef.current) return;
+          failed += indices.length;
+          setFailedCount(failed);
+        }
         if (seq !== seqRef.current) return;
-        setError(e instanceof Error ? e.message : "Grad-CAM failed");
-      })
-      .finally(() => {
-        if (seq === seqRef.current) setLoading(false);
-      });
-  }, [file, gene, spotIndex, ready, pred.spots.length]);
+        setLoadedCount(Math.min(start + REQUEST_BATCH_SIZE, pred.spots.length));
+        draw();
+      }
+      if (seq === seqRef.current) setLoading(false);
+    })();
 
-  useEffect(() => {
     return () => {
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- draw is stable enough per render; re-running this on every draw identity change would restart the whole slide
+  }, [file, ready, pred.spots.length]);
+
+  // Lets you check progress without keeping this panel in view — the load
+  // keeps running in the background regardless of tab focus, so a glance
+  // at the browser tab title is enough to see how far along it is.
+  const originalTitleRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (originalTitleRef.current === null) originalTitleRef.current = document.title;
+    return () => {
+      if (originalTitleRef.current !== null) document.title = originalTitleRef.current;
     };
   }, []);
+  useEffect(() => {
+    if (!ready || total === 0) return;
+    if (loading) {
+      document.title = `Grad-CAM ${pct}% · GeneX`;
+    } else if (loadedCount > 0) {
+      document.title = `Grad-CAM ready · GeneX`;
+    }
+  }, [ready, loading, pct, loadedCount, total]);
+
+  const handleWheel = useCallback(
+    (e: React.WheelEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      const cv = canvasRef.current;
+      if (!cv) return;
+      const rect = cv.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const view = viewRef.current;
+      const factor = Math.exp(-e.deltaY * 0.001);
+      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * factor));
+      const worldX = (mx - view.panX) / view.scale;
+      const worldY = (my - view.panY) / view.scale;
+      view.panX = mx - worldX * newScale;
+      view.panY = my - worldY * newScale;
+      view.scale = newScale;
+      clampPan(view, width, height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72));
+      setZoomed(view.scale > 1.001);
+      draw();
+    },
+    [draw, width, height],
+  );
+
+  const pickTileAt = useCallback(
+    (clientX: number, clientY: number) => {
+      const cv = canvasRef.current;
+      const img = imgRef.current;
+      if (!cv || !img) return;
+      const rect = cv.getBoundingClientRect();
+      const mx = clientX - rect.left;
+      const my = clientY - rect.top;
+      const view = viewRef.current;
+      const worldX = (mx - view.panX) / view.scale;
+      const worldY = (my - view.panY) / view.scale;
+      const h = height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72);
+      const geom = computeGeom(img, width, h);
+      for (let i = 0; i < pred.spots.length; i++) {
+        if (!tileImgsRef.current[i]) continue;
+        const s = pred.spots[i];
+        if (s.gridX == null || s.gridY == null) continue;
+        const r = tileRect(s, geom);
+        if (worldX >= r.x && worldX <= r.x + r.w && worldY >= r.y && worldY <= r.y + r.h) {
+          setSelectedTile(i);
+          return;
+        }
+      }
+    },
+    [pred, width, height],
+  );
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    dragRef.current = { moved: false, lastX: e.clientX, lastY: e.clientY };
+    setDragging(true);
+  }, []);
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const dx = e.clientX - d.lastX;
+      const dy = e.clientY - d.lastY;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) d.moved = true;
+      d.lastX = e.clientX;
+      d.lastY = e.clientY;
+      const view = viewRef.current;
+      view.panX += dx;
+      view.panY += dy;
+      const h = height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72);
+      clampPan(view, width, h);
+      draw();
+    },
+    [draw, width, height],
+  );
+
+  const handleMouseUp = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      setDragging(false);
+      if (d && !d.moved) pickTileAt(e.clientX, e.clientY);
+    },
+    [pickTileAt],
+  );
+
+  const resetView = useCallback(() => {
+    viewRef.current = { scale: 1, panX: 0, panY: 0 };
+    setZoomed(false);
+    draw();
+  }, [draw]);
+
+  // Zoom centred on the canvas's current middle — same math as the wheel
+  // handler's cursor-centred zoom, just anchored to a fixed point instead
+  // of the mouse position, for the explicit +/- buttons.
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const h = height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72);
+      const cx = width / 2;
+      const cy = h / 2;
+      const view = viewRef.current;
+      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * factor));
+      const worldX = (cx - view.panX) / view.scale;
+      const worldY = (cy - view.panY) / view.scale;
+      view.panX = cx - worldX * newScale;
+      view.panY = cy - worldY * newScale;
+      view.scale = newScale;
+      clampPan(view, width, h);
+      setZoomed(view.scale > 1.001);
+      draw();
+    },
+    [draw, width, height],
+  );
+
+  useEffect(() => {
+    if (selectedTile === null) return;
+    const cv = detailCanvasRef.current;
+    const img = tileImgsRef.current[selectedTile];
+    if (!cv || !img) return;
+    const dpr = window.devicePixelRatio || 1;
+    const size = 360;
+    cv.width = size * dpr;
+    cv.height = size * dpr;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(img, 0, 0, size, size);
+  }, [selectedTile]);
+
+  const statusText = !ready
+    ? ""
+    : loading
+      ? `computing Grad-CAM: spot ${loadedCount}/${total} (${pct}%)`
+      : loadedCount > 0
+        ? `Grad-CAM: ${total} spot${total === 1 ? "" : "s"}${failedCount ? `, ${failedCount} failed` : ""}`
+        : "";
 
   if (!ready) {
     return (
-      <div className="plot-body gradcam-body">
+      <div className="plot-body gradcam-body" style={{ display: hidden ? "none" : undefined }}>
         <div className="canvas-wrap gradcam-image">
           <div className="canvas-empty">Grad-CAM renders after prediction</div>
         </div>
@@ -91,20 +433,91 @@ export default function GradCamPanel({
   }
 
   return (
-    <div className="plot-body gradcam-body">
+    <div className="plot-body" style={{ display: hidden ? "none" : undefined }}>
       <div className="gradcam-controls">
-        <span className="page-label">
-          highest predicted {gene} · tile {spotIndex + 1} of {pred.spots.length}
-        </span>
-      </div>
-      <div className="canvas-wrap gradcam-image">
-        {error && <div className="canvas-empty">{error}</div>}
-        {!error && loading && <div className="canvas-empty">running Grad-CAM…</div>}
-        {!error && !loading && imgUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imgUrl} alt={`Grad-CAM overlay for ${gene}'s top tile`} />
+        <span className="page-label">{statusText}</span>
+        {loading && (
+          <div className="gradcam-progress-track">
+            <div className="gradcam-progress-fill" style={{ width: `${pct}%` }} />
+          </div>
+        )}
+        {!loading && loadedCount > 0 && (
+          <span className="gradcam-hint">drag to pan · click a spot for detail</span>
+        )}
+        {imgTick > 0 && (
+          <div className="gradcam-zoom-controls">
+            <button type="button" className="gradcam-reset-btn" onClick={() => zoomBy(1 / ZOOM_STEP)} aria-label="Zoom out">
+              −
+            </button>
+            <button type="button" className="gradcam-reset-btn" onClick={() => zoomBy(ZOOM_STEP)} aria-label="Zoom in">
+              +
+            </button>
+          </div>
+        )}
+        {zoomed && (
+          <button type="button" className="gradcam-reset-btn" onClick={resetView}>
+            Reset view
+          </button>
         )}
       </div>
+      <div className="canvas-wrap" ref={wrapRef}>
+        <canvas
+          ref={canvasRef}
+          width={520}
+          height={380}
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          style={{ cursor: dragging ? "grabbing" : "grab" }}
+        />
+        {error && <div className="canvas-empty">{error}</div>}
+      </div>
+      {!error && (
+        <>
+          <div className="legend">
+            <div className="vbar vbar-jet" />
+          </div>
+          <div className="vscale">
+            <span>low</span>
+            <span>Grad-CAM attention</span>
+            <span>high</span>
+          </div>
+        </>
+      )}
+
+      {selectedTile !== null && (
+        <div
+          className="modal-backdrop visible"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedTile(null);
+          }}
+        >
+          <div className="modal" role="dialog" aria-modal="true" style={{ width: 420 }}>
+            <div className="modal-header">
+              <div>
+                <div className="pretitle">Grad-CAM detail</div>
+                <h2>Spot #{selectedTile + 1}</h2>
+              </div>
+              <button className="modal-close" onClick={() => setSelectedTile(null)} aria-label="Close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <canvas
+                ref={detailCanvasRef}
+                width={360}
+                height={360}
+                style={{ width: "100%", height: "auto", borderRadius: 8, display: "block" }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -169,3 +169,9 @@ backend/model_data/
 
 # IDE
 .idea/
+
+# Claude Code local dev-server config
+.claude/
+
+# Throwaway local venv for backend testing
+backend/.venv-gradcam-test/

@@ -60,6 +60,53 @@ class GradCAM:
             raise RuntimeError("Grad-CAM heatmap is all-zero for this patch")
         return heatmap / (peak + 1e-8)
 
+    def generate_batch(self, image_batch: torch.Tensor, target_batch: torch.Tensor) -> np.ndarray:
+        """
+        Same as generate(), but for several patches in one forward/backward
+        pass instead of one call per patch — the whole-slide mosaic needs
+        this once per tissue tile, and the per-call overhead (kernel
+        launches, Python-level dispatch) otherwise dominates at that scale.
+
+        image_batch: (N, 3, H, W). target_batch: (N, projection_dim), each
+        row is that item's own target embedding (not shared across the
+        batch). Batch items are independent through conv/batchnorm-in-eval,
+        so summing the per-item scores before backward() gives each item
+        its own correct gradient — not an average blended across the batch.
+
+        Returns (N, h, w) heatmaps, each independently normalised to [0, 1].
+        A batch item whose gradient is all-zero or negative (its own nearest
+        neighbour is itself or a near-identical twin — cosine similarity's
+        gradient vanishes near its own maximum) comes back as an all-zero
+        heatmap rather than raising: at single-tile scale that was rare
+        enough to treat as an error, but batching means one such tile would
+        otherwise take its whole batch down with it. An all-zero heatmap
+        overlays as uniform lowest-attention colour, which is an honest
+        rendering of "no differentiated gradient signal here", not a gap.
+        """
+        self.model.zero_grad()
+        image_batch = image_batch.requires_grad_(True)
+
+        feats = self.model.image_encoder(image_batch)
+        emb = self.model.image_projection(feats)
+        scores = F.cosine_similarity(emb, target_batch, dim=-1)  # (N,)
+        scores.sum().backward()
+
+        if self.gradients is None or self.activations is None:
+            raise RuntimeError("Grad-CAM hooks did not fire — check target_layer")
+
+        pooled = self.gradients.mean(dim=(2, 3))            # (N, C)
+        acts = self.activations.detach().clone()            # (N, C, h, w)
+        weighted = acts * pooled[:, :, None, None]
+        heatmaps = weighted.sum(dim=1)                       # (N, h, w)
+        heatmaps = torch.clamp(heatmaps, min=0).cpu().numpy()
+
+        out = np.zeros_like(heatmaps)
+        for i in range(heatmaps.shape[0]):
+            peak = heatmaps[i].max()
+            if peak > 0:
+                out[i] = heatmaps[i] / (peak + 1e-8)
+        return out
+
 
 def _jet(x: np.ndarray) -> np.ndarray:
     """Vectorised approximation of matplotlib's 'jet' colormap.

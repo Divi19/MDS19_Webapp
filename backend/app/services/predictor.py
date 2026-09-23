@@ -7,6 +7,7 @@ DummyPredictor for the real model requires no changes anywhere else.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+import hashlib
 import io
 import logging
 
@@ -55,6 +56,11 @@ class BasePredictor(ABC):
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not support Grad-CAM explanations")
+
+    def explain_batch(self, image_bytes: bytes, spot_indices: list[int]) -> list[bytes]:
+        """Batched form of explain() — see MclSTExpPredictor.explain_batch()."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support batched Grad-CAM explanations")
 
 
 class DummyPredictor(BasePredictor):
@@ -252,8 +258,17 @@ class MclSTExpPredictor(BasePredictor):
         self.genes = None
         self._gradcam = None
 
-        # Env-controlled so smoothing can be switched off on the host
-        # without a redeploy if it misbehaves.
+        # Single-slot cache: the whole-slide Grad-CAM mosaic calls explain()
+        # once per tissue tile (up to MAX_PATCHES times) for the same
+        # upload — re-tiling and re-masking the whole image from scratch on
+        # every one of those calls was pure waste, since tiling doesn't
+        # depend on spot_index. One slot (not an LRU) because the real usage
+        # pattern is "one image, many tiles", not many images at once.
+        self._tile_cache: tuple[str, list, list] | None = None
+
+        # Env-controlled so smoothing can be switched off on the host without
+        # a redeploy if it misbehaves — the same rollback property the
+        # checkpoint/data-root pair already has.
         self.enable_smoothing = enable_smoothing
         self.smoothing_alpha = (self.SMOOTHING_ALPHA if smoothing_alpha is None
                                 else float(smoothing_alpha))
@@ -473,15 +488,52 @@ class MclSTExpPredictor(BasePredictor):
 
     # ------------------------------------------------------------------
 
+    def _get_tiles(self, image_bytes: bytes) -> tuple[list, list]:
+        """Tiling/masking for one upload, cached in a single slot (see
+        _tile_cache) — explain() and explain_batch() both call this once
+        per tissue tile (or batch of tiles) for the same upload, and
+        re-tiling from scratch on every one of those calls was pure waste,
+        since it doesn't depend on spot_index.
+
+        Returns (patches, kept) — kept is the tissue-tile index list into
+        patches, in the same order predict()'s "spots" list uses.
+        """
+        key = hashlib.sha256(image_bytes).hexdigest()
+        if self._tile_cache is not None and self._tile_cache[0] == key:
+            return self._tile_cache[1], self._tile_cache[2]
+
+        image = Image.open(io.BytesIO(image_bytes))
+        image.load()
+        # Must match predict()'s orientation handling — otherwise an
+        # EXIF-rotated upload tiles into a different grid shape here than
+        # the one predict() used, and spot_index no longer points at the
+        # tile the frontend thinks it does.
+        image = ImageOps.exif_transpose(image)
+
+        patches, coords = self._tile(image)
+        if not patches:
+            w, h = image.size
+            raise ValueError(
+                f"Image is {w}x{h}px — too small to tile into "
+                f"{self.PATCH}x{self.PATCH} patches")
+
+        keep = tissue_tile_mask(image, patch=self.PATCH, stride=self.STRIDE)
+        kept = [i for i, c in enumerate(coords) if keep[c]]
+        if not kept:
+            raise ValueError(
+                f"No tissue detected in any of the {len(patches)} tiles — "
+                f"the slide may be blank, or the saturation threshold too high")
+
+        self._tile_cache = (key, patches, kept)
+        return patches, kept
+
     def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
         """
         Grad-CAM overlay (PNG bytes) for one tissue patch.
 
         spot_index is keyed the same way predict() keys its "spots" list:
         position within the tissue-only tile list, after background tiles
-        are dropped. Re-tiles and re-masks from scratch rather than caching
-        the previous request's layout, since tiling is a pure function of
-        the image and this endpoint is called standalone.
+        are dropped.
 
         gene, if given, changes what Grad-CAM explains: instead of "why does
         this patch resemble its single nearest retrieved neighbour" (generic,
@@ -494,18 +546,8 @@ class MclSTExpPredictor(BasePredictor):
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
 
-        image = Image.open(io.BytesIO(image_bytes))
-        image.load()
+        patches, kept = self._get_tiles(image_bytes)
 
-        patches, coords = self._tile(image)
-        if not patches:
-            w, h = image.size
-            raise ValueError(
-                f"Image is {w}x{h}px — too small to tile into "
-                f"{self.PATCH}x{self.PATCH} patches")
-
-        keep = tissue_tile_mask(image, patch=self.PATCH, stride=self.STRIDE)
-        kept = [i for i, c in enumerate(coords) if keep[c]]
         if not (0 <= spot_index < len(kept)):
             raise ValueError(
                 f"spot_index {spot_index} out of range — this image has "
@@ -551,6 +593,59 @@ class MclSTExpPredictor(BasePredictor):
         overlay = overlay_heatmap(patch, heatmap, tissue_mask=mask)
         return encode_png(overlay)
 
+    def explain_batch(self, image_bytes: bytes, spot_indices: list[int]) -> list[bytes]:
+        """
+        Grad-CAM overlays (PNG bytes, one per spot_index) for several tissue
+        patches in one forward/backward pass — the whole-slide mosaic needs
+        this once per tissue tile, and one call per tile (explain()) pays
+        the encoder's per-call overhead every single time. Batching cuts
+        that to one payment per BATCH_SIZE tiles.
+
+        Gene-agnostic only ("why does this patch resemble its own nearest
+        retrieved neighbour") — that's the mosaic's only mode, and the only
+        one worth the added complexity here. explain() still handles the
+        gene-targeted single-tile case.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("Predictor not loaded")
+
+        patches, kept = self._get_tiles(image_bytes)
+
+        for si in spot_indices:
+            if not (0 <= si < len(kept)):
+                raise ValueError(
+                    f"spot_index {si} out of range — this image has "
+                    f"{len(kept)} tissue tiles (0..{len(kept) - 1})")
+
+        batch_patches = [patches[kept[si]] for si in spot_indices]
+        tensors = [
+            torch.from_numpy(np.array(p.convert("RGB"), dtype=np.float32) / 255.0)
+            .permute(2, 0, 1)
+            for p in batch_patches
+        ]
+        image_batch = torch.stack(tensors).to(self.device)   # (N, 3, 224, 224)
+
+        # Own-nearest-neighbour target per tile, same rule as explain()'s
+        # gene=None branch — just found for the whole batch's forward pass
+        # at once instead of one tile at a time.
+        with torch.no_grad():
+            query = self._model.image_projection(
+                self._model.image_encoder(image_batch)).cpu().numpy()
+        qn = query / np.linalg.norm(query, axis=1, keepdims=True)
+        sim = qn @ self.spot_key_n.T                          # (N, 11548)
+        nn_idx = np.argmax(sim, axis=1)
+        target_batch = torch.from_numpy(
+            self.spot_key[nn_idx]
+        ).float().to(self.device)                              # (N, 256)
+
+        heatmaps = self._gradcam.generate_batch(image_batch, target_batch)  # (N, 7, 7)
+
+        out = []
+        for i, patch in enumerate(batch_patches):
+            mask = tissue_pixel_mask(patch)
+            overlay = overlay_heatmap(patch, heatmaps[i], tissue_mask=mask)
+            out.append(encode_png(overlay))
+        return out
 
 def get_predictor(settings) -> BasePredictor:
     if settings.use_dummy_predictor:

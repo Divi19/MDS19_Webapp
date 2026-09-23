@@ -42,7 +42,12 @@ export async function predict(file: File): Promise<PredictionResponse> {
 }
 
 /** Grad-CAM overlay (PNG) for one tissue tile, keyed by its spot_index. */
-export async function explainGradcam(file: File, spotIndex: number, gene?: string): Promise<Blob> {
+export async function explainGradcam(
+  file: File,
+  spotIndex: number,
+  gene?: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("spot_index", String(spotIndex));
@@ -51,6 +56,7 @@ export async function explainGradcam(file: File, spotIndex: number, gene?: strin
   const res = await fetch(`${API_URL}/api/predict/gradcam`, {
     method: "POST",
     body: formData,
+    signal,
   });
 
   if (!res.ok) {
@@ -59,6 +65,37 @@ export async function explainGradcam(file: File, spotIndex: number, gene?: strin
   }
 
   return res.blob();
+}
+
+export interface GradcamBatchTile {
+  spot_index: number;
+  png_base64: string;
+}
+
+/** Real per-tile Grad-CAM for several tiles in one forward/backward pass —
+ * one HTTP round trip covers the whole batch instead of one per tile. */
+export async function explainGradcamBatch(
+  file: File,
+  spotIndices: number[],
+  signal?: AbortSignal,
+): Promise<GradcamBatchTile[]> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("spot_indices", spotIndices.join(","));
+
+  const res = await fetch(`${API_URL}/api/predict/gradcam/batch`, {
+    method: "POST",
+    body: formData,
+    signal,
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Grad-CAM batch failed (${res.status}): ${detail}`);
+  }
+
+  const data: { tiles: GradcamBatchTile[] } = await res.json();
+  return data.tiles;
 }
 
 export async function checkHealth() {
