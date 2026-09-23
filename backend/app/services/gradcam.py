@@ -60,7 +60,7 @@ class GradCAM:
             raise RuntimeError("Grad-CAM heatmap is all-zero for this patch")
         return heatmap / (peak + 1e-8)
 
-    def generate_batch(self, image_batch: torch.Tensor, target_batch: torch.Tensor) -> np.ndarray:
+    def generate_batch(self, image_batch: torch.Tensor, target_batch: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
         """
         Same as generate(), but for several patches in one forward/backward
         pass instead of one call per patch — the whole-slide mosaic needs
@@ -73,15 +73,20 @@ class GradCAM:
         so summing the per-item scores before backward() gives each item
         its own correct gradient — not an average blended across the batch.
 
-        Returns (N, h, w) heatmaps, each independently normalised to [0, 1].
-        A batch item whose gradient is all-zero or negative (its own nearest
-        neighbour is itself or a near-identical twin — cosine similarity's
-        gradient vanishes near its own maximum) comes back as an all-zero
-        heatmap rather than raising: at single-tile scale that was rare
-        enough to treat as an error, but batching means one such tile would
-        otherwise take its whole batch down with it. An all-zero heatmap
-        overlays as uniform lowest-attention colour, which is an honest
-        rendering of "no differentiated gradient signal here", not a gap.
+        Returns (heatmaps, peaks):
+        - heatmaps: (N, h, w), each independently normalised to [0, 1]. A
+          batch item whose gradient is all-zero or negative (its own
+          nearest neighbour is itself or a near-identical twin — cosine
+          similarity's gradient vanishes near its own maximum) comes back
+          as an all-zero heatmap rather than raising: at single-tile scale
+          that was rare enough to treat as an error, but batching means
+          one such tile would otherwise take its whole batch down with it.
+          An all-zero heatmap overlays as uniform lowest-attention colour,
+          an honest rendering of "no differentiated gradient signal here".
+        - peaks: (N,) each item's RAW pre-normalisation peak — since every
+          heatmap above gets independently rescaled to its own max, this is
+          the only place the caller can still tell a strong spot from a
+          weak one; heatmaps alone can't be compared spot-to-spot.
         """
         self.model.zero_grad()
         image_batch = image_batch.requires_grad_(True)
@@ -100,12 +105,12 @@ class GradCAM:
         heatmaps = weighted.sum(dim=1)                       # (N, h, w)
         heatmaps = torch.clamp(heatmaps, min=0).cpu().numpy()
 
+        peaks = heatmaps.max(axis=(1, 2))
         out = np.zeros_like(heatmaps)
         for i in range(heatmaps.shape[0]):
-            peak = heatmaps[i].max()
-            if peak > 0:
-                out[i] = heatmaps[i] / (peak + 1e-8)
-        return out
+            if peaks[i] > 0:
+                out[i] = heatmaps[i] / (peaks[i] + 1e-8)
+        return out, peaks
 
 
 def _jet(x: np.ndarray) -> np.ndarray:

@@ -70,6 +70,10 @@ export async function explainGradcam(
 export interface GradcamBatchTile {
   spot_index: number;
   png_base64: string;
+  // Raw pre-normalisation heatmap strength — the PNG's own colours are
+  // already scaled to that one spot's own peak, so this is the only way
+  // to tell a strong spot from a weak one across the whole slide.
+  peak: number;
 }
 
 /** Real per-tile Grad-CAM for several tiles in one forward/backward pass —

@@ -22,6 +22,15 @@ const MAX_SCALE = 8;
 const MIN_SCALE = 1;
 const ZOOM_STEP = 1.4;
 
+// A spot's opacity is scaled by its raw peak relative to PEAK_PERCENTILE of
+// all loaded spots' peaks — the 90th percentile rather than the literal
+// max, so one unusually strong outlier spot doesn't single-handedly crush
+// every other spot's opacity toward invisible. MIN_OPACITY floors how dim
+// the weakest spot can go, so a genuinely weak-but-real signal stays
+// perceptible instead of fading to nothing.
+const PEAK_PERCENTILE = 0.9;
+const MIN_OPACITY = 0.35;
+
 interface ImgGeom {
   sx: number;
   sy: number;
@@ -124,6 +133,12 @@ export default function GradCamPanel({
   const imgRef = useRef<HTMLImageElement | null>(null);
   const seqRef = useRef(0);
   const tileImgsRef = useRef<(HTMLImageElement | null)[]>([]);
+  // Each spot's overlay is already colour-normalised to its own peak (see
+  // gradcam.py), so raw colour can't be compared spot-to-spot — peaksRef
+  // holds each one's true pre-normalisation strength, so draw() can scale
+  // each spot's opacity by how strong it really is relative to the rest
+  // of the slide, instead of every spot looking equally "hot".
+  const peaksRef = useRef<number[]>([]);
   const viewRef = useRef<ViewState>({ scale: 1, panX: 0, panY: 0 });
   const dragRef = useRef<{ moved: boolean; lastX: number; lastY: number } | null>(null);
 
@@ -192,14 +207,37 @@ export default function GradCamPanel({
     const geom = computeGeom(img, w, h);
     ctx.drawImage(img, geom.sx, geom.sy, geom.sw, geom.sh, 0, 0, w, h);
 
+    // Reference scale for opacity: the 90th-percentile peak among loaded
+    // spots, not the literal max — one unusually strong outlier spot
+    // shouldn't single-handedly crush every other spot's opacity toward
+    // invisible. Recomputed fresh each draw (cheap — a few hundred numbers
+    // at most) so it keeps adjusting as more spots load in.
+    const loadedPeaks: number[] = [];
+    for (let i = 0; i < pred.spots.length; i++) {
+      if (tileImgsRef.current[i]) loadedPeaks.push(peaksRef.current[i] ?? 0);
+    }
+    loadedPeaks.sort((a, b) => a - b);
+    const refScale = loadedPeaks.length
+      ? loadedPeaks[Math.min(loadedPeaks.length - 1, Math.floor(PEAK_PERCENTILE * loadedPeaks.length))]
+      : 0;
+
     for (let i = 0; i < pred.spots.length; i++) {
       const tileImg = tileImgsRef.current[i];
       if (!tileImg) continue;
       const s = pred.spots[i];
       if (s.gridX == null || s.gridY == null) continue;
       const r = tileRect(s, geom);
+      // Scale this spot's opacity by how strong it really is relative to
+      // the slide overall — without this every spot's overlay reads as
+      // equally "hot" regardless of true signal strength, since each one
+      // is independently normalised to its own peak. MIN_OPACITY keeps a
+      // genuinely weak spot perceptible instead of fading to nothing.
+      const peak = peaksRef.current[i] ?? 0;
+      const rel = refScale > 0 ? Math.min(1, peak / refScale) : 1;
+      ctx.globalAlpha = MIN_OPACITY + (1 - MIN_OPACITY) * rel;
       ctx.drawImage(tileImg, r.x, r.y, r.w, r.h);
     }
+    ctx.globalAlpha = 1;
   }, [pred, width, height]);
 
   useEffect(() => {
@@ -219,6 +257,7 @@ export default function GradCamPanel({
     const seq = ++seqRef.current;
     const controller = new AbortController();
     tileImgsRef.current = new Array(pred.spots.length).fill(null);
+    peaksRef.current = new Array(pred.spots.length).fill(0);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting to the loading state on every upload change, guarded by seq against stale runs
     setLoadedCount(0);
     setFailedCount(0);
@@ -248,6 +287,7 @@ export default function GradCamPanel({
           if (seq !== seqRef.current) return;
           for (const t of tiles) {
             tileImgsRef.current[t.spot_index] = await loadTileImage(base64ToBlob(t.png_base64));
+            peaksRef.current[t.spot_index] = t.peak;
           }
         } catch {
           if (controller.signal.aborted || seq !== seqRef.current) return;

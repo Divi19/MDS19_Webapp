@@ -57,7 +57,7 @@ class BasePredictor(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} does not support Grad-CAM explanations")
 
-    def explain_batch(self, image_bytes: bytes, spot_indices: list[int]) -> list[bytes]:
+    def explain_batch(self, image_bytes: bytes, spot_indices: list[int]) -> list[tuple[bytes, float]]:
         """Batched form of explain() — see MclSTExpPredictor.explain_batch()."""
         raise NotImplementedError(
             f"{type(self).__name__} does not support batched Grad-CAM explanations")
@@ -593,18 +593,26 @@ class MclSTExpPredictor(BasePredictor):
         overlay = overlay_heatmap(patch, heatmap, tissue_mask=mask)
         return encode_png(overlay)
 
-    def explain_batch(self, image_bytes: bytes, spot_indices: list[int]) -> list[bytes]:
+    def explain_batch(self, image_bytes: bytes, spot_indices: list[int]) -> list[tuple[bytes, float]]:
         """
-        Grad-CAM overlays (PNG bytes, one per spot_index) for several tissue
-        patches in one forward/backward pass — the whole-slide mosaic needs
-        this once per tissue tile, and one call per tile (explain()) pays
-        the encoder's per-call overhead every single time. Batching cuts
-        that to one payment per BATCH_SIZE tiles.
+        Grad-CAM overlays for several tissue patches in one forward/backward
+        pass — the whole-slide mosaic needs this once per tissue tile, and
+        one call per tile (explain()) pays the encoder's per-call overhead
+        every single time. Batching cuts that to one payment per
+        BATCH_SIZE tiles.
 
         Gene-agnostic only ("why does this patch resemble its own nearest
         retrieved neighbour") — that's the mosaic's only mode, and the only
         one worth the added complexity here. explain() still handles the
         gene-targeted single-tile case.
+
+        Returns a (png_bytes, raw_peak) pair per spot_index. Each overlay's
+        own heatmap is independently normalised to its own peak (so it
+        reads correctly on its own), which means colour intensity can't be
+        compared spot-to-spot — raw_peak is the pre-normalisation strength,
+        for a caller that wants to do that comparison itself (e.g. scaling
+        each spot's overlay opacity against the slide's strongest spot so
+        far, instead of every spot always looking equally "hot").
         """
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
@@ -638,13 +646,13 @@ class MclSTExpPredictor(BasePredictor):
             self.spot_key[nn_idx]
         ).float().to(self.device)                              # (N, 256)
 
-        heatmaps = self._gradcam.generate_batch(image_batch, target_batch)  # (N, 7, 7)
+        heatmaps, peaks = self._gradcam.generate_batch(image_batch, target_batch)  # (N, 7, 7), (N,)
 
         out = []
         for i, patch in enumerate(batch_patches):
             mask = tissue_pixel_mask(patch)
             overlay = overlay_heatmap(patch, heatmaps[i], tissue_mask=mask)
-            out.append(encode_png(overlay))
+            out.append((encode_png(overlay), float(peaks[i])))
         return out
 
 def get_predictor(settings) -> BasePredictor:

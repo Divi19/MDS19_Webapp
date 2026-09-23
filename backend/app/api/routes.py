@@ -109,7 +109,7 @@ async def predict_gradcam_batch(
 
     predictor = request.app.state.predictor
     try:
-        pngs = predictor.explain_batch(image_bytes, indices)
+        results = predictor.explain_batch(image_bytes, indices)
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:
@@ -119,7 +119,7 @@ async def predict_gradcam_batch(
 
     return {
         "tiles": [
-            {"spot_index": i, "png_base64": base64.b64encode(png).decode("ascii")}
-            for i, png in zip(indices, pngs)
+            {"spot_index": i, "png_base64": base64.b64encode(png).decode("ascii"), "peak": peak}
+            for i, (png, peak) in zip(indices, results)
         ]
     }
