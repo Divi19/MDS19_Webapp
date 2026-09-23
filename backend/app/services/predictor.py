@@ -8,6 +8,7 @@ DummyPredictor for the real model requires no changes anywhere else.
 from abc import ABC, abstractmethod
 from pathlib import Path
 import io
+import logging
 
 import numpy as np
 import torch
@@ -15,6 +16,8 @@ from PIL import Image, ImageOps
 
 from app.services.mclstexp.model import mclSTExp_Attention
 from app.services.gradcam import GradCAM, overlay_heatmap, encode_png, tissue_pixel_mask
+
+logger = logging.getLogger(__name__)
 
 
 class BasePredictor(ABC):
@@ -166,6 +169,36 @@ def tissue_tile_mask(image: Image.Image, patch: int = 224, stride: int = 224,
     return keep
 
 
+def smooth(pred: np.ndarray, coords: np.ndarray,
+           alpha: float = 0.6, radius: float = 1.5) -> np.ndarray:
+    """
+    Spatial smoothing over the tile grid: blend each spot's prediction with the
+    mean of its immediate neighbours.
+
+    Neighbouring spots in real tissue are strongly correlated, while the
+    retrieval step's error is largely independent between them, so averaging
+    over a small neighbourhood cancels noise faster than it blurs signal.
+    Measured at +0.0125 HVG PCC on the tau020 base (32-fold LOO). It has NOT
+    been measured on the DenseNet baseline this backend runs — expected to
+    help for the same reason, but no quotable number until that eval is done.
+
+    Transductive, not leakage: it uses the uploaded slide's own tile
+    coordinates and no ground truth.
+
+    `coords` MUST be tile grid indices (integers, adjacent tiles 1 apart), not
+    pixels. With radius 1.5 that is 8-connectivity: 8 neighbours for an
+    interior tile, 5 along an edge, 3 at a corner. Pixel coords silently yield
+    zero neighbours and the function becomes a no-op, so predict() logs the
+    mean neighbour count.
+    """
+    d = np.linalg.norm(coords[:, None, :] - coords[None, :, :], axis=-1)
+    W = ((d > 0) & (d <= radius)).astype(np.float32)
+    s = W.sum(1, keepdims=True); s[s == 0] = 1.0
+    nbr = (W / s) @ pred
+    # Isolated tiles keep their raw prediction rather than blending to self.
+    return np.where((W.sum(1) > 0)[:, None], (1 - alpha) * pred + alpha * nbr, pred)
+
+
 class MclSTExpPredictor(BasePredictor):
     """
     Backed by the mclSTExp checkpoint (best_0.pt) trained on the HER2+
@@ -179,6 +212,11 @@ class MclSTExpPredictor(BasePredictor):
     """
 
     MODEL_VERSION = "mclstexp-her2st-best_0"
+
+    # Spatial smoothing (Path A). alpha is fixed for the deployment
+    # rather than selected per slide.
+    SMOOTHING_ALPHA = 0.6
+    SMOOTHING_RADIUS = 1.5
 
     TOP_K = 200      # fixed by the training config — not a tuning knob
     PATCH = 224      # the model was trained on 224x224 crops
@@ -201,7 +239,9 @@ class MclSTExpPredictor(BasePredictor):
         "D6", "E1", "E2", "E3", "F1", "F2", "F3", "G1", "G2", "G3",
     ]
 
-    def __init__(self, checkpoint_path: str, data_root: str):
+    def __init__(self, checkpoint_path: str, data_root: str,
+                 enable_smoothing: bool = True,
+                 smoothing_alpha: float | None = None):
         self.checkpoint_path = checkpoint_path
         self.data_root = data_root
         self.device = "cpu"
@@ -211,6 +251,18 @@ class MclSTExpPredictor(BasePredictor):
         self.expr_key = None
         self.genes = None
         self._gradcam = None
+
+        # Env-controlled so smoothing can be switched off on the host
+        # without a redeploy if it misbehaves.
+        self.enable_smoothing = enable_smoothing
+        self.smoothing_alpha = (self.SMOOTHING_ALPHA if smoothing_alpha is None
+                                else float(smoothing_alpha))
+
+        # Persisted per prediction, so a stored row says which pipeline
+        # produced it. With smoothing off this is the previous string.
+        self.model_version = (
+            f"{self.MODEL_VERSION}+smooth{self.smoothing_alpha:g}"
+            if self.enable_smoothing else self.MODEL_VERSION)
 
     def load(self) -> None:
         """Called once at application startup. Never per request."""
@@ -378,6 +430,22 @@ class MclSTExpPredictor(BasePredictor):
         query = self._encode(patches)                    # tissue tiles only
         pred = self._retrieve(query)                     # (n_tissue, 785)
 
+        # Tissue-masked set only: `coords` is already filtered, so background
+        # tiles are not in the neighbour graph and cannot bleed into edges.
+        if self.enable_smoothing:
+            grid = np.asarray(coords, dtype=np.float32)  # tile indices, not pixels
+            pred = smooth(pred, grid, alpha=self.smoothing_alpha,
+                          radius=self.SMOOTHING_RADIUS)
+
+            # Diagnostic for the coords-are-pixels failure mode: ~0 means
+            # pixel coords slipped in and smoothing silently did nothing.
+            d = np.linalg.norm(grid[:, None, :] - grid[None, :, :], axis=-1)
+            n_nbr = ((d > 0) & (d <= self.SMOOTHING_RADIUS)).sum(1)
+            logger.info(
+                "smoothing: alpha=%s tiles=%d mean_neighbours=%.2f isolated=%d",
+                self.smoothing_alpha, len(coords), float(n_nbr.mean()),
+                int((n_nbr == 0).sum()))
+
         spots = [
             {
                 "spot_index": i,
@@ -400,7 +468,7 @@ class MclSTExpPredictor(BasePredictor):
         return {
             "spots": spots,
             "top_genes": top_genes,
-            "model_version": self.MODEL_VERSION,
+            "model_version": self.model_version,
         }
 
     # ------------------------------------------------------------------
@@ -487,4 +555,7 @@ class MclSTExpPredictor(BasePredictor):
 def get_predictor(settings) -> BasePredictor:
     if settings.use_dummy_predictor:
         return DummyPredictor()
-    return MclSTExpPredictor(settings.model_checkpoint_path, settings.model_data_root)
+    return MclSTExpPredictor(
+        settings.model_checkpoint_path, settings.model_data_root,
+        enable_smoothing=settings.enable_smoothing,
+        smoothing_alpha=settings.smoothing_alpha)
