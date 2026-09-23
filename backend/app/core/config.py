@@ -10,11 +10,6 @@ class Settings(BaseSettings):
     model_data_root: str = ""
     use_dummy_predictor: bool = True
 
-    # Spatial smoothing (Path A). On by default; set ENABLE_SMOOTHING=false on
-    # the host to fall straight back to raw retrieval without a code change.
-    enable_smoothing: bool = True
-    smoothing_alpha: float = 0.6
-
     # Supabase
     supabase_url: str = ""
     supabase_key: str = ""
