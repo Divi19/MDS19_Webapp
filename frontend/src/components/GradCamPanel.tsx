@@ -273,6 +273,13 @@ export default function GradCamPanel({
       return;
     }
 
+    // Target every spot against the slide's own top predicted gene — an
+    // independent target, not each spot's self-selected nearest neighbour.
+    // No UI picker involved, this is chosen automatically; see
+    // explainGradcamBatch()'s docstring for why the self-referential
+    // fallback is measurably weaker.
+    const targetGene = pred.topGenes[0]?.name;
+
     setLoading(true);
     (async () => {
       let failed = 0;
@@ -283,7 +290,7 @@ export default function GradCamPanel({
           (_, k) => start + k,
         );
         try {
-          const tiles = await explainGradcamBatch(file, indices, controller.signal);
+          const tiles = await explainGradcamBatch(file, indices, targetGene, controller.signal);
           if (seq !== seqRef.current) return;
           for (const t of tiles) {
             tileImgsRef.current[t.spot_index] = await loadTileImage(base64ToBlob(t.png_base64));
@@ -454,12 +461,16 @@ export default function GradCamPanel({
     ctx.drawImage(img, 0, 0, size, size);
   }, [selectedTile]);
 
+  // Shows which gene every spot is being targeted against — same value
+  // passed to explainGradcamBatch() below, so this always reflects the
+  // actual target, not just a label.
+  const targetGeneLabel = pred.topGenes[0]?.name ? ` (target: ${pred.topGenes[0].name})` : "";
   const statusText = !ready
     ? ""
     : loading
-      ? `computing Grad-CAM: spot ${loadedCount}/${total} (${pct}%)`
+      ? `computing Grad-CAM: spot ${loadedCount}/${total} (${pct}%)${targetGeneLabel}`
       : loadedCount > 0
-        ? `Grad-CAM: ${total} spot${total === 1 ? "" : "s"}${failedCount ? `, ${failedCount} failed` : ""}`
+        ? `Grad-CAM: ${total} spot${total === 1 ? "" : "s"}${targetGeneLabel}${failedCount ? `, ${failedCount} failed` : ""}`
         : "";
 
   if (!ready) {

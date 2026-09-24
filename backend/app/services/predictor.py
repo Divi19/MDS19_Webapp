@@ -57,7 +57,8 @@ class BasePredictor(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} does not support Grad-CAM explanations")
 
-    def explain_batch(self, image_bytes: bytes, spot_indices: list[int]) -> list[tuple[bytes, float]]:
+    def explain_batch(self, image_bytes: bytes, spot_indices: list[int],
+                       gene: str | None = None) -> list[tuple[bytes, float]]:
         """Batched form of explain() — see MclSTExpPredictor.explain_batch()."""
         raise NotImplementedError(
             f"{type(self).__name__} does not support batched Grad-CAM explanations")
@@ -593,7 +594,8 @@ class MclSTExpPredictor(BasePredictor):
         overlay = overlay_heatmap(patch, heatmap, tissue_mask=mask)
         return encode_png(overlay)
 
-    def explain_batch(self, image_bytes: bytes, spot_indices: list[int]) -> list[tuple[bytes, float]]:
+    def explain_batch(self, image_bytes: bytes, spot_indices: list[int],
+                       gene: str | None = None) -> list[tuple[bytes, float]]:
         """
         Grad-CAM overlays for several tissue patches in one forward/backward
         pass — the whole-slide mosaic needs this once per tissue tile, and
@@ -601,10 +603,32 @@ class MclSTExpPredictor(BasePredictor):
         every single time. Batching cuts that to one payment per
         BATCH_SIZE tiles.
 
-        Gene-agnostic only ("why does this patch resemble its own nearest
-        retrieved neighbour") — that's the mosaic's only mode, and the only
-        one worth the added complexity here. explain() still handles the
-        gene-targeted single-tile case.
+        gene, if given, targets every tile in the batch against the SAME
+        independent reference (the one reference spot with the highest
+        REAL measured expression of that gene) — same target explain()
+        uses for its single-tile gene-targeted mode, just shared across
+        the whole batch instead of picked per spot_index.
+
+        Without a gene, falls back to each tile's own single nearest
+        retrieved neighbour (explain()'s original gene=None rule) — kept
+        for API completeness, but a deletion-test sensitivity check
+        (occlude the region Grad-CAM flags as important vs. an unimportant
+        region, compare how much each hurts the score) showed this
+        self-referential target is measurably weaker: a spot's own nearest
+        neighbour is, by construction, already close to that spot's own
+        maximum similarity, and cosine similarity's gradient shrinks right
+        at its own peak — the same mechanism behind the all-zero-heatmap
+        case in generate_batch(). An independent, externally-chosen target
+        (like a fixed gene's reference spot) doesn't start near its own
+        maximum for an arbitrary patch, so the gradient stays meaningful.
+        Measured: self-referential target scored ~0.9x (occluding the
+        "important" region hurt the score about as much as occluding an
+        "unimportant" one — no better than chance) vs ~1.9x, up to 22x on
+        individual spots, for an independent gene target on the same
+        image. The whole-slide mosaic should pass a gene here (e.g. the
+        slide's own top predicted gene, so the caller still doesn't need
+        to expose gene selection as a UI control) rather than rely on the
+        fallback.
 
         Returns a (png_bytes, raw_peak) pair per spot_index. Each overlay's
         own heatmap is independently normalised to its own peak (so it
@@ -633,18 +657,29 @@ class MclSTExpPredictor(BasePredictor):
         ]
         image_batch = torch.stack(tensors).to(self.device)   # (N, 3, 224, 224)
 
-        # Own-nearest-neighbour target per tile, same rule as explain()'s
-        # gene=None branch — just found for the whole batch's forward pass
-        # at once instead of one tile at a time.
-        with torch.no_grad():
-            query = self._model.image_projection(
-                self._model.image_encoder(image_batch)).cpu().numpy()
-        qn = query / np.linalg.norm(query, axis=1, keepdims=True)
-        sim = qn @ self.spot_key_n.T                          # (N, 11548)
-        nn_idx = np.argmax(sim, axis=1)
-        target_batch = torch.from_numpy(
-            self.spot_key[nn_idx]
-        ).float().to(self.device)                              # (N, 256)
+        if gene is not None:
+            if gene not in self.genes:
+                raise ValueError(f"Unknown gene {gene!r}")
+            gene_idx = self.genes.index(gene)
+            top_idx = int(np.argmax(self.expr_key[:, gene_idx]))
+            target = torch.from_numpy(
+                self.spot_key[top_idx:top_idx + 1]
+            ).float().to(self.device)
+            target_batch = target.repeat(len(spot_indices), 1)    # (N, 256), same target every row
+        else:
+            # Own-nearest-neighbour target per tile, same rule as explain()'s
+            # gene=None branch — just found for the whole batch's forward pass
+            # at once instead of one tile at a time. See docstring: measurably
+            # weaker signal, kept only as a fallback.
+            with torch.no_grad():
+                query = self._model.image_projection(
+                    self._model.image_encoder(image_batch)).cpu().numpy()
+            qn = query / np.linalg.norm(query, axis=1, keepdims=True)
+            sim = qn @ self.spot_key_n.T                          # (N, 11548)
+            nn_idx = np.argmax(sim, axis=1)
+            target_batch = torch.from_numpy(
+                self.spot_key[nn_idx]
+            ).float().to(self.device)                              # (N, 256)
 
         heatmaps, peaks = self._gradcam.generate_batch(image_batch, target_batch)  # (N, 7, 7), (N,)
 

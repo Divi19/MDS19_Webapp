@@ -77,15 +77,24 @@ export interface GradcamBatchTile {
 }
 
 /** Real per-tile Grad-CAM for several tiles in one forward/backward pass —
- * one HTTP round trip covers the whole batch instead of one per tile. */
+ * one HTTP round trip covers the whole batch instead of one per tile.
+ *
+ * gene, if given, targets every tile in the batch against that gene's
+ * defining reference spot (an independent target, not each tile's own
+ * self-selected nearest neighbour) — a deletion-test sensitivity check
+ * showed the self-referential fallback (omitting gene) is measurably
+ * weaker, since a tile's own nearest neighbour starts close to its own
+ * maximum similarity, where the gradient is small by construction. */
 export async function explainGradcamBatch(
   file: File,
   spotIndices: number[],
+  gene?: string,
   signal?: AbortSignal,
 ): Promise<GradcamBatchTile[]> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("spot_indices", spotIndices.join(","));
+  if (gene) formData.append("gene", gene);
 
   const res = await fetch(`${API_URL}/api/predict/gradcam/batch`, {
     method: "POST",

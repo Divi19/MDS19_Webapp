@@ -88,6 +88,7 @@ async def predict_gradcam_batch(
     request: Request,
     file: UploadFile = File(...),
     spot_indices: str = Form(...),  # comma-separated ints, e.g. "0,1,2,3"
+    gene: str | None = Form(None),
 ):
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
@@ -109,7 +110,7 @@ async def predict_gradcam_batch(
 
     predictor = request.app.state.predictor
     try:
-        results = predictor.explain_batch(image_bytes, indices)
+        results = predictor.explain_batch(image_bytes, indices, gene)
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:
