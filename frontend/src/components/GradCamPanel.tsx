@@ -461,16 +461,12 @@ export default function GradCamPanel({
     ctx.drawImage(img, 0, 0, size, size);
   }, [selectedTile]);
 
-  // Shows which gene every spot is being targeted against — same value
-  // passed to explainGradcamBatch() below, so this always reflects the
-  // actual target, not just a label.
-  const targetGeneLabel = pred.topGenes[0]?.name ? ` (target: ${pred.topGenes[0].name})` : "";
   const statusText = !ready
     ? ""
     : loading
-      ? `computing Grad-CAM: spot ${loadedCount}/${total} (${pct}%)${targetGeneLabel}`
+      ? `computing Grad-CAM: spot ${loadedCount}/${total} (${pct}%)`
       : loadedCount > 0
-        ? `Grad-CAM: ${total} spot${total === 1 ? "" : "s"}${targetGeneLabel}${failedCount ? `, ${failedCount} failed` : ""}`
+        ? `Grad-CAM: ${total} spot${total === 1 ? "" : "s"}${failedCount ? `, ${failedCount} failed` : ""}`
         : "";
 
   if (!ready) {
