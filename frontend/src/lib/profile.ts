@@ -42,8 +42,3 @@ export async function countPredictions(userId: string): Promise<number> {
   if (error) throw new Error(`Loading prediction count failed: ${error.message}`);
   return count ?? 0;
 }
-
-export async function changePassword(newPassword: string): Promise<{ error: string | null }> {
-  const { error } = await supabase.auth.updateUser({ password: newPassword });
-  return { error: error?.message ?? null };
-}

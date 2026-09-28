@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { changePassword, countPredictions, getProfile, saveProfile } from "@/lib/profile";
+import { countPredictions, getProfile, saveProfile } from "@/lib/profile";
 
 const ROLES = ["Researcher", "Pathologist", "Student", "Other"];
 
@@ -23,12 +23,6 @@ export default function ProfilePanel({ open, onClose }: { open: boolean; onClose
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
 
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordBusy, setPasswordBusy] = useState(false);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [passwordSaved, setPasswordSaved] = useState(false);
-
   // Reloads fresh every time the panel opens, same pattern as HistoryPanel —
   // simpler than tracking whether a previous load is still valid, and a
   // profile is small enough that refetching on every open is cheap.
@@ -42,10 +36,6 @@ export default function ProfilePanel({ open, onClose }: { open: boolean; onClose
       setLoadError(null);
       setProfileError(null);
       setProfileSaved(false);
-      setPasswordError(null);
-      setPasswordSaved(false);
-      setNewPassword("");
-      setConfirmPassword("");
       try {
         const [profile, count] = await Promise.all([
           getProfile(user.id),
@@ -83,29 +73,6 @@ export default function ProfilePanel({ open, onClose }: { open: boolean; onClose
     } finally {
       setProfileBusy(false);
     }
-  }
-
-  async function submitPassword() {
-    if (newPassword.length < 6) {
-      setPasswordError("Password must be at least 6 characters");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordError("Passwords don't match");
-      return;
-    }
-    setPasswordBusy(true);
-    setPasswordError(null);
-    setPasswordSaved(false);
-    const { error } = await changePassword(newPassword);
-    setPasswordBusy(false);
-    if (error) {
-      setPasswordError(error);
-      return;
-    }
-    setPasswordSaved(true);
-    setNewPassword("");
-    setConfirmPassword("");
   }
 
   return (
@@ -188,43 +155,6 @@ export default function ProfilePanel({ open, onClose }: { open: boolean; onClose
               <div className="profile-actions">
                 <button className="run-btn" onClick={submitProfile} disabled={profileBusy}>
                   {profileBusy ? "Saving…" : "Save profile"}
-                </button>
-              </div>
-
-              <div className="profile-divider" />
-
-              <div className="field-label profile-section-label">Change password</div>
-              <label className="field">
-                <span className="field-label">New password</span>
-                <input
-                  type="password"
-                  minLength={6}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  disabled={passwordBusy}
-                />
-              </label>
-              <label className="field">
-                <span className="field-label">Confirm password</span>
-                <input
-                  type="password"
-                  minLength={6}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  disabled={passwordBusy}
-                />
-              </label>
-
-              {passwordError && <div className="field-error">{passwordError}</div>}
-              {passwordSaved && <div className="field-info">Password updated</div>}
-
-              <div className="profile-actions">
-                <button
-                  className="run-btn"
-                  onClick={submitPassword}
-                  disabled={passwordBusy || !newPassword}
-                >
-                  {passwordBusy ? "Updating…" : "Update password"}
                 </button>
               </div>
             </>

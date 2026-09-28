@@ -293,8 +293,6 @@ canvas{display:block;width:100%;height:auto}
 .profile-stat-value{display:block;font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent)}
 .profile-stat-label{display:block;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:3px}
 .profile-actions{display:flex;justify-content:flex-end;margin-bottom:4px}
-.profile-divider{height:1px;background:var(--border);margin:22px 0 16px}
-.profile-section-label{margin-bottom:10px}
 
 /* progress */
 .progress-overlay{position:fixed;inset:0;background:rgba(244,241,236,.85);backdrop-filter:blur(8px);display:grid;place-items:center;z-index:80;opacity:0;pointer-events:none;transition:opacity .25s}
