@@ -100,6 +100,24 @@ export async function listPredictions(userId: string): Promise<
   return withUrls;
 }
 
+/** Deletes a saved prediction. RLS already restricts this to the owning
+ * user's rows; child spot/gene rows cascade via the FK. The storage object
+ * is removed best-effort — the database row being gone is what the user
+ * actually sees, so a leftover file (never surfaced anywhere in the UI)
+ * isn't worth failing the whole delete over. */
+export async function deletePrediction(predictionId: string, imagePath: string | null): Promise<void> {
+  const { error } = await supabase.from("predictions").delete().eq("id", predictionId);
+  if (error) throw new Error(`Deleting prediction failed: ${error.message}`);
+
+  if (imagePath) {
+    try {
+      await supabase.storage.from(BUCKET).remove([imagePath]);
+    } catch {
+      // best-effort, see above
+    }
+  }
+}
+
 /** Reassembles one saved prediction back into the exact shape /api/predict
  * returns, so the existing toPrediction() conversion — and every component
  * downstream of it — needs no history-specific branching. */
