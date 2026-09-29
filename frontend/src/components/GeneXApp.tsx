@@ -16,7 +16,7 @@ import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
-import { TUTORIAL_STEPS } from "@/lib/tutorial";
+import { TUTORIAL_LOADING_STEP, TUTORIAL_STEPS } from "@/lib/tutorial";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -83,6 +83,9 @@ export default function GeneXApp() {
   // Suspended while the sign-in window it opened is showing.
   const [tutorialStepId, setTutorialStepId] = useState<string | null>(null);
   const [tutorialSuspended, setTutorialSuspended] = useState(false);
+  // True while the tutorial waits for a saved analysis it opened to load.
+  const [tutorialWaiting, setTutorialWaiting] = useState(false);
+  const [historyLoadState, setHistoryLoadState] = useState<"idle" | "loading" | "loaded" | "failed">("idle");
   const tutorialActiveRef = useRef(false);
 
   const showToast = useCallback((msg: string) => {
@@ -149,6 +152,7 @@ export default function GeneXApp() {
   const loadFromHistory = useCallback(
     async (predictionId: string) => {
       const seq = ++loadSeqRef.current;
+      setHistoryLoadState("loading");
       try {
         const { response, imageUrl, imagePath, filename } = await getPredictionResponse(predictionId);
         if (seq !== loadSeqRef.current) return;
@@ -172,9 +176,11 @@ export default function GeneXApp() {
         setGeneFilter("all");
         setView("clusters");
         setReady(true);
+        setHistoryLoadState("loaded");
         showToast("Loaded from history");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Could not load that prediction";
+        if (seq === loadSeqRef.current) setHistoryLoadState("failed");
         showToast(message);
       }
     },
@@ -211,6 +217,7 @@ export default function GeneXApp() {
         }
       }
       setTutorialSuspended(false);
+      setTutorialWaiting(false);
       setTutorialStepId(id);
     },
     [changeView],
@@ -219,6 +226,7 @@ export default function GeneXApp() {
   const endTutorial = useCallback(() => {
     setTutorialStepId(null);
     setTutorialSuspended(false);
+    setTutorialWaiting(false);
     setHistoryOpen(false);
     setModalOpen(false);
     setPopoverAnchor(null);
@@ -239,10 +247,30 @@ export default function GeneXApp() {
 
   const handleTutorialTargetActivated = useCallback(
     (stepId: string) => {
-      if (stepId === tutorialStepId) nextTutorialStep();
+      if (stepId !== tutorialStepId) return;
+      // Choosing a saved analysis starts a load that takes a few seconds;
+      // the tutorial shows a loading card until the result has rendered.
+      if (stepId === "history-entry") setTutorialWaiting(true);
+      else nextTutorialStep();
     },
     [nextTutorialStep, tutorialStepId],
   );
+
+  // Leave the loading card once the saved analysis has loaded (after a short
+  // pause for it to render), return to the History list if it failed, and
+  // never wait longer than 20 seconds.
+  useEffect(() => {
+    if (!tutorialWaiting) return;
+    if (historyLoadState === "loaded" || historyLoadState === "failed") {
+      const timer = window.setTimeout(
+        () => goToTutorialStep(historyLoadState === "loaded" ? "input-card" : "history-entry"),
+        150,
+      );
+      return () => window.clearTimeout(timer);
+    }
+    const timeout = window.setTimeout(() => goToTutorialStep("input-card"), 20000);
+    return () => window.clearTimeout(timeout);
+  }, [goToTutorialStep, historyLoadState, tutorialWaiting]);
 
   // The Sign in step's window sits beneath the tutorial layer, so the
   // tutorial steps aside while it is open, then resumes at History once
@@ -927,11 +955,12 @@ export default function GeneXApp() {
         return (
           <TutorialOverlay
             view={{
-              step,
+              step: tutorialWaiting ? TUTORIAL_LOADING_STEP : step,
               stepNumber: tutorialIndex + 1,
               stepCount: tutorialSteps.length,
               chapterStepNumber: chapterSteps.indexOf(step) + 1,
               chapterStepCount: chapterSteps.length,
+              waiting: tutorialWaiting,
             }}
             onNext={nextTutorialStep}
             onBack={previousTutorialStep}

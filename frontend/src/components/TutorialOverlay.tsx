@@ -146,10 +146,12 @@ export interface TutorialView {
   stepCount: number;
   chapterStepNumber: number;
   chapterStepCount: number;
+  /** Shows a loading indicator in place of Back and Next. */
+  waiting?: boolean;
 }
 
 function viewKey(view: TutorialView) {
-  return `${view.step.id}|${view.stepNumber}|${view.stepCount}|${view.chapterStepNumber}|${view.chapterStepCount}`;
+  return `${view.step.id}|${view.stepNumber}|${view.stepCount}|${view.chapterStepNumber}|${view.chapterStepCount}|${view.waiting ? 1 : 0}`;
 }
 
 export default function TutorialOverlay({
@@ -419,14 +421,14 @@ export default function TutorialOverlay({
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
         primaryRef.current?.click();
-      } else if (event.key === "ArrowLeft" && !isFirst) {
+      } else if (event.key === "ArrowLeft" && !isFirst && !shown.waiting) {
         event.preventDefault();
         onBack();
       }
     }
     window.addEventListener("keydown", handleKey, true);
     return () => window.removeEventListener("keydown", handleKey, true);
-  }, [isFirst, onBack, onSkip]);
+  }, [isFirst, onBack, onSkip, shown.waiting]);
 
   const hint = step.target && !targetFound ? step.missingTargetNote : step.actionHint;
   const primaryLabel = isFirst ? "Begin tutorial" : isLast ? "Finish tutorial" : "Next";
@@ -493,6 +495,12 @@ export default function TutorialOverlay({
           ))}
         </div>
         {hint && <div className="tutorial-hint">{hint}</div>}
+        {shown.waiting && (
+          <div className="tutorial-loading" role="status">
+            <span className="tutorial-spinner" aria-hidden="true" />
+            Loading…
+          </div>
+        )}
         <div className="tutorial-actions">
           {!isLast && (
             <button type="button" className="tutorial-skip" onClick={onSkip}>
@@ -500,14 +508,16 @@ export default function TutorialOverlay({
             </button>
           )}
           <span className="tutorial-actions-spacer" />
-          {!isFirst && (
+          {!isFirst && !shown.waiting && (
             <button type="button" className="tutorial-btn-secondary" onClick={onBack}>
               Back
             </button>
           )}
-          <button ref={primaryRef} type="button" className="tutorial-btn-primary" onClick={next}>
-            {primaryLabel}
-          </button>
+          {!shown.waiting && (
+            <button ref={primaryRef} type="button" className="tutorial-btn-primary" onClick={next}>
+              {primaryLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>

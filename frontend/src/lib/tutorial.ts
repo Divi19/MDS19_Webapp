@@ -41,6 +41,17 @@ export const TUTORIAL_CHAPTERS = [
   "Analysing your own section",
 ];
 
+/** Shown between choosing a saved analysis and Chapter 3, while the result
+ * is still loading, so the tutorial never points at empty panels. */
+export const TUTORIAL_LOADING_STEP: TutorialStep = {
+  id: "history-loading",
+  chapter: 2,
+  title: "Loading the saved analysis",
+  body: [
+    "Retrieving the predicted expression for every tile of the section. This usually takes a few seconds; the tutorial continues automatically once it has loaded.",
+  ],
+};
+
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: "welcome",
