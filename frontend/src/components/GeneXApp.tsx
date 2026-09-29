@@ -456,20 +456,30 @@ export default function GeneXApp() {
   return (
     <div className="app">
       <header className="header">
-        <div className="logo">
-          <svg viewBox="0 0 24 24" fill="none">
-            <circle cx="6" cy="6" r="2.4" fill="#fff" />
-            <circle cx="12" cy="6" r="2.4" fill="#fff" opacity=".6" />
-            <circle cx="18" cy="6" r="2.4" fill="#fff" opacity=".85" />
-            <circle cx="6" cy="12" r="2.4" fill="#fff" opacity=".6" />
-            <circle cx="12" cy="12" r="2.4" fill="#fff" />
-            <circle cx="18" cy="12" r="2.4" fill="#fff" opacity=".7" />
-            <circle cx="6" cy="18" r="2.4" fill="#fff" opacity=".85" />
-            <circle cx="12" cy="18" r="2.4" fill="#fff" opacity=".6" />
-            <circle cx="18" cy="18" r="2.4" fill="#fff" />
-          </svg>
+        <div className="brand">
+          <div className="logo">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle cx="6" cy="6" r="2.4" fill="#fff" />
+              <circle cx="12" cy="6" r="2.4" fill="#fff" opacity=".6" />
+              <circle cx="18" cy="6" r="2.4" fill="#fff" opacity=".85" />
+              <circle cx="6" cy="12" r="2.4" fill="#fff" opacity=".6" />
+              <circle cx="12" cy="12" r="2.4" fill="#fff" />
+              <circle cx="18" cy="12" r="2.4" fill="#fff" opacity=".7" />
+              <circle cx="6" cy="18" r="2.4" fill="#fff" opacity=".85" />
+              <circle cx="12" cy="18" r="2.4" fill="#fff" opacity=".6" />
+              <circle cx="18" cy="18" r="2.4" fill="#fff" />
+            </svg>
+          </div>
+          <div className="brand-text">
+            <div className="app-title">GeneX</div>
+            <div className="app-subtitle">Spatial Transcriptomics</div>
+          </div>
         </div>
-        <div className="app-title">GeneX</div>
+        <div className="header-divider" />
+        <div className={`header-status${ready ? "" : " pending"}`}>
+          <span className="dot" />
+          {ready ? "Prediction ready" : "Awaiting section"}
+        </div>
         <button
           className="tutorial-launch"
           onClick={() => goToTutorialStep("welcome")}
