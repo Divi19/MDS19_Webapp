@@ -37,6 +37,20 @@ export default function UploadModal({
   });
   const [url, setUrl] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [loadingSample, setLoadingSample] = useState(false);
+
+  async function loadSample() {
+    setLoadingSample(true);
+    try {
+      const res = await fetch("/sample-he-section.jpg");
+      const blob = await res.blob();
+      handleFile(new File([blob], "sample-he-section.jpg", { type: blob.type || "image/jpeg" }));
+    } catch {
+      setStatus({ text: "Couldn't load the sample image", color: "#c0392b" });
+    } finally {
+      setLoadingSample(false);
+    }
+  }
 
   function handleFile(f: File | undefined | null) {
     if (!f) return;
@@ -137,6 +151,10 @@ export default function UploadModal({
               </>
             )}
           </label>
+
+          <button type="button" className="sample-link" onClick={loadSample} disabled={loadingSample}>
+            {loadingSample ? "Loading sample…" : "Don't have a section handy? Try a sample H&E image"}
+          </button>
 
           <div className="preview-meta">
             <div className="meta-tile">

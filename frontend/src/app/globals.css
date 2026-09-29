@@ -245,6 +245,9 @@ canvas{display:block;width:100%;height:auto}
 .dropzone-preview img{max-height:260px;max-width:100%;border-radius:8px;border:1px solid var(--border);object-fit:contain}
 .format-pills{display:flex;justify-content:center;gap:6px;margin-top:11px}
 .format-pills span{font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);padding:2px 8px;border-radius:999px}
+.sample-link{display:block;width:100%;text-align:center;margin-top:10px;background:none;border:none;font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer;padding:4px}
+.sample-link:hover{text-decoration:underline}
+.sample-link:disabled{color:var(--muted2);cursor:default;text-decoration:none}
 .preview-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
 .meta-tile{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
 .meta-tile .label{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted2)}
