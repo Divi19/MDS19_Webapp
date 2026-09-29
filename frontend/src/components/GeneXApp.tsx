@@ -926,11 +926,13 @@ export default function GeneXApp() {
         const chapterSteps = tutorialSteps.filter((item) => item.chapter === step.chapter);
         return (
           <TutorialOverlay
-            step={step}
-            stepNumber={tutorialIndex + 1}
-            stepCount={tutorialSteps.length}
-            chapterStepNumber={chapterSteps.indexOf(step) + 1}
-            chapterStepCount={chapterSteps.length}
+            view={{
+              step,
+              stepNumber: tutorialIndex + 1,
+              stepCount: tutorialSteps.length,
+              chapterStepNumber: chapterSteps.indexOf(step) + 1,
+              chapterStepCount: chapterSteps.length,
+            }}
             onNext={nextTutorialStep}
             onBack={previousTutorialStep}
             onSkip={endTutorial}

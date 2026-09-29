@@ -124,22 +124,42 @@ function show(element: HTMLElement, visible: boolean) {
   element.style.display = visible ? "block" : "none";
 }
 
-export default function TutorialOverlay({
-  step,
-  stepNumber,
-  stepCount,
-  chapterStepNumber,
-  chapterStepCount,
-  onNext,
-  onBack,
-  onSkip,
-  onTargetActivated,
-}: {
+
+// A new step's target must hold still for this many frames before the
+// tutorial moves to it — windows, popovers and views often take a frame or
+// two to appear and settle.
+const SETTLE_FRAMES = 2;
+// Longest the tutorial waits for a new step's target before moving anyway.
+const SETTLE_TIMEOUT_MS = 600;
+// How long a target may briefly disappear (e.g. while being re-created)
+// before the spotlight gives up on it.
+const MISSING_HOLD_MS = 450;
+// Once nothing has moved for this long, the target is re-measured at a
+// lower rate instead of every frame.
+const IDLE_AFTER_MS = 600;
+const IDLE_POLL_MS = 100;
+
+/** Everything the card shows for one step. */
+export interface TutorialView {
   step: TutorialStep;
   stepNumber: number;
   stepCount: number;
   chapterStepNumber: number;
   chapterStepCount: number;
+}
+
+function viewKey(view: TutorialView) {
+  return `${view.step.id}|${view.stepNumber}|${view.stepCount}|${view.chapterStepNumber}|${view.chapterStepCount}`;
+}
+
+export default function TutorialOverlay({
+  view,
+  onNext,
+  onBack,
+  onSkip,
+  onTargetActivated,
+}: {
+  view: TutorialView;
   onNext: () => void;
   onBack: () => void;
   onSkip: () => void;
@@ -157,138 +177,206 @@ export default function TutorialOverlay({
   const arrowRef = useRef<HTMLDivElement>(null);
   const arrowInnerRef = useRef<HTMLDivElement>(null);
   const lastLayout = useRef("");
+  const lastChangeAt = useRef(0);
+  const missingSince = useRef<number | null>(null);
   const cardPlaced = useRef(false);
+
+  // The step on screen lags the requested one until the requested step's
+  // target has appeared and settled, so the card's text, the spotlight and
+  // the arrow always change together.
+  const [shown, setShown] = useState(view);
+  const shownRef = useRef(shown);
+  const requestedRef = useRef(view);
   // Only used to choose between the action hint and the missing-target
   // note; everything positional is applied to the DOM directly.
   const [targetFound, setTargetFound] = useState(true);
 
-  const isFirst = stepNumber === 1;
-  const isLast = stepNumber === stepCount;
-  const interactive = Boolean(step.interaction);
+  const { step } = shown;
+  const isFirst = shown.stepNumber === 1;
+  const isLast = shown.stepNumber === shown.stepCount;
+
+  useLayoutEffect(() => {
+    requestedRef.current = view;
+  }, [view]);
+
+  useLayoutEffect(() => {
+    shownRef.current = shown;
+  }, [shown]);
 
   /** Positions the spotlight, blockers, arrow and card for the current
    * frame. Writes styles directly rather than through React state, so
-   * tracking a moving element never re-renders the tutorial. */
-  const applyLayout = useCallback(
-    (force: boolean) => {
-      const card = cardRef.current;
-      const focus = focusRef.current;
-      const ring = ringRef.current;
-      const dim = dimRef.current;
-      const fullBlocker = fullBlockerRef.current;
-      const arrow = arrowRef.current;
-      const arrowInner = arrowInnerRef.current;
-      if (!card || !focus || !ring || !dim || !fullBlocker || !arrow || !arrowInner) return;
+   * tracking a moving element never re-renders the tutorial. Returns
+   * whether anything moved. */
+  const applyLayout = useCallback((current: TutorialStep, force: boolean) => {
+    const card = cardRef.current;
+    const focus = focusRef.current;
+    const ring = ringRef.current;
+    const dim = dimRef.current;
+    const fullBlocker = fullBlockerRef.current;
+    const arrow = arrowRef.current;
+    const arrowInner = arrowInnerRef.current;
+    if (!card || !focus || !ring || !dim || !fullBlocker || !arrow || !arrowInner) return false;
 
-      const box = measureTargets(step.target);
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const cardWidth = card.offsetWidth;
-      const cardHeight = card.offsetHeight;
-      const signature = [
-        box ? [box.top, box.left, box.width, box.height].map((value) => value.toFixed(1)).join(",") : "none",
-        cardWidth,
-        cardHeight,
-        vw,
-        vh,
-      ].join("|");
-      if (!force && signature === lastLayout.current) return;
-      lastLayout.current = signature;
-      setTargetFound(Boolean(box) || !step.target);
+    const box = measureTargets(current.target);
+    // A target that vanishes for a moment (a popover being re-created, a
+    // window re-rendering) keeps its spotlight rather than snapping away.
+    if (!box && current.target && !force && focus.style.display === "block") {
+      const now = performance.now();
+      missingSince.current ??= now;
+      if (now - missingSince.current < MISSING_HOLD_MS) return false;
+    }
+    if (box) missingSince.current = null;
 
-      const hole = box
-        ? { top: box.top - PAD, left: box.left - PAD, width: box.width + PAD * 2, height: box.height + PAD * 2 }
-        : null;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const cardWidth = card.offsetWidth;
+    const cardHeight = card.offsetHeight;
+    const signature = [
+      box ? [box.top, box.left, box.width, box.height].map((value) => value.toFixed(1)).join(",") : "none",
+      cardWidth,
+      cardHeight,
+      vw,
+      vh,
+      current.id,
+    ].join("|");
+    if (!force && signature === lastLayout.current) return false;
+    lastLayout.current = signature;
+    setTargetFound(Boolean(box) || !current.target);
 
-      // Spotlight, or a plain dim when there is nothing to highlight.
-      if (hole) {
-        const appearing = focus.style.display !== "block";
-        if (appearing) focus.style.transition = "none";
-        focus.style.width = `${hole.width}px`;
-        focus.style.height = `${hole.height}px`;
-        moveTo(focus, hole.left, hole.top, appearing);
-        ring.style.setProperty("--ring-sx", String((hole.width + RING_GROWTH * 2) / hole.width));
-        ring.style.setProperty("--ring-sy", String((hole.height + RING_GROWTH * 2) / hole.height));
-        show(focus, true);
-        show(dim, false);
-      } else {
-        show(focus, false);
-        show(dim, true);
+    const hole = box
+      ? { top: box.top - PAD, left: box.left - PAD, width: box.width + PAD * 2, height: box.height + PAD * 2 }
+      : null;
+
+    // Spotlight, or a plain dim when there is nothing to highlight.
+    if (hole) {
+      const appearing = focus.style.display !== "block";
+      if (appearing) focus.style.transition = "none";
+      focus.style.width = `${hole.width}px`;
+      focus.style.height = `${hole.height}px`;
+      moveTo(focus, hole.left, hole.top, appearing);
+      ring.style.setProperty("--ring-sx", String((hole.width + RING_GROWTH * 2) / hole.width));
+      ring.style.setProperty("--ring-sy", String((hole.height + RING_GROWTH * 2) / hole.height));
+      show(focus, true);
+      show(dim, false);
+    } else {
+      show(focus, false);
+      show(dim, true);
+    }
+
+    // Click blockers: the whole page, or everything around the highlighted
+    // element when the step lets the user interact with it.
+    const passThrough = Boolean(hole && current.interaction);
+    show(fullBlocker, !passThrough);
+    const around = hole
+      ? [
+          { top: 0, left: 0, width: vw, height: Math.max(0, hole.top) },
+          { top: hole.top + hole.height, left: 0, width: vw, height: Math.max(0, vh - hole.top - hole.height) },
+          { top: hole.top, left: 0, width: Math.max(0, hole.left), height: hole.height },
+          { top: hole.top, left: hole.left + hole.width, width: Math.max(0, vw - hole.left - hole.width), height: hole.height },
+        ]
+      : [];
+    blockerRefs.current.forEach((blocker, index) => {
+      if (!blocker) return;
+      show(blocker, passThrough);
+      const rect = around[index];
+      if (passThrough && rect) {
+        blocker.style.top = `${rect.top}px`;
+        blocker.style.left = `${rect.left}px`;
+        blocker.style.width = `${rect.width}px`;
+        blocker.style.height = `${rect.height}px`;
       }
+    });
 
-      // Click blockers: the whole page, or everything around the highlighted
-      // element when the step lets the user interact with it.
-      const passThrough = Boolean(hole && interactive);
-      show(fullBlocker, !passThrough);
-      const around = hole
-        ? [
-            { top: 0, left: 0, width: vw, height: Math.max(0, hole.top) },
-            { top: hole.top + hole.height, left: 0, width: vw, height: Math.max(0, vh - hole.top - hole.height) },
-            { top: hole.top, left: 0, width: Math.max(0, hole.left), height: hole.height },
-            { top: hole.top, left: hole.left + hole.width, width: Math.max(0, vw - hole.left - hole.width), height: hole.height },
-          ]
-        : [];
-      blockerRefs.current.forEach((blocker, index) => {
-        if (!blocker) return;
-        show(blocker, passThrough);
-        const rect = around[index];
-        if (passThrough && rect) {
-          blocker.style.top = `${rect.top}px`;
-          blocker.style.left = `${rect.left}px`;
-          blocker.style.width = `${rect.width}px`;
-          blocker.style.height = `${rect.height}px`;
-        }
-      });
+    // Card beside the element, or centred when there is none.
+    const placement = hole ? placeCard(hole, { width: cardWidth, height: cardHeight }, current.placement) : null;
+    const cardLeft = placement ? placement.left : Math.max(MARGIN, (vw - cardWidth) / 2);
+    const cardTop = placement ? placement.top : Math.max(MARGIN, (vh - cardHeight) / 2);
+    moveTo(card, cardLeft, cardTop, !cardPlaced.current);
+    cardPlaced.current = true;
 
-      // Card beside the element, or centred when there is none.
-      const placement = hole ? placeCard(hole, { width: cardWidth, height: cardHeight }, step.placement) : null;
-      const cardLeft = placement ? placement.left : Math.max(MARGIN, (vw - cardWidth) / 2);
-      const cardTop = placement ? placement.top : Math.max(MARGIN, (vh - cardHeight) / 2);
-      moveTo(card, cardLeft, cardTop, !cardPlaced.current);
-      cardPlaced.current = true;
+    // Arrow in the gap between the card and the element.
+    if (placement?.side) {
+      const appearing = arrow.style.display !== "block";
+      moveTo(arrow, placement.arrowX - ARROW_SIZE / 2, placement.arrowY - ARROW_SIZE / 2, appearing);
+      arrowInner.style.transform = `rotate(${ARROW_ROTATION[placement.side]}deg)`;
+      show(arrow, true);
+    } else {
+      show(arrow, false);
+    }
+    return true;
+  }, []);
 
-      // Arrow in the gap between the card and the element.
-      if (placement?.side) {
-        const appearing = arrow.style.display !== "block";
-        moveTo(arrow, placement.arrowX - ARROW_SIZE / 2, placement.arrowY - ARROW_SIZE / 2, appearing);
-        arrowInner.style.transform = `rotate(${ARROW_ROTATION[placement.side]}deg)`;
-        show(arrow, true);
-      } else {
-        show(arrow, false);
-      }
-    },
-    [interactive, step.placement, step.target],
-  );
-
-  // Lay out before the browser paints a new step, so the card is never
-  // shown at a position computed for the previous step's content.
+  // Lay out before the browser paints a newly shown step, so the card is
+  // never placed using the previous step's size.
   useLayoutEffect(() => {
-    applyLayout(true);
-  }, [applyLayout, step.id]);
+    missingSince.current = null;
+    applyLayout(shown.step, true);
+    lastChangeAt.current = performance.now();
+  }, [applyLayout, shown]);
 
-  // Track the highlighted element every frame: it can move or resize as
-  // modals open, data loads or the window changes. Styles are only written
-  // when something actually moved.
+  // One loop for the lifetime of the tutorial: waits for a requested step's
+  // target to settle before showing it, then tracks the shown step's target
+  // as it moves or resizes.
   useEffect(() => {
     let frame = 0;
-    const tick = () => {
-      applyLayout(false);
+    let lastPoll = 0;
+    let pending: { key: string; since: number; box: Box | null; stable: number } | null = null;
+
+    const tick = (now: number) => {
+      const requested = requestedRef.current;
+      const current = shownRef.current;
+      const requestedKey = viewKey(requested);
+
+      if (requestedKey !== viewKey(current)) {
+        if (requested.step.id === current.step.id) {
+          // Same step, different counts (e.g. the step list changed on
+          // sign-in): nothing to wait for.
+          setShown(requested);
+        } else {
+          if (!pending || pending.key !== requestedKey) pending = { key: requestedKey, since: now, box: null, stable: 0 };
+          const box = measureTargets(requested.step.target);
+          if (box && pending.box && Math.abs(box.top - pending.box.top) < 1 && Math.abs(box.left - pending.box.left) < 1 && Math.abs(box.width - pending.box.width) < 1 && Math.abs(box.height - pending.box.height) < 1) {
+            pending.stable += 1;
+          } else {
+            pending.stable = 0;
+          }
+          pending.box = box;
+          const settled = !requested.step.target || pending.stable >= SETTLE_FRAMES;
+          if (settled || now - pending.since > SETTLE_TIMEOUT_MS) {
+            pending = null;
+            setShown(requested);
+          }
+        }
+      } else {
+        pending = null;
+        const idle = now - lastChangeAt.current > IDLE_AFTER_MS;
+        if (!idle || now - lastPoll >= IDLE_POLL_MS) {
+          lastPoll = now;
+          if (applyLayout(current.step, false)) lastChangeAt.current = now;
+        }
+      }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [applyLayout]);
 
+  // Animation frames pause in background tabs; a timer guarantees the
+  // requested step is still shown once the settle timeout has passed.
+  const requestedKey = viewKey(view);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (viewKey(requestedRef.current) === requestedKey && viewKey(shownRef.current) !== requestedKey) {
+        setShown(requestedRef.current);
+      }
+    }, SETTLE_TIMEOUT_MS + 50);
+    return () => window.clearTimeout(timer);
+  }, [requestedKey]);
+
   // Scroll the highlighted element into view once per step.
   useEffect(() => {
-    let frame = 0;
-    const scrollWhenFound = () => {
-      const [element] = findTargets(step.target);
-      if (element) element.scrollIntoView({ block: "nearest", inline: "nearest" });
-      else if (step.target) frame = requestAnimationFrame(scrollWhenFound);
-    };
-    scrollWhenFound();
-    return () => cancelAnimationFrame(frame);
+    const [element] = findTargets(step.target);
+    element?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [step.id, step.target]);
 
   // Clicks on the highlighted element of an "advance" step move the tutorial
@@ -388,12 +476,12 @@ export default function TutorialOverlay({
             Chapter {step.chapter} of {TUTORIAL_CHAPTERS.length} · {TUTORIAL_CHAPTERS[step.chapter - 1]}
           </span>
           <span className="tutorial-count">
-            {stepNumber} / {stepCount}
+            {shown.stepNumber} / {shown.stepCount}
           </span>
         </div>
         <div className="tutorial-progress" aria-hidden="true">
-          {Array.from({ length: chapterStepCount }, (_, index) => (
-            <span key={index} className={index < chapterStepNumber ? "on" : ""} />
+          {Array.from({ length: shown.chapterStepCount }, (_, index) => (
+            <span key={index} className={index < shown.chapterStepNumber ? "on" : ""} />
           ))}
         </div>
         <h2 id="tutorial-title" className="tutorial-title">
