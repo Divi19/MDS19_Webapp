@@ -16,9 +16,11 @@ const PAD = 6;
 const GAP = 56;
 const MARGIN = 12;
 
-function findTarget(target: string | undefined): HTMLElement | null {
-  if (!target) return null;
-  return document.querySelector<HTMLElement>(`[data-tour="${target}"]`);
+/** All elements marked for a step. A step can highlight several at once
+ * (e.g. the first few history entries); the spotlight covers them all. */
+function findTargets(target: string | undefined): HTMLElement[] {
+  if (!target) return [];
+  return Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`));
 }
 
 function sameBox(a: Box | null, b: Box | null) {
@@ -140,16 +142,19 @@ export default function TutorialOverlay({
     let scrolled = false;
     let lastBox: Box | null = null;
     const tick = () => {
-      const element = findTarget(step.target);
+      const rects = findTargets(step.target)
+        .map((element) => element.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0);
       let next: Box | null = null;
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          next = { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
-          if (!scrolled) {
-            scrolled = true;
-            element.scrollIntoView({ block: "nearest", inline: "nearest" });
-          }
+      if (rects.length) {
+        const top = Math.min(...rects.map((rect) => rect.top));
+        const left = Math.min(...rects.map((rect) => rect.left));
+        const bottom = Math.max(...rects.map((rect) => rect.bottom));
+        const right = Math.max(...rects.map((rect) => rect.right));
+        next = { top, left, width: right - left, height: bottom - top };
+        if (!scrolled) {
+          scrolled = true;
+          findTargets(step.target)[0]?.scrollIntoView({ block: "nearest", inline: "nearest" });
         }
       }
       if (!sameBox(next, lastBox)) {
@@ -179,8 +184,8 @@ export default function TutorialOverlay({
     if (step.interaction !== "advance") return;
     const stepId = step.id;
     function handleClick(event: MouseEvent) {
-      const element = findTarget(step.target);
-      if (element && event.target instanceof Node && element.contains(event.target)) {
+      const clicked = event.target;
+      if (clicked instanceof Node && findTargets(step.target).some((element) => element.contains(clicked))) {
         window.setTimeout(() => onTargetActivated(stepId), 0);
       }
     }
@@ -194,7 +199,7 @@ export default function TutorialOverlay({
 
   function next() {
     if (step.interaction === "advance") {
-      const element = findTarget(step.target);
+      const [element] = findTargets(step.target);
       if (element) {
         element.click();
         return;

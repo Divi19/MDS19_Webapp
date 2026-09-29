@@ -84,7 +84,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     body: [
       "Each entry shows a thumbnail of the section, its file name and the date it was analysed. The bin icon on the right of an entry permanently deletes it.",
     ],
-    actionHint: "Select the highlighted entry to load it.",
+    actionHint: "Select any of the highlighted entries to load it. Next opens the most recent one.",
     missingTargetNote: "No saved analyses are available on this account yet. Continue to see how a result is presented.",
   },
   {
