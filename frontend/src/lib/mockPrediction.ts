@@ -47,6 +47,9 @@ export interface GeneMeta {
   hx: number;
   hy: number;
   s: number;
+  /** Raw predicted-expression range across spots, when real model output is available. */
+  min?: number;
+  max?: number;
 }
 
 export type Level = "High" | "Mid" | "Low";

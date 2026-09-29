@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CL, NAMED_GENES, viridis, type Level, type Prediction } from "@/lib/mockPrediction";
+import { CL, NAMED_GENES, type Level, type Prediction } from "@/lib/mockPrediction";
 import { predict, toPrediction } from "@/lib/api";
 import { exportGeneExpressionExcel } from "@/lib/exportExcel";
 import { useAuth } from "@/lib/auth";
@@ -15,6 +15,8 @@ import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
 import StatusBar from "./StatusBar";
+import ColorBar from "./ColorBar";
+import { COLORMAP_NAMES, colormap, type ColormapName } from "@/lib/colormaps";
 import ThemeToggle from "./ThemeToggle";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
@@ -66,6 +68,8 @@ export default function GeneXApp() {
   // forcing a full restart on returning to the tab.
   const [gradcamMounted, setGradcamMounted] = useState(false);
   const [showImage, setShowImage] = useState(true);
+  const [cmapName, setCmapName] = useState<ColormapName>("viridis");
+  const [overlayOpacity, setOverlayOpacity] = useState(0.75);
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
@@ -381,6 +385,7 @@ export default function GeneXApp() {
   );
 
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
+  const activeGene = pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "");
 
   // Cards or table — user's choice of how the gene panel is presented.
   const [geneView, setGeneView] = useState<"cards" | "table">("table");
@@ -676,7 +681,7 @@ export default function GeneXApp() {
                       >
                         <div
                           className="gene-tile-swatch"
-                          style={{ background: viridis(g.value / max) }}
+                          style={{ background: colormap(cmapName, g.value / max) }}
                         />
                         <div className="gene-tile-name">{g.name}</div>
                         <div className="gene-tile-meta">
@@ -855,7 +860,7 @@ export default function GeneXApp() {
                               <span className="gm-left">
                                 <span
                                   className="gm-swatch"
-                                  style={{ background: viridis(o.value / maxGeneValue) }}
+                                  style={{ background: colormap(cmapName, o.value / maxGeneValue) }}
                                 />
                                 <span className="gm-name">{o.name}</span>
                               </span>
@@ -880,8 +885,40 @@ export default function GeneXApp() {
                     checked={showImage}
                     onChange={(e) => setShowImage(e.target.checked)}
                   />
-                  Show image
+                  H&amp;E image
                 </label>
+              )}
+              {view === "genes" && (
+                <div className="viewer-controls">
+                  <label className="control">
+                    <span className="control-label">Colourmap</span>
+                    <select
+                      className="select"
+                      value={cmapName}
+                      onChange={(e) => setCmapName(e.target.value as ColormapName)}
+                    >
+                      {COLORMAP_NAMES.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="control">
+                    <span className="control-label">Opacity</span>
+                    <input
+                      type="range"
+                      className="range"
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      value={overlayOpacity}
+                      onChange={(e) => setOverlayOpacity(Number(e.target.value))}
+                      aria-valuetext={`${Math.round(overlayOpacity * 100)}%`}
+                    />
+                    <span className="control-value tabular">{Math.round(overlayOpacity * 100)}%</span>
+                  </label>
+                </div>
               )}
               {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
             </div>
@@ -901,9 +938,19 @@ export default function GeneXApp() {
                 pred={pred}
                 ready={ready}
                 view={view}
-                gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
+                gene={activeGene}
                 imageUrl={uploaded?.url}
                 showImage={showImage}
+                colormap={cmapName}
+                opacity={overlayOpacity}
+              />
+            )}
+            {view === "genes" && ready && (
+              <ColorBar
+                name={cmapName}
+                gene={activeGene}
+                min={pred.geneMeta[activeGene]?.min}
+                max={pred.geneMeta[activeGene]?.max}
               />
             )}
           </div>

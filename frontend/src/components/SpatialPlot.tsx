@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
+import { CL, type Prediction, type Spot } from "@/lib/mockPrediction";
+import { colormap as cmap, type ColormapName } from "@/lib/colormaps";
 import { cssVar, useTheme } from "@/lib/theme";
 
 const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
@@ -52,6 +53,8 @@ export default function SpatialPlot({
   gene,
   imageUrl,
   showImage = true,
+  colormap = "viridis",
+  opacity = 0.75,
 }: {
   pred: Prediction;
   ready: boolean;
@@ -62,6 +65,9 @@ export default function SpatialPlot({
    * user strip the tissue background and see just the spatial dot map,
    * with the dots still at their real pixel-accurate positions. */
   showImage?: boolean;
+  colormap?: ColormapName;
+  /** Spot overlay opacity over the tissue image, 0..1 */
+  opacity?: number;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -160,12 +166,12 @@ export default function SpatialPlot({
       geomRef.current = geom;
 
       const r = Math.max(2.4, w / 130);
-      ctx.globalAlpha = 0.72;
+      ctx.globalAlpha = opacity;
       for (const s of pred.spots) {
         const [px, py] = spotXY(s, geom);
         ctx.beginPath();
         ctx.arc(px, py, r, 0, 6.2832);
-        ctx.fillStyle = viridis(s.expr[gk] ?? 0);
+        ctx.fillStyle = cmap(colormap, s.expr[gk] ?? 0);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
@@ -220,13 +226,13 @@ export default function SpatialPlot({
       const py = mT + s.y * ph;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, 6.2832);
-      const col = genesView ? viridis(s.expr[gk] ?? 0) : CL[s.cluster];
+      const col = genesView ? cmap(colormap, s.expr[gk] ?? 0) : CL[s.cluster];
       ctx.fillStyle =
         !genesView && highlight >= 0 && s.cluster !== highlight ? `${col}20` : col;
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, theme]);
+  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, theme, colormap, opacity]);
 
   useEffect(() => {
     draw();

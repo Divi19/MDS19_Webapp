@@ -216,9 +216,11 @@ export function toPrediction(response: PredictionResponse): Prediction {
   // This is the full panel, not a slice of it; the UI paginates it rather
   // than truncating it.
   const rawMeans: Record<string, number> = {};
+  const rawRange: Record<string, [number, number]> = {};
   for (const gene of genes) {
     const values = response.spots.map((spot) => spot.expression[gene] ?? 0);
     rawMeans[gene] = values.reduce((a, b) => a + b, 0) / (values.length || 1);
+    rawRange[gene] = [Math.min(...values), Math.max(...values)];
   }
   const rankedGenes = genes.slice().sort((a, b) => rawMeans[b] - rawMeans[a]);
 
@@ -251,7 +253,10 @@ export function toPrediction(response: PredictionResponse): Prediction {
     spots,
     genes,
     geneMeta: Object.fromEntries(
-      genes.map((gene) => [gene, { label: gene, hx: 0, hy: 0, s: 0 }]),
+      genes.map((gene) => [
+        gene,
+        { label: gene, hx: 0, hy: 0, s: 0, min: rawRange[gene][0], max: rawRange[gene][1] },
+      ]),
     ),
     topGenes,
     clusters: counts.map((count, index) => ({
