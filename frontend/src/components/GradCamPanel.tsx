@@ -115,12 +115,17 @@ export default function GradCamPanel({
   pred,
   ready,
   file,
+  fileStatus = "idle",
   imageUrl,
   hidden,
 }: {
   pred: Prediction;
   ready: boolean;
   file: File | null;
+  // History-loaded runs retrieve the original file after the prediction
+  // itself has loaded: "loading" while that is in flight, "failed" if it
+  // could not be retrieved.
+  fileStatus?: "idle" | "loading" | "failed";
   imageUrl?: string | null;
   // Visually hides the panel without unmounting it — the loading effect
   // keeps running and already-loaded tiles stay in memory while another
@@ -269,7 +274,13 @@ export default function GradCamPanel({
 
     if (!ready || !pred.spots.length) return;
     if (!file) {
-      setError("This needs the original uploaded image. Re-upload the section (history-loaded predictions don't keep the file).");
+      setError(
+        fileStatus === "loading"
+          ? "Retrieving the original image from history…"
+          : fileStatus === "failed"
+            ? "The original image could not be retrieved from history. Re-upload the section to generate Grad-CAM."
+            : "Grad-CAM requires the original uploaded image. Re-upload the section to generate it.",
+      );
       return;
     }
 
@@ -312,7 +323,7 @@ export default function GradCamPanel({
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- draw is stable enough per render; re-running this on every draw identity change would restart the whole slide
-  }, [file, ready, pred.spots.length]);
+  }, [file, fileStatus, ready, pred.spots.length]);
 
   // Lets you check progress without keeping this panel in view — the load
   // keeps running in the background regardless of tab focus, so a glance

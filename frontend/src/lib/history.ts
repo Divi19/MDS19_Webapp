@@ -118,12 +118,39 @@ export async function deletePrediction(predictionId: string, imagePath: string |
   }
 }
 
+const IMAGE_TYPES: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+};
+
+/** Retrieves the original uploaded image for a saved prediction as a File.
+ * Grad-CAM re-tiles the exact uploaded bytes, so a history-loaded run needs
+ * the original file rather than only its signed display URL. The MIME type
+ * falls back to the file extension because stored TIFFs can come back
+ * untyped, and the API rejects uploads outside its image allowlist. */
+export async function downloadPredictionImage(imagePath: string, filename: string | null): Promise<File> {
+  const { data, error } = await supabase.storage.from(BUCKET).download(imagePath);
+  if (error || !data) throw new Error(`Retrieving the original image failed: ${error?.message ?? "no data"}`);
+  const name = filename ?? imagePath.split("/").pop() ?? "section";
+  const extension = (name.split(".").pop() ?? "").toLowerCase();
+  const type = data.type.startsWith("image/") ? data.type : (IMAGE_TYPES[extension] ?? data.type);
+  return new File([data], name, { type });
+}
+
 /** Reassembles one saved prediction back into the exact shape /api/predict
  * returns, so the existing toPrediction() conversion — and every component
  * downstream of it — needs no history-specific branching. */
 export async function getPredictionResponse(
   predictionId: string,
-): Promise<{ response: PredictionResponse; imageUrl: string | null; filename: string | null }> {
+): Promise<{
+  response: PredictionResponse;
+  imageUrl: string | null;
+  imagePath: string | null;
+  filename: string | null;
+}> {
   const [{ data: pred, error: predErr }, { data: spots, error: spotsErr }, { data: genes, error: genesErr }] =
     await Promise.all([
       supabase.from("predictions").select("*").eq("id", predictionId).single(),
@@ -161,6 +188,7 @@ export async function getPredictionResponse(
       top_genes: genes ?? [],
     },
     imageUrl,
+    imagePath: pred.image_path ?? null,
     filename: pred.filename ?? null,
   };
 }

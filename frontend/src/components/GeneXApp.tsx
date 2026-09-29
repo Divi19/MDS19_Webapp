@@ -5,7 +5,7 @@ import { CL, NAMED_GENES, viridis, type Level, type Prediction } from "@/lib/moc
 import { predict, toPrediction } from "@/lib/api";
 import { exportGeneExpressionExcel } from "@/lib/exportExcel";
 import { useAuth } from "@/lib/auth";
-import { getPredictionResponse, savePrediction } from "@/lib/history";
+import { downloadPredictionImage, getPredictionResponse, savePrediction } from "@/lib/history";
 import AuthModal from "./AuthModal";
 import ClusterAnalysisPanel from "./ClusterAnalysisPanel";
 import GenePopover, { type PopoverAnchor } from "./GenePopover";
@@ -71,6 +71,10 @@ export default function GeneXApp() {
   const [running, setRunning] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [uploaded, setUploaded] = useState<RunPayload | null>(null);
+  // History entries keep only a signed display URL; the original file is
+  // retrieved separately so Grad-CAM can re-tile the exact uploaded bytes.
+  const [originalImageStatus, setOriginalImageStatus] = useState<"idle" | "loading" | "failed">("idle");
+  const loadSeqRef = useRef(0);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | undefined>(undefined);
 
@@ -97,6 +101,8 @@ export default function GeneXApp() {
       }
       setModalOpen(false);
       setPopoverAnchor(null);
+      loadSeqRef.current++;
+      setOriginalImageStatus("idle");
       setUploaded(payload);
       setRunning(true);
       setReady(false);
@@ -134,10 +140,24 @@ export default function GeneXApp() {
 
   const loadFromHistory = useCallback(
     async (predictionId: string) => {
+      const seq = ++loadSeqRef.current;
       try {
-        const { response, imageUrl, filename } = await getPredictionResponse(predictionId);
+        const { response, imageUrl, imagePath, filename } = await getPredictionResponse(predictionId);
+        if (seq !== loadSeqRef.current) return;
         const converted = toPrediction(response);
         setUploaded({ name: filename ?? "—", sizeLabel: "—", url: imageUrl, file: null });
+        setOriginalImageStatus(imagePath ? "loading" : "failed");
+        if (imagePath) {
+          downloadPredictionImage(imagePath, filename)
+            .then((file) => {
+              if (seq !== loadSeqRef.current) return;
+              setUploaded((current) => (current ? { ...current, file } : current));
+              setOriginalImageStatus("idle");
+            })
+            .catch(() => {
+              if (seq === loadSeqRef.current) setOriginalImageStatus("failed");
+            });
+        }
         setPred(converted);
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setGenePage(0);
@@ -712,6 +732,7 @@ export default function GeneXApp() {
                 pred={pred}
                 ready={ready}
                 file={uploaded?.file ?? null}
+                fileStatus={originalImageStatus}
                 imageUrl={uploaded?.url}
                 hidden={view !== "gradcam"}
               />
