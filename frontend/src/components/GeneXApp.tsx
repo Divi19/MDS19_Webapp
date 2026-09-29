@@ -188,13 +188,10 @@ export default function GeneXApp() {
     [showToast],
   );
 
-  // Signed-in visitors are taken straight to History; everyone else is
-  // offered sign-in instead, and can continue without it.
+  // Signed-in visitors are taken straight to History; everyone else must
+  // sign in first, since History is a core part of the tutorial.
   const tutorialSteps = useMemo(
-    () =>
-      TUTORIAL_STEPS.filter((step) =>
-        user ? step.id !== "sign-in" : step.id !== "history-button" && step.id !== "history-entry",
-      ),
+    () => TUTORIAL_STEPS.filter((step) => step.id !== "sign-in" || !user),
     [user],
   );
 
@@ -240,10 +237,16 @@ export default function GeneXApp() {
   const tutorialIndex = tutorialSteps.findIndex((step) => step.id === tutorialStepId);
 
   const nextTutorialStep = useCallback(() => {
+    // Signing in is required to continue: Next opens the sign-in window, and
+    // the tutorial resumes at History once the visitor is signed in.
+    if (tutorialStepId === "sign-in" && !user) {
+      setAuthModalOpen(true);
+      return;
+    }
     const next = tutorialSteps[tutorialIndex + 1];
     if (next) goToTutorialStep(next.id);
     else endTutorial();
-  }, [endTutorial, goToTutorialStep, tutorialIndex, tutorialSteps]);
+  }, [endTutorial, goToTutorialStep, tutorialIndex, tutorialStepId, tutorialSteps, user]);
 
   const previousTutorialStep = useCallback(() => {
     const previous = tutorialSteps[tutorialIndex - 1];

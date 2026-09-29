@@ -72,7 +72,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
       "Saved analyses are stored per account. Sign in with the account provided to you to open the example analyses it contains.",
     ],
     actionHint:
-      "Select Sign in to open the example analyses; the tutorial resumes once you are signed in. Choose Next to continue without signing in.",
+      "Sign in to continue: select Sign in or Next. The tutorial resumes once you are signed in.",
   },
   {
     id: "history-button",
