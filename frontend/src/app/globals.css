@@ -536,3 +536,35 @@ body { background: var(--bg); font-size: 13px; }
   .col-1, .col-2 { border-right: 0; border-bottom: 1px solid #c5d0d7; }
   .col-3 { display: flex; min-height: 520px; }
 }
+
+.intake-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+.intake-note-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--border2);
+  border-radius: 50%;
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+}
+.cluster-analysis-header { display: flex; align-items: baseline; gap: 10px; }
+.cluster-analysis-sub { margin-top: 0; margin-left: auto; text-align: right; }
+@media (max-width: 1180px) {
+  .cluster-analysis-header { display: block; }
+  .cluster-analysis-sub { margin-top: 3px; text-align: left; }
+}

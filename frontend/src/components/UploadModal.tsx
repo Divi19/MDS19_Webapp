@@ -87,8 +87,8 @@ export default function UploadModal({
       <div className="modal" role="dialog" aria-modal="true">
         <div className="modal-header">
           <div>
-            <div className="pretitle">Step 1 · Input</div>
-            <h2>Upload an H&amp;E section</h2>
+            <div className="pretitle">Specimen intake · Step 1 of 2</div>
+            <h2>Load an H&amp;E section</h2>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -153,8 +153,13 @@ export default function UploadModal({
           </label>
 
           <button type="button" className="sample-link" onClick={loadSample} disabled={loadingSample}>
-            {loadingSample ? "Loading sample…" : "Don't have a section handy? Try a sample H&E image"}
+            {loadingSample ? "Loading reference section…" : "Use the reference H&E section instead"}
           </button>
+
+          <div className="intake-note">
+            <span className="intake-note-mark">i</span>
+            <span>Accepted for research review · TIFF, PNG, or JPEG · maximum 50 MB</span>
+          </div>
 
           <div className="preview-meta">
             <div className="meta-tile">
