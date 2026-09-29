@@ -568,3 +568,14 @@ body { background: var(--bg); font-size: 13px; }
   .cluster-analysis-header { display: block; }
   .cluster-analysis-sub { margin-top: 3px; text-align: left; }
 }
+
+/* Interaction polish */
+button, input, select { transition: border-color .14s ease, background-color .14s ease, color .14s ease, box-shadow .14s ease; }
+button:focus-visible, input:focus-visible, select:focus-visible { box-shadow: 0 0 0 3px rgba(23,107,131,.16); }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c2cfd6; border: 2px solid transparent; background-clip: padding-box; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #a9bac4; border: 2px solid transparent; background-clip: padding-box; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
