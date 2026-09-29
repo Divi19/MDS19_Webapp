@@ -380,3 +380,159 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 
 @media (max-width:1200px){.grid{grid-template-columns:300px 1fr 400px}}
 @media (max-width:980px){.grid{grid-template-columns:1fr;overflow-y:auto}.col{overflow:visible}.col-1,.col-2{border-right:none;border-bottom:1px solid var(--border)}.col-3{min-height:520px}.col-1 .gene-card{flex:none}.gene-grid{overflow:visible}}
+
+
+/* --------------------------------------------------------------------------
+   GeneX research console refresh
+   A quiet, instrument-like system: cool paper surfaces, explicit hierarchy,
+   and restrained color reserved for data and actions.
+   -------------------------------------------------------------------------- */
+:root {
+  --bg: #e8edf1;
+  --surface: #fdfefe;
+  --surface2: #f3f6f8;
+  --surface3: #e3e9ed;
+  --border: #cbd5dc;
+  --border2: #aebdc7;
+  --text: #17232d;
+  --muted: #60717c;
+  --muted2: #8a9aa5;
+  --accent: #176b83;
+  --accent-hover: #10586d;
+  --accent-soft: rgba(23, 107, 131, .09);
+  --accent-ring: rgba(23, 107, 131, .2);
+  --radius: 5px;
+  --radius-lg: 7px;
+  --shadow-sm: 0 1px 2px rgba(24, 43, 55, .06);
+  --shadow-md: 0 5px 16px rgba(24, 43, 55, .08);
+  --shadow-lg: 0 18px 45px rgba(24, 43, 55, .2);
+}
+
+body { background: var(--bg); font-size: 13px; }
+.app { background: var(--bg); }
+.header {
+  min-height: 64px;
+  padding: 10px 22px;
+  gap: 11px;
+  background: #f9fbfc;
+  border-bottom: 1px solid #b9c6ce;
+  box-shadow: 0 1px 0 rgba(255,255,255,.8);
+}
+.logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 5px;
+  background: #1a5168;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.16);
+}
+.logo svg { width: 19px; height: 19px; }
+.brand-lockup { display: flex; align-items: baseline; gap: 9px; min-width: 230px; }
+.app-title { font-size: 16px; letter-spacing: -.015em; color: #142d3b; }
+.app-subtitle {
+  color: var(--muted2);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-family: var(--mono);
+}
+.tutorial-launch {
+  position: static;
+  transform: none;
+  padding: 6px 11px;
+  border: 1px solid #c4d0d7;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.tutorial-launch:hover:not(:disabled) { background: var(--surface2); color: var(--accent); box-shadow: none; filter: none; }
+.tutorial-launch svg { width: 13px; height: 13px; }
+.workspace-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 4px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #aab7bf; }
+.status-dot.ready { background: #3b8f73; box-shadow: 0 0 0 3px rgba(59,143,115,.12); }
+.status-dot.busy { background: #c28b3f; animation: pulse 1.5s infinite; }
+.header-actions { gap: 7px; }
+.header-btn {
+  padding: 7px 11px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+}
+.header-btn:hover { background: var(--surface2); border-color: var(--border2); color: var(--text); }
+.account-avatar { width: 30px; height: 30px; border-radius: 4px; background: #2f6f84; }
+
+.grid { grid-template-columns: minmax(285px, 320px) minmax(450px, 1fr) minmax(325px, 390px); }
+.col { padding: 16px; gap: 12px; }
+.col-1 { border-right: 1px solid #c5d0d7; }
+.col-2 { background: #edf2f5; border-right: 1px solid #c5d0d7; }
+.col-3 { background: #f9fbfc; }
+.card { border-radius: 5px; padding: 13px; box-shadow: var(--shadow-sm); }
+.card-title { color: #29404d; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.card-title .meta { font-size: 9px; letter-spacing: .02em; text-transform: none; }
+.upload-action { gap: 6px; }
+.upload-btn { border-radius: 4px; padding: 10px 11px; background: var(--accent); box-shadow: none; font-size: 12px; }
+.upload-btn:hover { background: var(--accent-hover); }
+.replace-btn { border-radius: 4px; padding: 0 10px; font-size: 10px; }
+.input-image { border-radius: 4px; background: #e9eef1; }
+.alert { border-radius: 4px; }
+.metric-tile, .cluster-tile, .meta-tile { border-radius: 4px; }
+.gene-card { background: #fbfcfd; }
+.gene-tile { border-radius: 4px; }
+.gene-tile:hover, .gene-row:hover { background: #eef6f8; }
+.level-tag { border-radius: 3px; }
+.seg { border-radius: 4px; }
+.seg button { padding: 6px 11px; font-size: 11px; }
+.seg button.on { background: #e2f0f3; color: var(--accent); font-weight: 600; }
+.plot-card { background: #fbfcfd; }
+.plot-header { padding-bottom: 11px; border-bottom: 1px solid var(--border); }
+.plot-header h3 { font-size: 12px; }
+.canvas-wrap { border-radius: 4px; background: #f6f9fa; }
+.gsel { border-radius: 4px; font-size: 11px; }
+.cluster-card { padding-bottom: 12px; }
+.cluster-tile { background: #f4f7f8; }
+.cluster-analysis-header { padding: 16px 16px 13px; background: #f9fbfc; }
+.cluster-analysis-title { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+.cluster-analysis-list { padding: 12px; gap: 9px; }
+.cluster-analysis-box { border-radius: 4px; background: #f2f6f8; }
+.cluster-analysis-gene { border-radius: 3px; }
+.modal-backdrop { background: rgba(20, 36, 46, .48); }
+.modal { border-radius: 6px; }
+.modal-header { padding: 17px 20px; }
+.modal-header h2 { font-size: 15px; }
+.modal-footer { padding: 12px 20px; }
+.dropzone { border-radius: 5px; }
+.btn-secondary, .run-btn { border-radius: 4px; font-size: 12px; }
+.progress-card { border-radius: 6px; }
+
+@media (max-width: 1180px) {
+  .grid { grid-template-columns: 285px minmax(420px, 1fr) 320px; }
+  .brand-lockup { min-width: 185px; }
+  .app-subtitle { display: none; }
+}
+@media (max-width: 980px) {
+  .grid { grid-template-columns: 280px minmax(0, 1fr); }
+  .col-3 { display: none; }
+  .workspace-status { display: none; }
+}
+@media (max-width: 700px) {
+  .header { padding: 9px 13px; }
+  .tutorial-launch { display: none; }
+  .grid { display: flex; flex-direction: column; overflow: auto; }
+  .col { min-height: 440px; overflow: visible; }
+  .col-1, .col-2 { border-right: 0; border-bottom: 1px solid #c5d0d7; }
+  .col-3 { display: flex; min-height: 520px; }
+}

@@ -469,7 +469,10 @@ export default function GeneXApp() {
             <circle cx="18" cy="18" r="2.4" fill="#fff" />
           </svg>
         </div>
-        <div className="app-title">GeneX</div>
+        <div className="brand-lockup">
+          <div className="app-title">GeneX</div>
+          <div className="app-subtitle">Spatial expression workspace</div>
+        </div>
         <button
           className="tutorial-launch"
           onClick={() => goToTutorialStep("welcome")}
@@ -482,6 +485,10 @@ export default function GeneXApp() {
           </svg>
           Take the Tutorial
         </button>
+        <div className="workspace-status" aria-label="Workspace status">
+          <span className={`status-dot${running ? " busy" : ready ? " ready" : ""}`} />
+          <span>{running ? "Analysis running" : ready ? "Workspace ready" : "Awaiting section"}</span>
+        </div>
         <div className="header-spacer" />
         <div className="header-actions" data-tour="header-actions">
           <button
