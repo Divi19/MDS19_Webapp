@@ -14,7 +14,9 @@ import HistoryPanel from "./HistoryPanel";
 import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
+import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
+import { TUTORIAL_STEPS } from "@/lib/tutorial";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -77,6 +79,11 @@ export default function GeneXApp() {
   const loadSeqRef = useRef(0);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | undefined>(undefined);
+  // Guided tutorial: the current step's id, or null when it is closed.
+  // Suspended while the sign-in window it opened is showing.
+  const [tutorialStepId, setTutorialStepId] = useState<string | null>(null);
+  const [tutorialSuspended, setTutorialSuspended] = useState(false);
+  const tutorialActiveRef = useRef(false);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -101,6 +108,7 @@ export default function GeneXApp() {
       }
       setModalOpen(false);
       setPopoverAnchor(null);
+      setTutorialStepId(null);
       loadSeqRef.current++;
       setOriginalImageStatus("idle");
       setUploaded(payload);
@@ -173,15 +181,97 @@ export default function GeneXApp() {
     [showToast],
   );
 
-  // auto-open the upload modal shortly after load (matches the mock-up)
+  // Signed-in visitors are taken straight to History; everyone else is
+  // offered sign-in instead, and can continue without it.
+  const tutorialSteps = useMemo(
+    () =>
+      TUTORIAL_STEPS.filter((step) =>
+        user ? step.id !== "sign-in" : step.id !== "history-button" && step.id !== "history-entry",
+      ),
+    [user],
+  );
+
+  /** Moves the tutorial to a step, first putting the page into the state
+   * that step describes (open windows, active view, gene popover). */
+  const goToTutorialStep = useCallback(
+    (id: string) => {
+      setAccountMenuOpen(false);
+      setGeneMenuOpen(false);
+      setHistoryOpen(id === "history-entry");
+      setModalOpen(id === "upload-window" || id === "upload-run");
+      setPopoverAnchor(null);
+      if (id === "spatial-map") changeView("clusters");
+      if (id === "genes-view") changeView("genes");
+      if (id === "gradcam") changeView("gradcam");
+      if (id === "gene-reference") {
+        const chip = document.querySelector<HTMLElement>('[data-tour="cluster-analysis"] .cluster-analysis-gene');
+        if (chip?.textContent) {
+          const rect = chip.getBoundingClientRect();
+          setPopoverAnchor({ gene: chip.textContent, x: rect.left, top: rect.top, bottom: rect.bottom });
+        }
+      }
+      setTutorialSuspended(false);
+      setTutorialStepId(id);
+    },
+    [changeView],
+  );
+
+  const endTutorial = useCallback(() => {
+    setTutorialStepId(null);
+    setTutorialSuspended(false);
+    setHistoryOpen(false);
+    setModalOpen(false);
+    setPopoverAnchor(null);
+  }, []);
+
+  const tutorialIndex = tutorialSteps.findIndex((step) => step.id === tutorialStepId);
+
+  const nextTutorialStep = useCallback(() => {
+    const next = tutorialSteps[tutorialIndex + 1];
+    if (next) goToTutorialStep(next.id);
+    else endTutorial();
+  }, [endTutorial, goToTutorialStep, tutorialIndex, tutorialSteps]);
+
+  const previousTutorialStep = useCallback(() => {
+    const previous = tutorialSteps[tutorialIndex - 1];
+    if (previous) goToTutorialStep(previous.id);
+  }, [goToTutorialStep, tutorialIndex, tutorialSteps]);
+
+  const handleTutorialTargetActivated = useCallback(
+    (stepId: string) => {
+      if (stepId === tutorialStepId) nextTutorialStep();
+    },
+    [nextTutorialStep, tutorialStepId],
+  );
+
+  // The Sign in step's window sits beneath the tutorial layer, so the
+  // tutorial steps aside while it is open, then resumes at History once
+  // the visitor is signed in, or back at the Sign in step if they close it.
   useEffect(() => {
-    const t = window.setTimeout(() => setModalOpen(true), 350);
+    if (tutorialStepId !== "sign-in") return;
+    if (user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resuming the tutorial once the auth state it was waiting on arrives
+      goToTutorialStep("history-button");
+    } else {
+      setTutorialSuspended(authModalOpen);
+    }
+  }, [authModalOpen, goToTutorialStep, tutorialStepId, user]);
+
+  useEffect(() => {
+    tutorialActiveRef.current = tutorialStepId !== null && !tutorialSuspended;
+  }, [tutorialStepId, tutorialSuspended]);
+
+  // Offer the tutorial shortly after the page loads. The upload window is
+  // one step away from the tutorial, or from the Upload button.
+  useEffect(() => {
+    const t = window.setTimeout(() => setTutorialStepId("welcome"), 350);
     return () => window.clearTimeout(t);
   }, []);
 
   // keyboard: Esc closes, U opens
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (tutorialActiveRef.current) return;
       if (e.key === "Escape") setModalOpen(false);
       const tag = (document.activeElement?.tagName ?? "").toUpperCase();
       if ((e.key === "u" || e.key === "U") && tag !== "INPUT" && tag !== "TEXTAREA") {
@@ -344,73 +434,87 @@ export default function GeneXApp() {
           </svg>
         </div>
         <div className="app-title">GeneX</div>
-        <div className="header-spacer" />
         <button
-          className="header-btn"
-          onClick={() => {
-            if (!ready || !pred.topGenes.length) {
-              showToast("Run a section first");
-              return;
-            }
-            exportGeneExpressionExcel(pred, uploaded?.file?.name);
-            showToast(`Exported ${pred.topGenes.length} genes to Excel`);
-          }}
+          className="tutorial-launch"
+          onClick={() => goToTutorialStep("welcome")}
+          disabled={running}
+          title="Start a guided tutorial of the workspace"
         >
-          Export
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+          </svg>
+          Take the Tutorial
         </button>
-        {authEnabled && user ? (
-          <>
-            <button className="header-btn" onClick={() => setHistoryOpen(true)}>
-              History
-            </button>
-            <div className="account-menu-wrap" ref={accountMenuRef}>
-              <button
-                className="account-avatar"
-                onClick={() => setAccountMenuOpen((v) => !v)}
-                aria-label="Account menu"
-                aria-expanded={accountMenuOpen}
-                title={user.email ?? undefined}
-              >
-                {(user.email?.[0] ?? "?").toUpperCase()}
-              </button>
-              {accountMenuOpen && (
-                <div className="account-menu" role="menu">
-                  <div className="account-menu-email">{user.email}</div>
-                  <button
-                    className="account-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setProfileOpen(true);
-                      setAccountMenuOpen(false);
-                    }}
-                  >
-                    Profile
-                  </button>
-                  <button
-                    className="account-menu-item danger"
-                    role="menuitem"
-                    onClick={() => {
-                      signOut();
-                      setAccountMenuOpen(false);
-                    }}
-                  >
-                    Sign out
-                  </button>
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <button className="header-btn" onClick={() => setAuthModalOpen(true)}>
-            Sign in
+        <div className="header-spacer" />
+        <div className="header-actions" data-tour="header-actions">
+          <button
+            className="header-btn"
+            onClick={() => {
+              if (!ready || !pred.topGenes.length) {
+                showToast("Run a section first");
+                return;
+              }
+              exportGeneExpressionExcel(pred, uploaded?.file?.name);
+              showToast(`Exported ${pred.topGenes.length} genes to Excel`);
+            }}
+          >
+            Export
           </button>
-        )}
+          {authEnabled && user ? (
+            <>
+              <button className="header-btn" data-tour="history" onClick={() => setHistoryOpen(true)}>
+                History
+              </button>
+              <div className="account-menu-wrap" ref={accountMenuRef}>
+                <button
+                  className="account-avatar"
+                  onClick={() => setAccountMenuOpen((v) => !v)}
+                  aria-label="Account menu"
+                  aria-expanded={accountMenuOpen}
+                  title={user.email ?? undefined}
+                >
+                  {(user.email?.[0] ?? "?").toUpperCase()}
+                </button>
+                {accountMenuOpen && (
+                  <div className="account-menu" role="menu">
+                    <div className="account-menu-email">{user.email}</div>
+                    <button
+                      className="account-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setProfileOpen(true);
+                        setAccountMenuOpen(false);
+                      }}
+                    >
+                      Profile
+                    </button>
+                    <button
+                      className="account-menu-item danger"
+                      role="menuitem"
+                      onClick={() => {
+                        signOut();
+                        setAccountMenuOpen(false);
+                      }}
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <button className="header-btn" data-tour="sign-in" onClick={() => setAuthModalOpen(true)}>
+              Sign in
+            </button>
+          )}
+        </div>
       </header>
 
       <main className="grid">
         {/* Column 1 — input + prediction */}
         <div className="col col-1">
-          <div className="upload-action">
+          <div className="upload-action" data-tour="upload-action">
             <button className="upload-btn" onClick={() => setModalOpen(true)}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -433,7 +537,7 @@ export default function GeneXApp() {
             </button>
           </div>
 
-          <div className="card input-card">
+          <div className="card input-card" data-tour="input-card">
             <div className="card-title">
               Input section
               <span className="meta">{ready ? fileName : "no file loaded"}</span>
@@ -473,7 +577,7 @@ export default function GeneXApp() {
             )}
           </div>
 
-          <div className="card gene-card">
+          <div className="card gene-card" data-tour="gene-list">
             <div className="card-title">
               Predicted Gene Expression
             </div>
@@ -518,8 +622,13 @@ export default function GeneXApp() {
 
                 return geneView === "cards" ? (
                   <div className="gene-grid" ref={geneListRef}>
-                    {genePageRows.map((g) => (
-                      <button key={g.name} className="gene-tile" onClick={(e) => pick(g, e)}>
+                    {genePageRows.map((g, index) => (
+                      <button
+                        key={g.name}
+                        className="gene-tile"
+                        data-tour={index === 0 ? "gene-first" : undefined}
+                        onClick={(e) => pick(g, e)}
+                      >
                         <div
                           className="gene-tile-swatch"
                           style={{ background: viridis(g.value / max) }}
@@ -540,8 +649,13 @@ export default function GeneXApp() {
                       <span>Expression</span>
                       <span>Level</span>
                     </div>
-                    {genePageRows.map((g) => (
-                      <button key={g.name} className="gene-row" onClick={(e) => pick(g, e)}>
+                    {genePageRows.map((g, index) => (
+                      <button
+                        key={g.name}
+                        className="gene-row"
+                        data-tour={index === 0 ? "gene-first" : undefined}
+                        onClick={(e) => pick(g, e)}
+                      >
                         <span className="gene-name">{g.name}</span>
                         <span className="gene-value">{g.value.toFixed(2)}</span>
                         <span className="bar-track">
@@ -613,7 +727,7 @@ export default function GeneXApp() {
 
         {/* Column 2 — spatial map + clustering */}
         <div className="col col-2">
-          <div className="card plot-card">
+          <div className="card plot-card" data-tour="plot-card">
             <div className="plot-header">
               <div className="seg">
                 <button
@@ -749,7 +863,7 @@ export default function GeneXApp() {
             )}
           </div>
 
-          <div className="card cluster-card">
+          <div className="card cluster-card" data-tour="cluster-breakdown">
             <div className="card-title">
               Cluster breakdown
               <span className="meta">click a gene row or legend to explore</span>
@@ -807,6 +921,23 @@ export default function GeneXApp() {
       <ProfilePanel open={profileOpen} onClose={() => setProfileOpen(false)} />
       <GenePopover anchor={popoverAnchor} onClose={() => setPopoverAnchor(null)} />
       <div className={`toast${toast ? " show" : ""}`}>{toast}</div>
+      {tutorialStepId && !tutorialSuspended && tutorialIndex >= 0 && (() => {
+        const step = tutorialSteps[tutorialIndex];
+        const chapterSteps = tutorialSteps.filter((item) => item.chapter === step.chapter);
+        return (
+          <TutorialOverlay
+            step={step}
+            stepNumber={tutorialIndex + 1}
+            stepCount={tutorialSteps.length}
+            chapterStepNumber={chapterSteps.indexOf(step) + 1}
+            chapterStepCount={chapterSteps.length}
+            onNext={nextTutorialStep}
+            onBack={previousTutorialStep}
+            onSkip={endTutorial}
+            onTargetActivated={handleTutorialTargetActivated}
+          />
+        );
+      })()}
     </div>
   );
 }
