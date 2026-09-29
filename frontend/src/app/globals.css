@@ -339,7 +339,10 @@ canvas{display:block;width:100%;height:auto}
    arrow and card share one transition so they move between steps together. */
 .tutorial-layer{position:fixed;inset:0;z-index:1000;pointer-events:none}
 .tutorial-dim{display:none;position:fixed;inset:0;background:rgba(15,20,30,.58)}
-.tutorial-focus{display:none;position:fixed;top:0;left:0;transition:transform .25s ease,width .25s ease,height .25s ease;will-change:transform}
+/* No will-change here: the spotlight's full-screen shadow would make a
+   promoted layer enormous, and re-rasterising it on every frame of a resize
+   is far slower than painting it normally. */
+.tutorial-focus{display:none;position:fixed;top:0;left:0;transition:transform .25s ease,width .25s ease,height .25s ease}
 .tutorial-spotlight{position:absolute;inset:0;border-radius:12px;box-shadow:0 0 0 9999px rgba(15,20,30,.58)}
 /* The pulse lives on its own layer and animates only transform and opacity,
    so it never forces the full-screen dim to be redrawn. */
