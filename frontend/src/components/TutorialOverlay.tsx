@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TUTORIAL_CHAPTERS, type TutorialPlacement, type TutorialStep } from "@/lib/tutorial";
 
 interface Box {
@@ -15,6 +15,9 @@ interface Box {
 const PAD = 6;
 const GAP = 56;
 const MARGIN = 12;
+const ARROW_SIZE = 40;
+// How far the pulsing ring grows beyond the spotlight on each side.
+const RING_GROWTH = 8;
 
 /** All elements marked for a step. A step can highlight several at once
  * (e.g. the first few history entries); the spotlight covers them all. */
@@ -23,14 +26,17 @@ function findTargets(target: string | undefined): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`));
 }
 
-function sameBox(a: Box | null, b: Box | null) {
-  if (!a || !b) return a === b;
-  return (
-    Math.abs(a.top - b.top) < 0.5 &&
-    Math.abs(a.left - b.left) < 0.5 &&
-    Math.abs(a.width - b.width) < 0.5 &&
-    Math.abs(a.height - b.height) < 0.5
-  );
+/** Bounding box of every visible element marked for the step. */
+function measureTargets(target: string | undefined): Box | null {
+  const rects = findTargets(target)
+    .map((element) => element.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+  if (!rects.length) return null;
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  return { top, left, width: right - left, height: bottom - top };
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -102,6 +108,22 @@ function placeCard(box: Box, card: { width: number; height: number }, preferred?
 // Rotation that points the (upward-drawn) arrow at the element.
 const ARROW_ROTATION: Record<TutorialPlacement, number> = { bottom: 0, top: 180, right: -90, left: 90 };
 
+/** Moves an element by transform, optionally without its CSS transition —
+ * used when an element first appears, so it doesn't glide in from wherever
+ * it was last shown. */
+function moveTo(element: HTMLElement, x: number, y: number, instant: boolean) {
+  if (instant) element.style.transition = "none";
+  element.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+  if (instant) {
+    void element.offsetWidth;
+    element.style.transition = "";
+  }
+}
+
+function show(element: HTMLElement, visible: boolean) {
+  element.style.display = visible ? "block" : "none";
+}
+
 export default function TutorialOverlay({
   step,
   stepNumber,
@@ -127,56 +149,147 @@ export default function TutorialOverlay({
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const primaryRef = useRef<HTMLButtonElement>(null);
-  const [box, setBox] = useState<Box | null>(null);
-  const [cardSize, setCardSize] = useState({ width: 360, height: 220 });
-  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const focusRef = useRef<HTMLDivElement>(null);
+  const ringRef = useRef<HTMLDivElement>(null);
+  const dimRef = useRef<HTMLDivElement>(null);
+  const fullBlockerRef = useRef<HTMLDivElement>(null);
+  const blockerRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const arrowRef = useRef<HTMLDivElement>(null);
+  const arrowInnerRef = useRef<HTMLDivElement>(null);
+  const lastLayout = useRef("");
+  const cardPlaced = useRef(false);
+  // Only used to choose between the action hint and the missing-target
+  // note; everything positional is applied to the DOM directly.
+  const [targetFound, setTargetFound] = useState(true);
 
   const isFirst = stepNumber === 1;
   const isLast = stepNumber === stepCount;
+  const interactive = Boolean(step.interaction);
+
+  /** Positions the spotlight, blockers, arrow and card for the current
+   * frame. Writes styles directly rather than through React state, so
+   * tracking a moving element never re-renders the tutorial. */
+  const applyLayout = useCallback(
+    (force: boolean) => {
+      const card = cardRef.current;
+      const focus = focusRef.current;
+      const ring = ringRef.current;
+      const dim = dimRef.current;
+      const fullBlocker = fullBlockerRef.current;
+      const arrow = arrowRef.current;
+      const arrowInner = arrowInnerRef.current;
+      if (!card || !focus || !ring || !dim || !fullBlocker || !arrow || !arrowInner) return;
+
+      const box = measureTargets(step.target);
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const cardWidth = card.offsetWidth;
+      const cardHeight = card.offsetHeight;
+      const signature = [
+        box ? [box.top, box.left, box.width, box.height].map((value) => value.toFixed(1)).join(",") : "none",
+        cardWidth,
+        cardHeight,
+        vw,
+        vh,
+      ].join("|");
+      if (!force && signature === lastLayout.current) return;
+      lastLayout.current = signature;
+      setTargetFound(Boolean(box) || !step.target);
+
+      const hole = box
+        ? { top: box.top - PAD, left: box.left - PAD, width: box.width + PAD * 2, height: box.height + PAD * 2 }
+        : null;
+
+      // Spotlight, or a plain dim when there is nothing to highlight.
+      if (hole) {
+        const appearing = focus.style.display !== "block";
+        if (appearing) focus.style.transition = "none";
+        focus.style.width = `${hole.width}px`;
+        focus.style.height = `${hole.height}px`;
+        moveTo(focus, hole.left, hole.top, appearing);
+        ring.style.setProperty("--ring-sx", String((hole.width + RING_GROWTH * 2) / hole.width));
+        ring.style.setProperty("--ring-sy", String((hole.height + RING_GROWTH * 2) / hole.height));
+        show(focus, true);
+        show(dim, false);
+      } else {
+        show(focus, false);
+        show(dim, true);
+      }
+
+      // Click blockers: the whole page, or everything around the highlighted
+      // element when the step lets the user interact with it.
+      const passThrough = Boolean(hole && interactive);
+      show(fullBlocker, !passThrough);
+      const around = hole
+        ? [
+            { top: 0, left: 0, width: vw, height: Math.max(0, hole.top) },
+            { top: hole.top + hole.height, left: 0, width: vw, height: Math.max(0, vh - hole.top - hole.height) },
+            { top: hole.top, left: 0, width: Math.max(0, hole.left), height: hole.height },
+            { top: hole.top, left: hole.left + hole.width, width: Math.max(0, vw - hole.left - hole.width), height: hole.height },
+          ]
+        : [];
+      blockerRefs.current.forEach((blocker, index) => {
+        if (!blocker) return;
+        show(blocker, passThrough);
+        const rect = around[index];
+        if (passThrough && rect) {
+          blocker.style.top = `${rect.top}px`;
+          blocker.style.left = `${rect.left}px`;
+          blocker.style.width = `${rect.width}px`;
+          blocker.style.height = `${rect.height}px`;
+        }
+      });
+
+      // Card beside the element, or centred when there is none.
+      const placement = hole ? placeCard(hole, { width: cardWidth, height: cardHeight }, step.placement) : null;
+      const cardLeft = placement ? placement.left : Math.max(MARGIN, (vw - cardWidth) / 2);
+      const cardTop = placement ? placement.top : Math.max(MARGIN, (vh - cardHeight) / 2);
+      moveTo(card, cardLeft, cardTop, !cardPlaced.current);
+      cardPlaced.current = true;
+
+      // Arrow in the gap between the card and the element.
+      if (placement?.side) {
+        const appearing = arrow.style.display !== "block";
+        moveTo(arrow, placement.arrowX - ARROW_SIZE / 2, placement.arrowY - ARROW_SIZE / 2, appearing);
+        arrowInner.style.transform = `rotate(${ARROW_ROTATION[placement.side]}deg)`;
+        show(arrow, true);
+      } else {
+        show(arrow, false);
+      }
+    },
+    [interactive, step.placement, step.target],
+  );
+
+  // Lay out before the browser paints a new step, so the card is never
+  // shown at a position computed for the previous step's content.
+  useLayoutEffect(() => {
+    applyLayout(true);
+  }, [applyLayout, step.id]);
 
   // Track the highlighted element every frame: it can move or resize as
-  // modals open, data loads or the window changes, and polling is cheaper
-  // and more reliable than observing every possible cause.
+  // modals open, data loads or the window changes. Styles are only written
+  // when something actually moved.
   useEffect(() => {
     let frame = 0;
-    let scrolled = false;
-    let lastBox: Box | null = null;
     const tick = () => {
-      const rects = findTargets(step.target)
-        .map((element) => element.getBoundingClientRect())
-        .filter((rect) => rect.width > 0 && rect.height > 0);
-      let next: Box | null = null;
-      if (rects.length) {
-        const top = Math.min(...rects.map((rect) => rect.top));
-        const left = Math.min(...rects.map((rect) => rect.left));
-        const bottom = Math.max(...rects.map((rect) => rect.bottom));
-        const right = Math.max(...rects.map((rect) => rect.right));
-        next = { top, left, width: right - left, height: bottom - top };
-        if (!scrolled) {
-          scrolled = true;
-          findTargets(step.target)[0]?.scrollIntoView({ block: "nearest", inline: "nearest" });
-        }
-      }
-      if (!sameBox(next, lastBox)) {
-        lastBox = next;
-        setBox(next);
-      }
-      const card = cardRef.current;
-      if (card) {
-        const width = card.offsetWidth;
-        const height = card.offsetHeight;
-        setCardSize((current) => (current.width === width && current.height === height ? current : { width, height }));
-      }
-      setViewport((current) =>
-        current.width === window.innerWidth && current.height === window.innerHeight
-          ? current
-          : { width: window.innerWidth, height: window.innerHeight },
-      );
+      applyLayout(false);
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [step.target]);
+  }, [applyLayout]);
+
+  // Scroll the highlighted element into view once per step.
+  useEffect(() => {
+    let frame = 0;
+    const scrollWhenFound = () => {
+      const [element] = findTargets(step.target);
+      if (element) element.scrollIntoView({ block: "nearest", inline: "nearest" });
+      else if (step.target) frame = requestAnimationFrame(scrollWhenFound);
+    };
+    scrollWhenFound();
+    return () => cancelAnimationFrame(frame);
+  }, [step.id, step.target]);
 
   // Clicks on the highlighted element of an "advance" step move the tutorial
   // on. Deferred so the page's own click handler runs first.
@@ -227,24 +340,7 @@ export default function TutorialOverlay({
     return () => window.removeEventListener("keydown", handleKey, true);
   }, [isFirst, onBack, onSkip]);
 
-  const hasTarget = Boolean(step.target && box);
-  const hole = box
-    ? {
-        top: box.top - PAD,
-        left: box.left - PAD,
-        width: box.width + PAD * 2,
-        height: box.height + PAD * 2,
-      }
-    : null;
-  const placement =
-    hole && viewport.width ? placeCard(hole, cardSize, step.placement) : null;
-  const interactive = hasTarget && Boolean(step.interaction);
-
-  const cardStyle: React.CSSProperties = placement
-    ? { left: placement.left, top: placement.top }
-    : { left: "50%", top: "50%", transform: "translate(-50%, -50%)" };
-
-  const hint = step.target && !box ? step.missingTargetNote : step.actionHint;
+  const hint = step.target && !targetFound ? step.missingTargetNote : step.actionHint;
   const primaryLabel = isFirst ? "Begin tutorial" : isLast ? "Finish tutorial" : "Next";
 
   return (
@@ -254,44 +350,34 @@ export default function TutorialOverlay({
       // from reacting to clicks on the tutorial itself.
       onMouseDown={(event) => event.stopPropagation()}
     >
-      {hole ? (
+      <div ref={dimRef} className="tutorial-dim" />
+      <div ref={focusRef} className="tutorial-focus">
+        <div className="tutorial-spotlight" />
+        <div ref={ringRef} className="tutorial-ring" />
+      </div>
+
+      <div ref={fullBlockerRef} className="tutorial-blocker tutorial-blocker-full" />
+      {[0, 1, 2, 3].map((index) => (
         <div
-          className="tutorial-spotlight"
-          style={{ top: hole.top, left: hole.left, width: hole.width, height: hole.height }}
+          key={index}
+          ref={(element) => {
+            blockerRefs.current[index] = element;
+          }}
+          className="tutorial-blocker"
         />
-      ) : (
-        <div className="tutorial-dim" />
-      )}
+      ))}
 
-      {/* Click blockers: the whole page, or everything except the highlighted
-          element when the step lets the user interact with it. */}
-      {interactive && hole ? (
-        <>
-          <div className="tutorial-blocker" style={{ top: 0, left: 0, right: 0, height: Math.max(0, hole.top) }} />
-          <div className="tutorial-blocker" style={{ top: hole.top + hole.height, left: 0, right: 0, bottom: 0 }} />
-          <div className="tutorial-blocker" style={{ top: hole.top, left: 0, width: Math.max(0, hole.left), height: hole.height }} />
-          <div className="tutorial-blocker" style={{ top: hole.top, left: hole.left + hole.width, right: 0, height: hole.height }} />
-        </>
-      ) : (
-        <div className="tutorial-blocker" style={{ inset: 0 }} />
-      )}
-
-      {placement?.side && (
-        <div
-          className="tutorial-arrow"
-          style={{ left: placement.arrowX, top: placement.arrowY, transform: `translate(-50%, -50%) rotate(${ARROW_ROTATION[placement.side]}deg)` }}
-          aria-hidden="true"
-        >
+      <div ref={arrowRef} className="tutorial-arrow" aria-hidden="true">
+        <div ref={arrowInnerRef} className="tutorial-arrow-rotate">
           <svg viewBox="0 0 32 32" fill="none">
             <path d="M16 3 L29 17 H20.5 V29 H11.5 V17 H3 Z" fill="currentColor" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" />
           </svg>
         </div>
-      )}
+      </div>
 
       <div
         ref={cardRef}
         className="tutorial-card"
-        style={cardStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="tutorial-title"
