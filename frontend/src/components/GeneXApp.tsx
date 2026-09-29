@@ -16,6 +16,8 @@ import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
 import StatusBar from "./StatusBar";
 import ColorBar from "./ColorBar";
+import { downloadPredictionCsv } from "@/lib/exportCsv";
+import type { PredictionResponse } from "@/lib/api";
 import { COLORMAP_NAMES, colormap, type ColormapName } from "@/lib/colormaps";
 import ThemeToggle from "./ThemeToggle";
 import TutorialOverlay from "./TutorialOverlay";
@@ -83,6 +85,7 @@ export default function GeneXApp() {
   // retrieved separately so Grad-CAM can re-tile the exact uploaded bytes.
   const [originalImageStatus, setOriginalImageStatus] = useState<"idle" | "loading" | "failed">("idle");
   const loadSeqRef = useRef(0);
+  const rawResponseRef = useRef<PredictionResponse | null>(null);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | undefined>(undefined);
   // Guided tutorial: the current step's id, or null when it is closed.
@@ -129,6 +132,7 @@ export default function GeneXApp() {
         setStepIndex(1);
         const response = await predict(payload.file);
         setStepIndex(5);
+        rawResponseRef.current = response;
         const converted = toPrediction(response);
         setPred(converted);
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
@@ -163,6 +167,7 @@ export default function GeneXApp() {
       try {
         const { response, imageUrl, imagePath, filename } = await getPredictionResponse(predictionId);
         if (seq !== loadSeqRef.current) return;
+        rawResponseRef.current = response;
         const converted = toPrediction(response);
         setUploaded({ name: filename ?? "—", sizeLabel: "—", url: imageUrl, file: null });
         setOriginalImageStatus(imagePath ? "loading" : "failed");
@@ -509,6 +514,21 @@ export default function GeneXApp() {
             }}
           >
             Export
+          </button>
+          <button
+            className="header-btn"
+            title="Download spot-level predictions (spot_index, x, y, one column per gene)"
+            onClick={() => {
+              const response = rawResponseRef.current;
+              if (!ready || !response) {
+                showToast("Run a section first");
+                return;
+              }
+              downloadPredictionCsv(response, uploaded?.file?.name ?? uploaded?.name);
+              showToast(`Exported ${response.spots.length} spots to CSV`);
+            }}
+          >
+            CSV
           </button>
           <ThemeToggle />
           {authEnabled && user ? (
