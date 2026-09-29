@@ -1,19 +1,27 @@
 :root{
-  --bg:#f4f1ec; --surface:#ffffff; --surface2:#f6f3ed; --surface3:#ebe6dc;
-  --border:#d9d2c4; --border2:#c4bba8; --text:#1a1f2b; --muted:#6b6a64; --muted2:#9a978d;
-  --accent:#0c7a8a; --accent-hover:#0a6675; --accent-soft:rgba(12,122,138,.08); --accent-ring:rgba(12,122,138,.22);
+  /* Cool, clinical neutral scale — calm and credible, built on a slate base.
+     Backgrounds read as instrument-grade off-white rather than warm paper. */
+  --bg:#eaeef4; --surface:#ffffff; --surface2:#f5f7fb; --surface3:#e8edf4;
+  --border:#e3e8f0; --border2:#cad3e0; --text:#0f1729; --muted:#586074; --muted2:#8b95a8;
+  /* Single confident accent: a deep indigo-blue drawn from the viridis family
+     the tool already visualises, so the chrome and the science share a hue. */
+  --accent:#3a4fb0; --accent-hover:#2f4090; --accent-soft:rgba(58,79,176,.07); --accent-ring:rgba(58,79,176,.20);
+  --accent-grad:linear-gradient(140deg,#4257bd 0%,#33448f 100%);
   --c0:#1f77b4; --c1:#ff7f0e; --c2:#2ca02c; --c3:#d62728; --c4:#9467bd;
-  --radius:8px; --radius-lg:12px;
-  --shadow-sm:0 1px 2px rgba(26,31,43,.05); --shadow-md:0 4px 16px rgba(26,31,43,.07); --shadow-lg:0 12px 40px rgba(26,31,43,.18);
+  --danger:#c0392b; --danger-soft:rgba(192,57,43,.08);
+  --radius:9px; --radius-lg:14px;
+  --shadow-sm:0 1px 2px rgba(15,23,42,.05),0 1px 1px rgba(15,23,42,.03);
+  --shadow-md:0 8px 20px -8px rgba(15,23,42,.14),0 2px 6px -3px rgba(15,23,42,.07);
+  --shadow-lg:0 28px 64px -18px rgba(15,23,42,.30),0 10px 24px -12px rgba(15,23,42,.16);
   --mono:var(--font-jetbrains-mono),'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
   --sans:var(--font-inter),'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;font-feature-settings:"cv05" 1,"cv08" 1}
 button,input,textarea{font-family:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.app{height:100vh;display:flex;flex-direction:column}
+.app{height:100vh;display:flex;flex-direction:column;background:var(--bg)}
 
 /* header */
 .header{display:flex;align-items:center;gap:12px;padding:11px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
