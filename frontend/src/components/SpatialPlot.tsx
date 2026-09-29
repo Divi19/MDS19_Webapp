@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
+import { cssVar, useTheme } from "@/lib/theme";
 
 const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -71,6 +72,7 @@ export default function SpatialPlot({
   const [height, setHeight] = useState(0);
   const [imgTick, setImgTick] = useState(0);
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const theme = useTheme();
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -150,7 +152,7 @@ export default function SpatialPlot({
       if (showImage) {
         ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
       } else {
-        ctx.fillStyle = "#faf8f3";
+        ctx.fillStyle = cssVar("--canvas-bg", "#fff");
         ctx.fillRect(0, 0, w, h);
       }
 
@@ -177,7 +179,9 @@ export default function SpatialPlot({
     const pw = w - mL - mR;
     const ph = h - mT - mB;
 
-    ctx.strokeStyle = "#efeae0";
+    ctx.fillStyle = cssVar("--canvas-bg", "#fff");
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = cssVar("--canvas-grid", "#eceff3");
     ctx.lineWidth = 1;
     for (let i = 1; i < 10; i++) {
       const x = mL + (i / 10) * pw;
@@ -193,14 +197,14 @@ export default function SpatialPlot({
       ctx.lineTo(mL + pw, y);
       ctx.stroke();
     }
-    ctx.strokeStyle = "#c4bba8";
+    ctx.strokeStyle = cssVar("--canvas-axis", "#bfc5ce");
     ctx.beginPath();
     ctx.moveTo(mL, mT);
     ctx.lineTo(mL, mT + ph);
     ctx.lineTo(mL + pw, mT + ph);
     ctx.stroke();
 
-    ctx.fillStyle = "#9a978d";
+    ctx.fillStyle = cssVar("--canvas-label", "#656d79");
     ctx.font = `9px ${MONO}`;
     ctx.textAlign = "center";
     ctx.fillText("spatial1", mL + pw / 2, h - 6);
@@ -222,7 +226,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage]);
+  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, theme]);
 
   useEffect(() => {
     draw();

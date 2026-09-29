@@ -46,7 +46,7 @@ export default function UploadModal({
       const blob = await res.blob();
       handleFile(new File([blob], "sample-he-section.jpg", { type: blob.type || "image/jpeg" }));
     } catch {
-      setStatus({ text: "Couldn't load the sample image", color: "#c0392b" });
+      setStatus({ text: "Couldn't load the sample image", color: "var(--danger)" });
     } finally {
       setLoadingSample(false);
     }
@@ -56,7 +56,7 @@ export default function UploadModal({
     if (!f) return;
     if (f.size > 50 * 1024 * 1024) {
       setFile(null);
-      setStatus({ text: "Too large (50 MB max)", color: "#c0392b" });
+      setStatus({ text: "Too large (50 MB max)", color: "var(--danger)" });
       return;
     }
     setFile(f);
