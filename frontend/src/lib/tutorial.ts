@@ -58,9 +58,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     chapter: 1,
     title: "Welcome to GeneX",
     body: [
-      "GeneX predicts spatial gene expression from H&E-stained histology images using the mclSTExp model, trained on HER2-positive breast cancer tissue.",
-      "This tutorial introduces each part of the workspace in five short chapters and takes approximately two minutes. You can leave at any time and restart it from the Take the Tutorial button at the top of the page.",
-      "All values shown are model predictions for research use. They are not laboratory measurements.",
+      "GeneX predicts spatial gene expression from H&E images of HER2-positive breast cancer tissue. All values are model predictions for research use, not laboratory measurements.",
+      "This two-minute tutorial has five short chapters. You can restart it at any time from Take the Tutorial.",
     ],
   },
   {
@@ -113,9 +112,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: "plot-card",
     title: "Spatial map",
     body: [
-      "The tissue is divided into 224 × 224 pixel tiles, and each point on the map represents one tile. The model predicts the expression of 785 genes for every tile.",
-      "In the Clusters view, tiles with similar predicted expression profiles are grouped into five clusters and coloured accordingly. Hover over a point to see its details.",
-      "The tabs above the map switch between the Clusters, Genes and Grad-CAM views.",
+      "Each point is one tile of tissue, with 785 genes predicted for it. In the Clusters view, tiles with similar predictions share a colour. Hover over a point for details.",
+      "The tabs above switch between the Clusters, Genes and Grad-CAM views.",
     ],
   },
   {
@@ -133,8 +131,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: "cluster-analysis",
     title: "Cluster analysis",
     body: [
-      "For each cluster, the listed genes are those whose predicted expression is most elevated in that cluster relative to the rest of the section. They describe differences in predicted expression and do not identify cell types.",
-      "Clusters labelled Small sample contain few tiles, so their gene lists should be interpreted with caution.",
+      "The genes most elevated in each cluster compared with the rest of the section. They show predicted differences, not cell types. Interpret clusters marked Small sample with caution.",
     ],
   },
   {
@@ -153,10 +150,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: "gene-list",
     title: "Predicted gene expression",
     body: [
-      "Every gene in the panel, ranked by its average predicted expression across the section.",
-      "Value is the mean predicted expression across all tiles, on the model's normalised expression scale. The bar shows each value relative to the highest-ranked gene.",
-      "Level indicates whether a gene falls in the top (High), middle (Mid) or bottom (Low) third of this ranking for the current section. It is a relative ranking, not a clinical threshold.",
-      "Table and Cards change the layout, and the page controls move through the full panel.",
+      "Every gene, ranked by its average predicted expression across the section. Value is that average, on the model's normalised scale; it is not a raw count.",
+      "Level shows whether a gene is in the top, middle or bottom third for this section. It is a relative ranking, not a clinical threshold.",
     ],
   },
   {
@@ -174,8 +169,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: "plot-card",
     title: "Genes view",
     body: [
-      "The map now shows the predicted expression of the selected gene for every tile, from low (dark purple) to high (yellow).",
-      "The gene selector above the map chooses another gene; its filters narrow the list to High, Mid or Low genes, or to well-known markers. Show image places the tissue section beneath the expression overlay.",
+      "The map now shows the selected gene's predicted expression, from low (dark purple) to high (yellow).",
+      "Use the selector above to choose another gene, and Show image to see the tissue underneath.",
     ],
   },
   {
@@ -184,9 +179,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: "plot-card",
     title: "Grad-CAM",
     body: [
-      "Grad-CAM highlights the regions within each tile that most influenced the model, measured against the section's top predicted gene. Warmer colours indicate greater influence.",
-      "Tiles are computed progressively, and a full section can take several minutes. The computation continues while you use other views. Drag to pan, scroll to zoom, and select a tile to enlarge it.",
-      "Grad-CAM explains the model's behaviour. It does not localise biological activity.",
+      "Highlights the parts of each tile that most influenced the model for the section's top gene. Warmer colours mean greater influence.",
+      "It fills in over several minutes and keeps going while you use other views. It explains the model's behaviour and does not localise biological activity.",
     ],
   },
   {
@@ -205,8 +199,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     interaction: "free",
     title: "Choose an image",
     body: [
-      "Drag an H&E image onto the drop area, or select the area to browse. TIFF, PNG and JPEG files up to 50 MB are accepted.",
-      "If you do not have a section available, use the sample H&E image. The file name, size, dimensions and status appear once an image is selected.",
+      "Drag an H&E image here or select the area to browse (TIFF, PNG or JPEG, up to 50 MB). If you do not have a section available, use the sample H&E image.",
     ],
   },
   {
