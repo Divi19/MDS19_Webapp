@@ -14,6 +14,8 @@ import HistoryPanel from "./HistoryPanel";
 import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
+import StatusBar from "./StatusBar";
+import ThemeToggle from "./ThemeToggle";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
 import { TUTORIAL_LOADING_STEP, TUTORIAL_STEPS } from "@/lib/tutorial";
@@ -456,34 +458,40 @@ export default function GeneXApp() {
   return (
     <div className="app">
       <header className="header">
-        <div className="logo">
-          <svg viewBox="0 0 24 24" fill="none">
-            <circle cx="6" cy="6" r="2.4" fill="#fff" />
-            <circle cx="12" cy="6" r="2.4" fill="#fff" opacity=".6" />
-            <circle cx="18" cy="6" r="2.4" fill="#fff" opacity=".85" />
-            <circle cx="6" cy="12" r="2.4" fill="#fff" opacity=".6" />
-            <circle cx="12" cy="12" r="2.4" fill="#fff" />
-            <circle cx="18" cy="12" r="2.4" fill="#fff" opacity=".7" />
-            <circle cx="6" cy="18" r="2.4" fill="#fff" opacity=".85" />
-            <circle cx="12" cy="18" r="2.4" fill="#fff" opacity=".6" />
-            <circle cx="18" cy="18" r="2.4" fill="#fff" />
-          </svg>
+        <div className="brand">
+          <div className="logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle cx="6" cy="6" r="2.2" fill="currentColor" />
+              <circle cx="12" cy="6" r="2.2" fill="currentColor" opacity=".55" />
+              <circle cx="18" cy="6" r="2.2" fill="currentColor" opacity=".8" />
+              <circle cx="6" cy="12" r="2.2" fill="currentColor" opacity=".55" />
+              <circle cx="12" cy="12" r="2.2" fill="currentColor" />
+              <circle cx="18" cy="12" r="2.2" fill="currentColor" opacity=".7" />
+              <circle cx="6" cy="18" r="2.2" fill="currentColor" opacity=".8" />
+              <circle cx="12" cy="18" r="2.2" fill="currentColor" opacity=".55" />
+              <circle cx="18" cy="18" r="2.2" fill="currentColor" />
+            </svg>
+          </div>
+          <div className="app-title">GeneX</div>
+          <span className="research-tag">Research prototype</span>
         </div>
-        <div className="app-title">GeneX</div>
-        <button
-          className="tutorial-launch"
-          onClick={() => goToTutorialStep("welcome")}
-          disabled={running}
-          title="Start a guided tutorial of the workspace"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10" />
-            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
-          </svg>
-          Take the Tutorial
-        </button>
+        {ready && (
+          <div className="run-context" title={fileName}>
+            <span className="run-context-file">{fileName}</span>
+            <span className="run-context-sep" aria-hidden="true">·</span>
+            <span className="tabular">{pred.total.toLocaleString()} spots</span>
+          </div>
+        )}
         <div className="header-spacer" />
         <div className="header-actions" data-tour="header-actions">
+          <button
+            className="header-btn header-btn-ghost"
+            onClick={() => goToTutorialStep("welcome")}
+            disabled={running}
+            title="Start a guided tutorial of the workspace"
+          >
+            Tutorial
+          </button>
           <button
             className="header-btn"
             onClick={() => {
@@ -497,6 +505,7 @@ export default function GeneXApp() {
           >
             Export
           </button>
+          <ThemeToggle />
           {authEnabled && user ? (
             <>
               <button className="header-btn" data-tour="history" onClick={() => setHistoryOpen(true)}>
@@ -945,6 +954,8 @@ export default function GeneXApp() {
           }
         />
       </main>
+
+      <StatusBar />
 
       <UploadModal open={modalOpen} onClose={() => setModalOpen(false)} onRun={runPrediction} />
       <ProgressOverlay visible={running} stepIndex={stepIndex} />
