@@ -16,7 +16,7 @@ export default function ClusterAnalysisPanel({
   const analysis = useMemo(() => (ready ? analyzeClusters(pred) : []), [pred, ready]);
 
   return (
-    <div className="col col-3">
+    <div className="col col-3" data-tour="cluster-analysis">
       <div className="cluster-analysis-header">
         <div className="cluster-analysis-title">Cluster Analysis</div>
         <div className="cluster-analysis-sub">

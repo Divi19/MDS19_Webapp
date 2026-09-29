@@ -103,10 +103,11 @@ export default function HistoryPanel({
           )}
 
           <div className="history-list">
-            {entries.map((e) => (
+            {entries.map((e, index) => (
               <div key={e.id} className="history-item">
                 <button
                   className="history-item-main"
+                  data-tour={index === 0 ? "history-entry" : undefined}
                   onClick={() => {
                     onSelect(e.id);
                     onClose();

@@ -77,7 +77,14 @@ export default function GenePopover({
     : { left, width, top: anchor.bottom + gap, maxHeight: Math.max(MIN_USABLE_HEIGHT, roomBelow) };
 
   return (
-    <div className="gene-popover" ref={ref} style={style} role="dialog" aria-label={`${anchor.gene} details`}>
+    <div
+      className="gene-popover"
+      ref={ref}
+      style={style}
+      role="dialog"
+      aria-label={`${anchor.gene} details`}
+      data-tour="gene-popover"
+    >
       <button className="gene-popover-close" onClick={onClose} aria-label="Close">
         ×
       </button>

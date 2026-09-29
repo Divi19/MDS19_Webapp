@@ -98,7 +98,7 @@ export default function UploadModal({
           </button>
         </div>
 
-        <div className="modal-body">
+        <div className="modal-body" data-tour={open ? "upload-body" : undefined}>
           <label
             className={`dropzone${dragging ? " dragging" : ""}`}
             onDragEnter={(e) => {
@@ -186,6 +186,7 @@ export default function UploadModal({
           </button>
           <button
             className="run-btn"
+            data-tour={open ? "upload-run" : undefined}
             disabled={!canRun}
             onClick={() => onRun({ name, sizeLabel, url, file })}
           >
