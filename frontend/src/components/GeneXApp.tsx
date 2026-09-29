@@ -87,6 +87,7 @@ export default function GeneXApp() {
   const [tutorialWaiting, setTutorialWaiting] = useState(false);
   const [historyLoadState, setHistoryLoadState] = useState<"idle" | "loading" | "loaded" | "failed">("idle");
   const tutorialActiveRef = useRef(false);
+  const tutorialViewTimer = useRef<number | undefined>(undefined);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -206,9 +207,12 @@ export default function GeneXApp() {
       setHistoryOpen(id === "history-entry");
       setModalOpen(id === "upload-window" || id === "upload-run");
       setPopoverAnchor(null);
-      if (id === "spatial-map") changeView("clusters");
-      if (id === "genes-view") changeView("genes");
-      if (id === "gradcam") changeView("gradcam");
+      // Views are switched once the tutorial's glide has finished: redrawing
+      // the map (or starting Grad-CAM) mid-animation makes the motion stutter.
+      window.clearTimeout(tutorialViewTimer.current);
+      const tutorialView: View | null =
+        id === "spatial-map" ? "clusters" : id === "genes-view" ? "genes" : id === "gradcam" ? "gradcam" : null;
+      if (tutorialView) tutorialViewTimer.current = window.setTimeout(() => changeView(tutorialView), 320);
       if (id === "gene-reference") {
         const chip = document.querySelector<HTMLElement>('[data-tour="cluster-analysis"] .cluster-analysis-gene');
         if (chip?.textContent) {
@@ -224,6 +228,7 @@ export default function GeneXApp() {
   );
 
   const endTutorial = useCallback(() => {
+    window.clearTimeout(tutorialViewTimer.current);
     setTutorialStepId(null);
     setTutorialSuspended(false);
     setTutorialWaiting(false);

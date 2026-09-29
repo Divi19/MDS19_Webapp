@@ -363,6 +363,14 @@ export default function TutorialOverlay({
     return () => cancelAnimationFrame(frame);
   }, [applyLayout]);
 
+  // Windows beneath the tutorial blur the page behind them; that blur would
+  // be recomputed on every frame the tutorial moves, and the tutorial's own
+  // dim already covers it, so it is switched off while the tutorial is open.
+  useEffect(() => {
+    document.body.classList.add("tutorial-active");
+    return () => document.body.classList.remove("tutorial-active");
+  }, []);
+
   // Animation frames pause in background tabs; a timer guarantees the
   // requested step is still shown once the settle timeout has passed.
   const requestedKey = viewKey(view);
