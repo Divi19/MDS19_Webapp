@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     model_checkpoint_path: str = ""
     model_data_root: str = ""
     use_dummy_predictor: bool = True
+    # "densenet121" (baseline) or "h0mini" (v7 dual-crop, per
+    # MDS19_Deployment_Brief.md). Must match whatever produced model_data_root
+    # — a mismatch matches across two unrelated embedding spaces and fails
+    # silently. See scripts/acceptance_test_fold0.py.
+    encoder_backend: str = "densenet121"
 
     # Spatial smoothing (Path A). On by default; set ENABLE_SMOOTHING=false
     # on the host to fall back to raw retrieval without a code change.
