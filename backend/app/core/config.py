@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     modal_health_url: str = (
         "https://brandonchiew--mds19-v7-inference-v7predictor-health.modal.run"
     )
+    # Grad-CAM endpoint of backend/modal_gradcam_app.py (a separate Modal app
+    # from the predict one, so the two can be deployed independently).
+    modal_gradcam_url: str = (
+        "https://brandonchiew--mds19-v7-gradcam-v7gradcam-explain-batch.modal.run"
+    )
     modal_request_timeout: float = 150.0  # seconds; covers a cold start + inference
 
     # Supabase

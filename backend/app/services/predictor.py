@@ -16,7 +16,7 @@ import torch
 from PIL import Image, ImageOps
 
 from app.services.mclstexp.model import mclSTExp_Attention, ProjectionHead
-from app.services.gradcam import GradCAM, overlay_heatmap, encode_png, tissue_pixel_mask
+from app.services.gradcam import GradCAM, ViTGradCAM, overlay_heatmap, encode_png, tissue_pixel_mask
 from app.services.encoders import (
     build_encoder, H0MINI_COMBINED_DIM, H0MINI_CONTEXT_MULTIPLIER,
 )
@@ -256,10 +256,11 @@ class MclSTExpPredictor(BasePredictor):
     def __init__(self, checkpoint_path: str, data_root: str,
                  enable_smoothing: bool = True,
                  smoothing_alpha: float | None = None,
-                 encoder_backend: str = "densenet121"):
+                 encoder_backend: str = "densenet121",
+                 device: str = "cpu"):
         self.checkpoint_path = checkpoint_path
         self.data_root = data_root
-        self.device = "cpu"
+        self.device = device   # "cuda" on the Modal Grad-CAM service; Render is CPU-only
         self._model = None
         self.spot_key = None
         self.spot_key_n = None
@@ -291,7 +292,10 @@ class MclSTExpPredictor(BasePredictor):
         # every one of those calls was pure waste, since tiling doesn't
         # depend on spot_index. One slot (not an LRU) because the real usage
         # pattern is "one image, many tiles", not many images at once.
-        self._tile_cache: tuple[str, list, list] | None = None
+        # (key, patches, kept, image, coords) — image/coords are only kept
+        # on the h0mini path, whose Grad-CAM needs each tile's wider context
+        # crop cut from the full slide (see _tile_context).
+        self._tile_cache: tuple | None = None
 
         # Env-controlled so smoothing can be switched off on the host without
         # a redeploy if it misbehaves — the same rollback property the
@@ -390,9 +394,9 @@ class MclSTExpPredictor(BasePredictor):
 
         The checkpoint file on Drive is never modified — this filters on read.
 
-        Grad-CAM has no target layer here (H0-mini is a ViT, not a DenseNet),
-        so self._gradcam stays None and explain()/explain_batch() refuse
-        explicitly rather than returning a meaningless heatmap.
+        Grad-CAM uses the last transformer block as its target layer
+        (gradcam.ViTGradCAM), on the native crop, scored against the real
+        3072-d -> 256-d v7 embedding.
         """
         sd = torch.load(self.checkpoint_path, map_location='cpu')
         sd = {k.replace('module.', '').replace('well', 'spot'): v for k, v in sd.items()}
@@ -424,7 +428,7 @@ class MclSTExpPredictor(BasePredictor):
         self._projection = head
         self._model = head                  # satisfies is_loaded
         self._encoder = build_encoder(self.encoder_backend, None, self.device)
-        self._gradcam = None
+        self._gradcam = ViTGradCAM(self._encoder, head)
         logger.info("loaded projection head only (%d -> 256), encoder=%s",
                     in_dim, self.encoder_backend)
 
@@ -652,6 +656,8 @@ class MclSTExpPredictor(BasePredictor):
         key = hashlib.sha256(image_bytes).hexdigest()
         if self._tile_cache is not None and self._tile_cache[0] == key:
             return self._tile_cache[1], self._tile_cache[2]
+        # explain_batch() needs (image, coords) on top of this on h0mini —
+        # it reads them straight from _tile_cache, same key.
 
         image = Image.open(io.BytesIO(image_bytes))
         image.load()
@@ -675,7 +681,8 @@ class MclSTExpPredictor(BasePredictor):
                 f"No tissue detected in any of the {len(patches)} tiles — "
                 f"the slide may be blank, or the saturation threshold too high")
 
-        self._tile_cache = (key, patches, kept)
+        h0 = self.encoder_backend == "h0mini"
+        self._tile_cache = (key, patches, kept, image if h0 else None, coords if h0 else None)
         return patches, kept
 
     def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
@@ -698,9 +705,9 @@ class MclSTExpPredictor(BasePredictor):
             raise RuntimeError("Predictor not loaded")
         if self._gradcam is None:
             raise NotImplementedError(
-                f"Grad-CAM is not available with the {self.encoder_backend} "
-                f"encoder — the DenseNet target layer does not exist. Use the "
-                f"densenet121 backend, or implement the ViT target layer.")
+                f"Grad-CAM has no target layer for the {self.encoder_backend} encoder")
+        if self.encoder_backend == "h0mini":
+            return self.explain_batch(image_bytes, [spot_index], gene)[0][0]
 
         patches, kept = self._get_tiles(image_bytes)
 
@@ -797,9 +804,7 @@ class MclSTExpPredictor(BasePredictor):
             raise RuntimeError("Predictor not loaded")
         if self._gradcam is None:
             raise NotImplementedError(
-                f"Grad-CAM is not available with the {self.encoder_backend} "
-                f"encoder — the DenseNet target layer does not exist. Use the "
-                f"densenet121 backend, or implement the ViT target layer.")
+                f"Grad-CAM has no target layer for the {self.encoder_backend} encoder")
 
         patches, kept = self._get_tiles(image_bytes)
 
@@ -810,6 +815,10 @@ class MclSTExpPredictor(BasePredictor):
                     f"{len(kept)} tissue tiles (0..{len(kept) - 1})")
 
         batch_patches = [patches[kept[si]] for si in spot_indices]
+
+        if self.encoder_backend == "h0mini":
+            return self._explain_batch_h0mini(batch_patches, spot_indices, kept, gene)
+
         tensors = [
             torch.from_numpy(np.array(p.convert("RGB"), dtype=np.float32) / 255.0)
             .permute(2, 0, 1)
@@ -850,6 +859,40 @@ class MclSTExpPredictor(BasePredictor):
             out.append((encode_png(overlay), float(peaks[i])))
         return out
 
+    def _explain_batch_h0mini(self, batch_patches, spot_indices, kept,
+                              gene: str | None) -> list[tuple[bytes, float]]:
+        """v7 path of explain_batch(): same targets, same overlay, but the
+        embedding being explained is the dual-crop one (native ++ context)
+        and the heatmap comes from ViTGradCAM."""
+        _, _, _, image, coords = self._tile_cache
+        context_patches = self._tile_context(
+            image, [coords[kept[si]] for si in spot_indices])
+        with torch.no_grad():
+            context_feats = self._encoder.encode(context_patches)          # (N, 1536)
+
+        if gene is not None:
+            if gene not in self.genes:
+                raise ValueError(f"Unknown gene {gene!r}")
+            top_idx = int(np.argmax(self.expr_key[:, self.genes.index(gene)]))
+            target = torch.from_numpy(self.spot_key[top_idx:top_idx + 1]).float()
+            target_batch = target.repeat(len(spot_indices), 1)
+        else:
+            # Own-nearest-neighbour fallback — see explain_batch()'s note on
+            # why an independent gene target is the better default.
+            query = self._encode(batch_patches, context_patches)
+            qn = query / np.linalg.norm(query, axis=1, keepdims=True)
+            nn_idx = np.argmax(qn @ self.spot_key_n.T, axis=1)
+            target_batch = torch.from_numpy(self.spot_key[nn_idx]).float()
+
+        heatmaps, peaks = self._gradcam.generate_batch(
+            batch_patches, context_feats, target_batch.to(self.device))    # (N, 16, 16), (N,)
+
+        out = []
+        for i, patch in enumerate(batch_patches):
+            overlay = overlay_heatmap(patch, heatmaps[i], tissue_mask=tissue_pixel_mask(patch))
+            out.append((encode_png(overlay), float(peaks[i])))
+        return out
+
 def get_predictor(settings) -> BasePredictor:
     # Checked first: a Modal deploy needs no torch/H0-mini/reference-bank on
     # this host at all, so this branch must win over use_dummy_predictor and
@@ -862,7 +905,8 @@ def get_predictor(settings) -> BasePredictor:
             supabase_url=settings.supabase_url,
             supabase_service_role_key=settings.supabase_service_role_key,
             relay_bucket=settings.supabase_relay_bucket,
-            request_timeout=settings.modal_request_timeout)
+            request_timeout=settings.modal_request_timeout,
+            gradcam_url=settings.modal_gradcam_url)
     if settings.use_dummy_predictor:
         return DummyPredictor()
     return MclSTExpPredictor(

@@ -18,15 +18,19 @@ copy of the user's slide (the frontend already persists the real upload to
 the private `he-images` bucket for prediction history; this predictor never
 touches that bucket).
 
-Grad-CAM is intentionally NOT implemented here (explain()/explain_batch()
-fall back to BasePredictor's NotImplementedError) — there is no local
-model to hook a target layer on, exactly as with the in-process h0mini
-path in predictor.py.
+Grad-CAM (explain()/explain_batch()) relays to a second Modal endpoint,
+backend/modal_gradcam_app.py, which runs the same MclSTExpPredictor
+h0mini pipeline on a GPU. The whole-slide mosaic calls it once per batch of
+spots, so the slide is staged in the relay bucket ONCE and reused across
+batches (see _stage_for_gradcam) instead of being re-uploaded every call.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import logging
+import threading
 import uuid
 
 import httpx
@@ -66,6 +70,7 @@ class ModalPredictor(BasePredictor):
         supabase_service_role_key: str,
         relay_bucket: str = "model-relay",
         request_timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        gradcam_url: str = "",
     ):
         if not predict_url:
             raise ValueError("MODAL_PREDICT_URL is required when USE_MODAL_INFERENCE=true")
@@ -81,11 +86,17 @@ class ModalPredictor(BasePredictor):
         self.predict_url = predict_url
         self.health_url = health_url
         self.relay_bucket = relay_bucket
+        self.gradcam_url = gradcam_url
         self.request_timeout = request_timeout
 
         self._supabase: Client = create_client(supabase_url, supabase_service_role_key)
         self._http = httpx.Client(timeout=request_timeout)
         self._loaded = False
+        # Slide currently staged for Grad-CAM batches: {"key", "path", "url",
+        # "url_expires"}. One slot — the mosaic works on one slide at a time.
+        self._gradcam_stage: dict | None = None
+        self._gradcam_timer: threading.Timer | None = None
+        self._stage_lock = threading.Lock()
         # Reported model_version if a request somehow returns a payload
         # without one — should never trigger against the real endpoint,
         # it's just so predict() never returns a blank string.
@@ -180,3 +191,92 @@ class ModalPredictor(BasePredictor):
 
         result.setdefault("model_version", self._fallback_model_version)
         return result
+
+    # ------------------------------------------------------------------
+    # Grad-CAM
+    # ------------------------------------------------------------------
+
+    # How long a slide stays in the relay bucket after its last Grad-CAM
+    # batch. Only needs to bridge the gap between consecutive batches.
+    GRADCAM_STAGE_IDLE_SECONDS = 600
+
+    def _drop_gradcam_stage(self) -> None:
+        with self._stage_lock:
+            stage, self._gradcam_stage = self._gradcam_stage, None
+            if self._gradcam_timer is not None:
+                self._gradcam_timer.cancel()
+                self._gradcam_timer = None
+        if stage is not None:
+            self._cleanup(stage["path"])
+
+    def _stage_for_gradcam(self, image_bytes: bytes) -> str:
+        """Signed URL for this slide, uploading it only if it isn't already
+        the staged one. Refreshes the idle timer on every call."""
+        import time
+
+        key = hashlib.sha256(image_bytes).hexdigest()
+        with self._stage_lock:
+            stage = self._gradcam_stage
+            same = stage is not None and stage["key"] == key
+        if not same:
+            self._drop_gradcam_stage()
+            path, url = self._stage_upload(image_bytes)
+            stage = {"key": key, "path": path, "url": url,
+                     "url_expires": time.monotonic() + self.SIGNED_URL_TTL_SECONDS}
+            with self._stage_lock:
+                self._gradcam_stage = stage
+        elif stage["url_expires"] - time.monotonic() < 120:
+            # Same object, fresh signature — the URL path (which is what
+            # the Modal side keys its tile cache on) does not change.
+            signed = self._supabase.storage.from_(self.relay_bucket).create_signed_url(
+                stage["path"], self.SIGNED_URL_TTL_SECONDS)
+            stage["url"] = signed.get("signedURL") or signed.get("signedUrl")
+            stage["url_expires"] = time.monotonic() + self.SIGNED_URL_TTL_SECONDS
+
+        with self._stage_lock:
+            if self._gradcam_timer is not None:
+                self._gradcam_timer.cancel()
+            self._gradcam_timer = threading.Timer(
+                self.GRADCAM_STAGE_IDLE_SECONDS, self._drop_gradcam_stage)
+            self._gradcam_timer.daemon = True
+            self._gradcam_timer.start()
+        return stage["url"]
+
+    def explain_batch(self, image_bytes: bytes, spot_indices: list[int],
+                      gene: str | None = None) -> list[tuple[bytes, float]]:
+        if not self.is_loaded:
+            raise RuntimeError("Predictor not loaded")
+        if not self.gradcam_url:
+            raise NotImplementedError(
+                "Grad-CAM is not configured: set MODAL_GRADCAM_URL to the "
+                "deployed modal_gradcam_app endpoint")
+
+        signed_url = self._stage_for_gradcam(image_bytes)
+        try:
+            resp = self._http.post(
+                self.gradcam_url,
+                json={"image_url": signed_url, "spot_indices": spot_indices, "gene": gene},
+                timeout=self.request_timeout,
+            )
+            resp.raise_for_status()
+            tiles = resp.json()["tiles"]
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text
+            if exc.response.status_code == 400:
+                raise ValueError(detail) from exc     # -> HTTP 400 in routes.py
+            raise RuntimeError(
+                f"Modal Grad-CAM request failed ({exc.response.status_code}): {detail}"
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise RuntimeError(
+                f"Modal Grad-CAM request timed out after {self.request_timeout}s") from exc
+
+        by_index = {t["spot_index"]: t for t in tiles}
+        try:
+            return [(base64.b64decode(by_index[i]["png_base64"]), float(by_index[i]["peak"]))
+                    for i in spot_indices]
+        except KeyError as exc:
+            raise RuntimeError(f"Modal Grad-CAM response missing spot {exc}") from exc
+
+    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
+        return self.explain_batch(image_bytes, [spot_index], gene)[0][0]

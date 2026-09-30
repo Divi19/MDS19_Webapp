@@ -71,17 +71,29 @@ class H0MiniEncoder:
         self._mean = torch.tensor(H0MINI_MEAN, device=device).view(1, 3, 1, 1)
         self._std = torch.tensor(H0MINI_STD, device=device).view(1, 3, 1, 1)
 
-    def encode(self, patches) -> torch.Tensor:
+    def preprocess(self, patches) -> torch.Tensor:
+        """PIL patches -> normalised (B, 3, 224, 224) batch on self.device.
+        Shared by encode() and Grad-CAM (gradcam.ViTGradCAM) so both see
+        exactly the same input — the h0mini preprocessing is the silent-
+        failure part of this pipeline (see module docstring)."""
         batch = torch.stack([
             torch.from_numpy(np.array(p.convert("RGB"), dtype=np.float32) / 255.0)
                  .permute(2, 0, 1)
             for p in patches
         ]).to(self.device)
-        batch = (batch - self._mean) / self._std
-        tokens = self._model.forward_features(batch)              # (B, 261, 768)
+        return (batch - self._mean) / self._std
+
+    @staticmethod
+    def readout(tokens: torch.Tensor) -> torch.Tensor:
+        """Final ViT tokens (B, 5+256, 768) -> (B, 1536): CLS ++ mean of the
+        patch tokens (the 4 register tokens are excluded)."""
         cls = tokens[:, 0]
         patch_mean = tokens[:, H0MINI_NUM_PREFIX_TOKENS:].mean(1)
-        return torch.cat([cls, patch_mean], dim=-1)                # (B, 1536)
+        return torch.cat([cls, patch_mean], dim=-1)
+
+    def encode(self, patches) -> torch.Tensor:
+        tokens = self._model.forward_features(self.preprocess(patches))  # (B, 261, 768)
+        return self.readout(tokens)                                       # (B, 1536)
 
 
 def build_encoder(backend: str, model, device: str):

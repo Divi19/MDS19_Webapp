@@ -113,6 +113,81 @@ class GradCAM:
         return out, peaks
 
 
+class ViTGradCAM:
+    """
+    Grad-CAM for the v7 (H0-mini) encoder — same idea as GradCAM above, but
+    the target layer is the last transformer block, whose output is a token
+    sequence (B, 5 + 256, 768) rather than a conv feature map.
+
+    The 5 prefix tokens (CLS + 4 registers) are dropped and the 256 patch
+    tokens are reshaped to a 16x16 grid (224px / 14px patches). Channel
+    weights are the gradient pooled over the patch tokens; the heatmap is
+    ReLU(sum_c weight_c * activation_c) — the standard Grad-CAM recipe with a
+    reshape from tokens to a grid (as in pytorch-grad-cam's ViT example).
+
+    What gets scored is the real v7 embedding: the native crop's 1536-d
+    feature ++ its context crop's 1536-d feature -> image_projection ->
+    cosine against the target. The context feature is passed in as a
+    constant (no gradient): the heatmap explains the native 224px tile the
+    user is looking at, not the wider context window around it.
+    """
+
+    def __init__(self, encoder, projection):
+        self.encoder = encoder            # encoders.H0MiniEncoder
+        self.projection = projection      # ProjectionHead, 3072 -> 256
+        self.activations = None
+        vit = encoder._model
+        # Only the input needs gradients, not the frozen weights — skips all
+        # the weight-gradient work in backward().
+        for prm in vit.parameters():
+            prm.requires_grad_(False)
+        vit.blocks[-1].register_forward_hook(self._save_activation)
+
+    def _save_activation(self, module, inp, out):
+        self.activations = out
+
+    def generate_batch(self, patches, context_feats: torch.Tensor,
+                       target_batch: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
+        """
+        patches: N PIL native 224px crops. context_feats: (N, 1536), the
+        encoder's features for each tile's context crop (computed by the
+        caller, no grad). target_batch: (N, 256), one target embedding per
+        item. Same return contract as GradCAM.generate_batch: (heatmaps
+        (N, 16, 16) each normalised to [0, 1], raw peaks (N,)) — an item
+        with no positive signal comes back all-zero instead of raising.
+        """
+        from app.services.encoders import H0MINI_NUM_PREFIX_TOKENS
+
+        vit = self.encoder._model
+        x = self.encoder.preprocess(patches).requires_grad_(True)
+
+        with torch.enable_grad():
+            tokens = vit.forward_features(x)                              # (N, 261, 768)
+            feats = self.encoder.readout(tokens)                          # (N, 1536)
+            emb = self.projection(torch.cat([feats, context_feats.to(feats.device)], dim=1))
+            scores = F.cosine_similarity(emb, target_batch, dim=-1)       # (N,)
+            acts = self.activations                                       # (N, 261, 768)
+            (grads,) = torch.autograd.grad(scores.sum(), acts)
+
+        n_patch = acts.shape[1] - H0MINI_NUM_PREFIX_TOKENS
+        side = int(round(n_patch ** 0.5))
+        if side * side != n_patch:
+            raise RuntimeError(f"{n_patch} patch tokens do not form a square grid")
+
+        acts = acts.detach()[:, H0MINI_NUM_PREFIX_TOKENS:]                # (N, 256, 768)
+        grads = grads[:, H0MINI_NUM_PREFIX_TOKENS:]
+        weights = grads.mean(dim=1, keepdim=True)                         # (N, 1, 768)
+        cam = torch.clamp((acts * weights).sum(dim=-1), min=0)            # (N, 256)
+        heatmaps = cam.reshape(-1, side, side).cpu().numpy()
+
+        peaks = heatmaps.max(axis=(1, 2))
+        out = np.zeros_like(heatmaps)
+        for i in range(heatmaps.shape[0]):
+            if peaks[i] > 0:
+                out[i] = heatmaps[i] / (peaks[i] + 1e-8)
+        return out, peaks
+
+
 def _jet(x: np.ndarray) -> np.ndarray:
     """Vectorised approximation of matplotlib's 'jet' colormap.
 
