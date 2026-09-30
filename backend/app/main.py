@@ -10,14 +10,18 @@ from app.api.routes import router
 from app.core.config import settings
 from app.services.predictor import get_predictor
 
-# Model data ships as one gzipped tarball rather than 98 loose files: Drive
+# Model data ships as one gzipped tarball rather than N loose files: Drive
 # rate-limits on request count, and a per-file folder download reliably tripped
 # that limit partway through, leaving an unusable half-populated database.
-EXPECTED_FILES = 98      # 97 .npy + the checkpoint — same for every bank
-                          # scripts/build_tau020_bank.py produces (it copies
-                          # the same preprocessed_expression_matrices tree
-                          # wholesale and only swaps the embeddings +
-                          # checkpoint), so this does not change per deploy.
+#
+# EXPECTED_FILES is a MINIMUM, not an exact count: 32 sections x
+# (spot_embeddings_i.npy + preprocessed_matrix.npy) + her_hvg_cut_1000.npy +
+# the checkpoint = 66. That is what scripts/build_tau020_bank.py's own
+# assembled-bank check already verifies at build time (section-by-section
+# spot counts, no NaNs, correct total shape) for every bank it produces,
+# v7 included. A bank built some other way may legitimately have more files
+# (n_files >= EXPECTED_FILES still passes) — just never fewer.
+EXPECTED_FILES = 66
 
 
 def _model_data_complete(target_dir: str, checkpoint_path: str) -> bool:
