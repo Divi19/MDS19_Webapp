@@ -15,8 +15,11 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
-from app.services.mclstexp.model import mclSTExp_Attention
+from app.services.mclstexp.model import mclSTExp_Attention, ProjectionHead
 from app.services.gradcam import GradCAM, overlay_heatmap, encode_png, tissue_pixel_mask
+from app.services.encoders import (
+    build_encoder, H0MINI_COMBINED_DIM, H0MINI_CONTEXT_MULTIPLIER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +238,10 @@ class MclSTExpPredictor(BasePredictor):
     # patch puts anything larger past the platform request timeout.
     MAX_PATCHES = 600
 
+    # v7 (h0mini) queries a second, wider crop for context — see
+    # encoders.H0MINI_CONTEXT_MULTIPLIER. Unused on the densenet121 path.
+    CONTEXT_MULTIPLIER = H0MINI_CONTEXT_MULTIPLIER
+
     N_GENES = 785
     N_SPOTS = 11548
 
@@ -248,7 +255,8 @@ class MclSTExpPredictor(BasePredictor):
 
     def __init__(self, checkpoint_path: str, data_root: str,
                  enable_smoothing: bool = True,
-                 smoothing_alpha: float | None = None):
+                 smoothing_alpha: float | None = None,
+                 encoder_backend: str = "densenet121"):
         self.checkpoint_path = checkpoint_path
         self.data_root = data_root
         self.device = "cpu"
@@ -258,6 +266,24 @@ class MclSTExpPredictor(BasePredictor):
         self.expr_key = None
         self.genes = None
         self._gradcam = None
+        self._encoder = None
+        self._projection = None
+
+        # Which image encoder produces the query features. The reference bank
+        # in data_root MUST have been produced by the same one — a mismatch
+        # means matching across two unrelated embedding spaces, which fails
+        # silently. Nothing in load() can detect it; that is what
+        # scripts/acceptance_test_fold0.py is for.
+        if encoder_backend not in ("densenet121", "h0mini"):
+            raise ValueError(
+                f"encoder_backend must be 'densenet121' or 'h0mini', "
+                f"got {encoder_backend!r}")
+        self.encoder_backend = encoder_backend
+        # h0mini is the v7 dual-crop architecture (native ++ context, 3072-d)
+        # per MDS19_Deployment_Brief.md §3 — NOT the older single-crop tau020
+        # stage, which is deprecated and must not be deployed.
+        self._encoder_feature_dim = (1024 if encoder_backend == "densenet121"
+                                     else H0MINI_COMBINED_DIM)
 
         # Single-slot cache: the whole-slide Grad-CAM mosaic calls explain()
         # once per tissue tile (up to MAX_PATCHES times) for the same
@@ -274,31 +300,23 @@ class MclSTExpPredictor(BasePredictor):
         self.smoothing_alpha = (self.SMOOTHING_ALPHA if smoothing_alpha is None
                                 else float(smoothing_alpha))
 
-        # Persisted per prediction, so a stored row says which pipeline
-        # produced it. With smoothing off this is the previous string.
-        self.model_version = (
-            f"{self.MODEL_VERSION}+smooth{self.smoothing_alpha:g}"
-            if self.enable_smoothing else self.MODEL_VERSION)
+        # Reported to the API and persisted per prediction, so a stored row
+        # says which pipeline produced it. With the densenet encoder and
+        # smoothing off, this is exactly the previous string.
+        base = (self.MODEL_VERSION if encoder_backend == "densenet121"
+                else f"mclstexp-her2st-v7-{encoder_backend}")
+        self.model_version = (f"{base}+smooth{self.smoothing_alpha:g}"
+                              if self.enable_smoothing else base)
 
     def load(self) -> None:
         """Called once at application startup. Never per request."""
         db = Path(self.data_root)
 
         # 1. Model
-        model = mclSTExp_Attention(
-            encoder_name='densenet121', spot_dim=785, temperature=1.0,
-            image_dim=1024, projection_dim=256,
-            heads_num=8, heads_dim=64, head_layers=2, dropout=0.)
-        sd = torch.load(self.checkpoint_path, map_location='cpu')
-        sd = {k.replace('module.', '').replace('well', 'spot'): v for k, v in sd.items()}
-        model.load_state_dict(sd)
-        model.eval()
-        model.to(self.device)
-        self._model = model
-
-        # Grad-CAM hooks the last DenseNet dense block (7x7 spatial resolution
-        # at 224px input) — same target layer used in the exploratory notebook.
-        self._gradcam = GradCAM(model, model.image_encoder.model[0].denseblock4)
+        if self.encoder_backend == "densenet121":
+            self._load_densenet_model()
+        else:
+            self._load_projection_only_model()
 
         # 2. Reference database — 32 sections of spot embeddings paired with
         #    the real expression measured at those same spots.
@@ -332,6 +350,84 @@ class MclSTExpPredictor(BasePredictor):
             raise RuntimeError(
                 f"Expected {self.N_GENES} gene names, got {len(self.genes)}")
 
+    def _load_densenet_model(self) -> None:
+        """
+        Baseline path: the whole mclSTExp network, strict=True.
+
+        strict=True is the load-bearing safety check here — it is what refuses
+        a checkpoint whose projection head is 1536->256 instead of 1024->256.
+        Never relax it to squeeze in a different training stage; the image
+        branch would silently become a no-op and the predictions would be
+        garbage that still renders correctly in the UI.
+        """
+        model = mclSTExp_Attention(
+            encoder_name='densenet121', spot_dim=785, temperature=1.0,
+            image_dim=1024, projection_dim=256,
+            heads_num=8, heads_dim=64, head_layers=2, dropout=0.)
+        sd = torch.load(self.checkpoint_path, map_location='cpu')
+        sd = {k.replace('module.', '').replace('well', 'spot'): v for k, v in sd.items()}
+        model.load_state_dict(sd)
+        model.eval()
+        model.to(self.device)
+        self._model = model
+
+        # Grad-CAM hooks the last DenseNet dense block (7x7 spatial resolution
+        # at 224px input) — same target layer used in the exploratory notebook.
+        self._gradcam = GradCAM(model, model.image_encoder.model[0].denseblock4)
+        self._encoder = build_encoder("densenet121", model, self.device)
+
+    def _load_projection_only_model(self) -> None:
+        """
+        H0-mini path (v7): load ONLY the image_projection head from the
+        checkpoint.
+
+        At inference nothing else in the checkpoint is reachable — spot
+        embeddings are precomputed, so the spot encoder and the positional
+        tables are never touched, and the DenseNet weights are inert because
+        H0-mini produces the features. Filtering keys at load keeps resident
+        memory low, which is what makes this fit alongside H0-mini on a small
+        instance.
+
+        The checkpoint file on Drive is never modified — this filters on read.
+
+        Grad-CAM has no target layer here (H0-mini is a ViT, not a DenseNet),
+        so self._gradcam stays None and explain()/explain_batch() refuse
+        explicitly rather than returning a meaningless heatmap.
+        """
+        sd = torch.load(self.checkpoint_path, map_location='cpu')
+        sd = {k.replace('module.', '').replace('well', 'spot'): v for k, v in sd.items()}
+
+        prefix = "image_projection."
+        head_sd = {k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)}
+        if not head_sd:
+            raise RuntimeError(
+                f"No '{prefix}*' keys in {self.checkpoint_path} — this does not "
+                f"look like an mclSTExp checkpoint")
+
+        in_dim = head_sd["projection.weight"].shape[1]
+        if in_dim != self._encoder_feature_dim:
+            # The exact mismatch strict=True would have caught on the full
+            # model. Checked explicitly because this path cannot use it.
+            raise RuntimeError(
+                f"Checkpoint projection head takes {in_dim}-d input but the "
+                f"{self.encoder_backend} encoder produces "
+                f"{self._encoder_feature_dim}-d. Wrong checkpoint for this "
+                f"encoder — a baseline checkpoint is 1024, v7's dual-crop "
+                f"checkpoint is 3072. 1536 means a single-crop checkpoint "
+                f"(tau020 or h0mini_contrastive) — deprecated, do not deploy.")
+
+        head = ProjectionHead(embedding_dim=in_dim, projection_dim=256)
+        head.load_state_dict(head_sd)       # strict: the head must be complete
+        head.eval()
+        head.to(self.device)
+
+        self._projection = head
+        self._model = head                  # satisfies is_loaded
+        self._encoder = build_encoder(self.encoder_backend, None, self.device)
+        self._gradcam = None
+        logger.info("loaded projection head only (%d -> 256), encoder=%s",
+                    in_dim, self.encoder_backend)
+
     @property
     def is_loaded(self) -> bool:
         return self._model is not None and self.spot_key is not None
@@ -349,35 +445,87 @@ class MclSTExpPredictor(BasePredictor):
                 coords.append((ix, iy))
         return patches, coords
 
-    def _encode(self, patches, batch_size: int | None = None):
-        """Patches -> 256-dim embeddings. RAW 0-1 TENSORS, NO NORMALISATION.
+    def _tile_context(self, image: Image.Image, coords, stride: int | None = None):
+        """
+        v7 (h0mini) only: the wider CONTEXT_MULTIPLIER x crop for each tile in
+        `coords`, centred on the SAME point as _tile()'s native crop, then
+        resized down to PATCH with bicubic (Deployment Brief §3: "672 x 672
+        px ... resized to 224 x 224 (bicubic)").
 
-        The checkpoint was trained with ToTensor() only — dataset.py applies no
-        Normalize in either train or eval mode. Adding ImageNet normalisation
-        here degrades every prediction without raising anything.
+        `coords` must be exactly what _tile() returned for this image and
+        stride — this reconstructs each tile's top-left corner as
+        (ix*stride, iy*stride), which only matches _tile()'s own grid when
+        the two are called with the same stride.
 
-        Plain loop, no DataLoader: forked workers inherit lazily-opened PIL file
-        descriptors and concurrent reads silently corrupt the crops.
+        PIL's crop() pads out-of-bounds regions with black rather than
+        raising, so a context box extending past the slide edge — routine for
+        edge tiles, since it is CONTEXT_MULTIPLIER x wider than the native
+        tile — needs no special-casing here.
+        """
+        stride = self.STRIDE if stride is None else stride
+        context_crop = self.PATCH * self.CONTEXT_MULTIPLIER
+
+        patches = []
+        for ix, iy in coords:
+            x, y = ix * stride, iy * stride
+            cx, cy = x + self.PATCH / 2, y + self.PATCH / 2  # same centre as the native tile
+            half = context_crop / 2
+            box = tuple(round(v) for v in (cx - half, cy - half, cx + half, cy + half))
+            p = image.crop(box)
+            if context_crop != self.PATCH:
+                p = p.resize((self.PATCH, self.PATCH), Image.BICUBIC)
+            patches.append(p)
+        return patches
+
+    def _encode(self, patches, context_patches=None, batch_size: int | None = None):
+        """Patches -> 256-dim embeddings.
+
+        Preprocessing lives in the encoder (app/services/encoders.py), because
+        it differs per backend and getting it wrong is silent: the baseline
+        takes raw [0,1] tensors with NO normalisation (trained with ToTensor()
+        only), H0-mini takes its own normalisation stats — not ImageNet's,
+        for either.
+
+        `context_patches`, when given (v7/h0mini only), must be the same
+        length as `patches` and in the same order — each pair is the native
+        and context crop of the same tile. Each list is encoded separately
+        (the encoder itself does not know which is which) and the two
+        1536-d feature sets are concatenated, native first, into the 3072-d
+        input image_projection expects (Deployment Brief §3). Left None on
+        the densenet121 path, which projects the single 1024-d feature as
+        before.
+
+        Sub-modules are called directly rather than through forward():
+        mclSTExp_Attention.forward() has a hardcoded .cuda() for the
+        contrastive-loss label, is training-only, and would crash on a
+        CPU-only host.
+
+        Plain loop, no DataLoader: forked workers inherit lazily-opened PIL
+        file descriptors and concurrent reads silently corrupt the crops.
         """
         batch_size = self.BATCH_SIZE if batch_size is None else batch_size
-        out = []
-        with torch.no_grad():
-            for i in range(0, len(patches), batch_size):
-                chunk = patches[i:i + batch_size]
-                # ToTensor() equivalent only. Do NOT add transforms.Normalize.
-                batch = torch.stack([
-                    torch.from_numpy(np.array(p.convert("RGB"), dtype=np.float32) / 255.0)
-                         .permute(2, 0, 1)
-                    for p in chunk
-                ]).to(self.device)
+        project = (self._projection if self._projection is not None
+                   else self._model.image_projection)
 
-                # Sub-modules called directly. mclSTExp_Attention.forward() has a
-                # hardcoded .cuda() for the contrastive-loss label and is only
-                # used in training; it would crash on a CPU-only host.
-                feats = self._model.image_encoder(batch)        # DenseNet -> (B, 1024)
-                embs = self._model.image_projection(feats)      # -> (B, 256)
-                out.append(embs.cpu().numpy())
-        return np.concatenate(out, axis=0)
+        def run(plist):
+            out = []
+            with torch.no_grad():
+                for i in range(0, len(plist), batch_size):
+                    feats = self._encoder.encode(plist[i:i + batch_size])
+                    out.append(feats.cpu().numpy())
+            return np.concatenate(out, axis=0)
+
+        feats = run(patches)
+        if context_patches is not None:
+            if len(context_patches) != len(patches):
+                raise RuntimeError(
+                    f"{len(patches)} native patches vs {len(context_patches)} "
+                    f"context patches — must be paired 1:1")
+            feats = np.concatenate([feats, run(context_patches)], axis=1)
+
+        with torch.no_grad():
+            embs = project(torch.from_numpy(feats).float().to(self.device))
+        return embs.cpu().numpy()
 
     def _retrieve(self, query: np.ndarray) -> np.ndarray:
         """Query embeddings -> predicted expression. No learned parameters here."""
@@ -443,7 +591,9 @@ class MclSTExpPredictor(BasePredictor):
         patches = [patches[i] for i in kept]
         coords = [coords[i] for i in kept]
 
-        query = self._encode(patches)                    # tissue tiles only
+        context_patches = (self._tile_context(image, coords)
+                           if self.encoder_backend == "h0mini" else None)
+        query = self._encode(patches, context_patches)   # tissue tiles only
         pred = self._retrieve(query)                     # (n_tissue, 785)
 
         # Tissue-masked set only: `coords` is already filtered, so background
@@ -546,6 +696,11 @@ class MclSTExpPredictor(BasePredictor):
         """
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
+        if self._gradcam is None:
+            raise NotImplementedError(
+                f"Grad-CAM is not available with the {self.encoder_backend} "
+                f"encoder — the DenseNet target layer does not exist. Use the "
+                f"densenet121 backend, or implement the ViT target layer.")
 
         patches, kept = self._get_tiles(image_bytes)
 
@@ -640,6 +795,11 @@ class MclSTExpPredictor(BasePredictor):
         """
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
+        if self._gradcam is None:
+            raise NotImplementedError(
+                f"Grad-CAM is not available with the {self.encoder_backend} "
+                f"encoder — the DenseNet target layer does not exist. Use the "
+                f"densenet121 backend, or implement the ViT target layer.")
 
         patches, kept = self._get_tiles(image_bytes)
 
@@ -696,4 +856,5 @@ def get_predictor(settings) -> BasePredictor:
     return MclSTExpPredictor(
         settings.model_checkpoint_path, settings.model_data_root,
         enable_smoothing=settings.enable_smoothing,
-        smoothing_alpha=settings.smoothing_alpha)
+        smoothing_alpha=settings.smoothing_alpha,
+        encoder_backend=settings.encoder_backend)
