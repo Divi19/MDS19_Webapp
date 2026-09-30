@@ -27,9 +27,32 @@ class Settings(BaseSettings):
     enable_smoothing: bool = True
     smoothing_alpha: float = 0.6
 
+    # Modal GPU inference (see MDS19_Modal_Handover.md). When true,
+    # get_predictor() returns ModalPredictor and ignores use_dummy_predictor
+    # / encoder_backend / model_checkpoint_path / model_data_root entirely —
+    # Render no longer loads H0-mini or the reference bank itself, it just
+    # relays to the deployed Modal endpoint. Takes priority over
+    # use_dummy_predictor so flipping this on is a one-variable change.
+    use_modal_inference: bool = False
+    modal_predict_url: str = (
+        "https://brandonchiew--mds19-v7-inference-v7predictor-predict.modal.run"
+    )
+    modal_health_url: str = (
+        "https://brandonchiew--mds19-v7-inference-v7predictor-health.modal.run"
+    )
+    modal_request_timeout: float = 150.0  # seconds; covers a cold start + inference
+
     # Supabase
     supabase_url: str = ""
     supabase_key: str = ""
+    # Service-role key, backend-only, NEVER shipped to the frontend or
+    # logged. Only needed when use_modal_inference=true: ModalPredictor
+    # stages each upload as a short-lived relay object under no particular
+    # auth.uid(), which the per-user RLS policies on he-images-style buckets
+    # would otherwise reject — the service role bypasses RLS for that one
+    # write+read+delete.
+    supabase_service_role_key: str = ""
+    supabase_relay_bucket: str = "model-relay"
 
     # CORS — frontend origins allowed to call this API
     cors_origins: list[str] = ["http://localhost:3000"]

@@ -851,6 +851,18 @@ class MclSTExpPredictor(BasePredictor):
         return out
 
 def get_predictor(settings) -> BasePredictor:
+    # Checked first: a Modal deploy needs no torch/H0-mini/reference-bank on
+    # this host at all, so this branch must win over use_dummy_predictor and
+    # never fall through to loading a local model "as well".
+    if settings.use_modal_inference:
+        from app.services.modal_predictor import ModalPredictor
+        return ModalPredictor(
+            predict_url=settings.modal_predict_url,
+            health_url=settings.modal_health_url,
+            supabase_url=settings.supabase_url,
+            supabase_service_role_key=settings.supabase_service_role_key,
+            relay_bucket=settings.supabase_relay_bucket,
+            request_timeout=settings.modal_request_timeout)
     if settings.use_dummy_predictor:
         return DummyPredictor()
     return MclSTExpPredictor(

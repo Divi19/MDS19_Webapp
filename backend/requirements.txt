@@ -7,6 +7,9 @@ pillow>=10.4.0
 numpy>=1.26.0
 supabase>=2.10.0
 python-dotenv>=1.0.1
+httpx>=0.27.0       # ModalPredictor's client to the Modal inference endpoint
+                    # (already a transitive dep of supabase-py; pinned
+                    # directly since we now import and use it ourselves)
 
 # mclSTExp model (app/services/mclstexp/model.py)
 torch>=2.1.0

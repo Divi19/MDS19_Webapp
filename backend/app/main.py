@@ -86,7 +86,12 @@ def ensure_model_data():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup — model data fetched before anything tries to read it.
-    ensure_model_data()
+    # Skipped for the dummy predictor (never reads it) and for Modal
+    # inference (the reference bank lives on Modal's volume now, not here —
+    # downloading a multi-GB tarball onto Render for a predictor that never
+    # opens it would just slow every boot for nothing).
+    if not settings.use_dummy_predictor and not settings.use_modal_inference:
+        ensure_model_data()
 
     # Model loaded ONCE, not per request.
     # This is the single most important performance decision in the API.

@@ -1,0 +1,52 @@
+-- MDS19 / GeneX — Modal inference relay bucket
+--
+-- Owner: whoever administers the Supabase project (backend/infra).
+-- Run the dashboard step below once; there is nothing to run in the SQL
+-- editor for this migration (storage RLS policies aren't needed — see §2).
+--
+-- Context: see backend/app/services/modal_predictor.py and
+-- MDS19_Modal_Handover.md. Render's backend no longer runs H0-mini
+-- in-process; instead it relays each upload to a Modal GPU endpoint, which
+-- takes an image URL rather than raw bytes (slides are too large to inline
+-- in a JSON request body). This bucket is where that URL comes from.
+
+-- ---------------------------------------------------------------------------
+-- 1. Create the bucket
+--
+-- Dashboard -> Storage -> New bucket
+--   name:   model-relay        (must match SUPABASE_RELAY_BUCKET)
+--   Public: OFF
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- 2. No RLS policies here, on purpose.
+--
+-- he-images (0001) is keyed by auth.uid() because the frontend, running as
+-- the signed-in user, writes there directly. This bucket is the opposite
+-- case: ModalPredictor writes it from the backend using the Supabase
+-- SERVICE ROLE key, which bypasses RLS entirely, and every relay object
+-- belongs to no particular user — it's a same-request upload -> read ->
+-- delete, not anything a browser session ever touches. Adding owner-scoped
+-- policies here would do nothing but that key already ignores them, so
+-- leave storage.objects RLS off (bucket stays Public: OFF, so anonymous
+-- reads still require a signed URL either way).
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- 3. Lifecycle
+--
+-- ModalPredictor deletes each object itself right after the Modal request
+-- completes (success or failure), so nothing should accumulate. If a crash
+-- ever leaves orphans behind, they're all named <uuid>.bin with no per-user
+-- structure, so a periodic "delete everything older than a day" job (or a
+-- manual bucket-empty) is always safe.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- 4. What the backend needs from you after running this
+-- ---------------------------------------------------------------------------
+-- Set on Render (never in frontend env, never committed):
+--   USE_MODAL_INFERENCE=true
+--   SUPABASE_SERVICE_ROLE_KEY=<Project Settings -> API -> service_role>
+--   SUPABASE_RELAY_BUCKET=model-relay   (or leave unset — this is the default)
+-- SUPABASE_URL is already set from 0001; no change needed there.
