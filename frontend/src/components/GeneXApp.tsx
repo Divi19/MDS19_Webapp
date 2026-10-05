@@ -14,6 +14,7 @@ import HistoryPanel from "./HistoryPanel";
 import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
+import TissueSummary from "./TissueSummary";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
 import { TUTORIAL_LOADING_STEP, TUTORIAL_STEPS } from "@/lib/tutorial";
@@ -64,6 +65,9 @@ export default function GeneXApp() {
   // forcing a full restart on returning to the tab.
   const [gradcamMounted, setGradcamMounted] = useState(false);
   const [showImage, setShowImage] = useState(true);
+  // Genes view colouring: predicted expression (default, unchanged) or
+  // predicted tissue type — only offered when the prediction has tissue data.
+  const [layer, setLayer] = useState<"expression" | "tissue">("expression");
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
@@ -125,6 +129,7 @@ export default function GeneXApp() {
         setStepIndex(5);
         const converted = toPrediction(response);
         setPred(converted);
+        setLayer("expression");
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setGenePage(0);
         setGeneFilter("all");
@@ -172,6 +177,7 @@ export default function GeneXApp() {
             });
         }
         setPred(converted);
+        setLayer("expression");
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setGenePage(0);
         setGeneFilter("all");
@@ -864,6 +870,26 @@ export default function GeneXApp() {
                   )}
                 </div>
               )}
+              {view === "genes" && ready && pred.tissue && (
+                <div className="seg seg-layer" role="group" aria-label="Spot colouring">
+                  <button
+                    type="button"
+                    className={layer === "expression" ? "on" : ""}
+                    aria-pressed={layer === "expression"}
+                    onClick={() => setLayer("expression")}
+                  >
+                    Gene expression
+                  </button>
+                  <button
+                    type="button"
+                    className={layer === "tissue" ? "on" : ""}
+                    aria-pressed={layer === "tissue"}
+                    onClick={() => setLayer("tissue")}
+                  >
+                    Tissue type
+                  </button>
+                </div>
+              )}
               {view === "genes" && uploaded?.url && (
                 <label className="overlay-toggle">
                   <input
@@ -895,10 +921,14 @@ export default function GeneXApp() {
                 gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
                 imageUrl={uploaded?.url}
                 showImage={showImage}
+                layer={layer}
               />
             )}
           </div>
 
+          {view === "genes" && layer === "tissue" && ready && pred.tissue ? (
+            <TissueSummary tissue={pred.tissue} total={pred.total} />
+          ) : (
           <div className="card cluster-card" data-tour="cluster-breakdown">
             <div className="card-title">
               Cluster breakdown
@@ -934,6 +964,7 @@ export default function GeneXApp() {
                   ))}
             </div>
           </div>
+          )}
         </div>
 
         {/* Column 3 — cluster analysis */}
