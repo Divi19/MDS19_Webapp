@@ -64,6 +64,49 @@ Web interface for predicting spatial gene expression from H&E histology images.
 Frontend: http://localhost:3000
 API docs: http://localhost:8000/docs
 
+## Tissue classifier (tissue-v1)
+
+Each prediction spot can also carry a predicted **tissue type**, shown in the
+Genes view under *Colour spots by → Tissue type*.
+
+- **What it is:** a logistic regression (numpy only) on the same H0-mini
+  features the v7 expression model uses: the native 224 crop (1536-d) plus the
+  672 context crop resized to 224 (1536-d). There is no new deep model.
+- **Classes:** the model outputs 6 classes. Invasive cancer and cancer in situ
+  are merged into one **Cancer** class because the model cannot separate them
+  (in situ F1 0.06). The 5 classes shown are Cancer, Immune infiltrate, Breast
+  glands, Connective tissue and Adipose tissue.
+- **Training data:** HER2ST pathologist annotations: 3,157 labelled spots from
+  8 patients, evaluated leave-one-patient-out.
+- **Performance on unseen patients:**
+  - Cancer vs non-cancer: 87.4% sensitivity, 81.8% specificity, 87.8%
+    precision (cancer F1 0.876).
+  - 5-class macro-F1 0.62.
+  - Per-class F1: immune 0.47, glands 0.55, connective 0.59, adipose 0.63.
+- **Limitations:**
+  - HER2+ breast cancer only.
+  - Research prototype, not for diagnosis.
+  - Does not distinguish in situ from invasive cancer.
+  - The figures above were measured on HER2ST spots, not on the app's 224 px
+    grid tiles of arbitrary uploads.
+  - Derivative of H0-mini (CC-BY-NC-ND 4.0): non-commercial use only.
+- **Setup:**
+  - Put `tissue_clf.npz` and `stage_config.json` in
+    `backend/model_data/tissue_clf_v1/`. The folder is gitignored, like the
+    expression bank.
+  - `TISSUE_CLASSIFIER_ENABLED=false` turns the feature off.
+  - With `ENCODER_BACKEND=densenet121`, the classifier computes its own
+    H0-mini features. That needs `HF_TOKEN` (an account with access to the
+    gated `bioptimus/H0-mini`) in `backend/.env`.
+  - If anything is missing, the tissue fields are null, the toggle is hidden
+    and expression is unaffected.
+- **Database:** apply `supabase/migrations/0004_tissue_classifier.sql` so
+  history saves the tissue fields. History still works without the migration,
+  but the tissue fields are not saved.
+- **Tests:**
+  - Backend: `cd backend && pip install -r requirements-dev.txt && python -m pytest -q`
+  - Frontend: `cd frontend && npm test`
+
 ## Current state
 The API returns **dummy predictions**. The real model is not yet wired in.
 Set `USE_DUMMY_PREDICTOR=false` once `MclSTExpPredictor` is implemented
