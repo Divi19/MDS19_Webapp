@@ -3,10 +3,25 @@
 import { useMemo, useState } from "react";
 import { CL, type Prediction } from "@/lib/mockPrediction";
 import {
-  cancerEnrichedGenes, clusterTissueTable, formatPercent, geneByTissue, TISSUE_CLASSES, TISSUE_COLORS,
+  cancerEnrichedGenes, cancerStatement, clusterTissueTable, formatPercent, geneByTissue, TISSUE_CLASSES,
+  TISSUE_COLORS, TISSUE_SHORT_NAMES,
 } from "@/lib/tissue";
 
 type InsightTab = "expression" | "composition";
+
+/** One horizontal stacked bar of tissue-class counts, with the breakdown in
+ * its tooltip and accessible name. */
+function CompositionBar({ counts }: { counts: number[] }) {
+  const total = counts.reduce((a, b) => a + b, 0);
+  const label = TISSUE_CLASSES.map((name, i) => `${name} ${formatPercent(total ? counts[i] / total : 0)}`).join(", ");
+  return (
+    <span className="tissue-stack" role="img" aria-label={label} title={label}>
+      {TISSUE_CLASSES.map((name, i) => (
+        <span key={name} style={{ width: `${total ? (counts[i] / total) * 100 : 0}%`, background: TISSUE_COLORS[name] }} />
+      ))}
+    </span>
+  );
+}
 
 /**
  * The Tissue tab's bottom card. Connects the tissue classification to the
@@ -14,9 +29,10 @@ type InsightTab = "expression" | "composition";
  *  - Expression by tissue type (default): the selected gene's mean predicted
  *    expression in each tissue class, and the genes most raised in Cancer
  *    tiles versus all other tiles.
- *  - Composition: share of tiles per class, and how the expression clusters
- *    (Clusters tab) map onto tissue classes.
- * All values are model-scale predictions averaged over tiles.
+ *  - Composition: share of tiles per class for the whole section and for each
+ *    expression cluster (Clusters tab).
+ * GeneXApp lays this over the cluster breakdown card, so it always has that
+ * card's exact height; both sub-tabs are sized to fit it.
  */
 export default function TissueInsights({
   pred,
@@ -33,10 +49,11 @@ export default function TissueInsights({
   const byClass = useMemo(() => geneByTissue(pred, gene), [pred, gene]);
   const enriched = useMemo(() => cancerEnrichedGenes(pred, 5), [pred]);
   const crossTab = useMemo(() => clusterTissueTable(pred), [pred]);
+  const overall = TISSUE_CLASSES.map((name) => tissue.summary[name].count);
   const maxMean = Math.max(0, ...byClass.map((c) => c.mean ?? 0));
 
   return (
-    <div className="card cluster-card tissue-insights">
+    <div className="card tissue-insights">
       <div className="card-title">
         <div className="seg seg-sub" role="tablist" aria-label="Tissue insights">
           <button
@@ -58,20 +75,20 @@ export default function TissueInsights({
             Composition
           </button>
         </div>
-        <span className="meta">{tissue.version} · {pred.total} tiles</span>
+        <span className="meta">{cancerStatement(tissue, pred.total)}</span>
       </div>
 
       {tab === "expression" ? (
         <div className="insight-grid" role="tabpanel">
           <section>
-            <h4>
-              <span className="insight-gene">{gene}</span> by tissue type
+            <h4 title="Mean predicted expression per tile in each tissue class. Pick a gene from the list on the left or from the right column.">
+              <span className="insight-gene">{gene}</span> mean by tissue type
             </h4>
             {byClass.map(({ cls, count, mean }) => (
-              <div key={cls} className="insight-row">
+              <div key={cls} className="insight-row" title={`${cls}: ${count} tiles`}>
                 <span className="insight-name">
                   <span className="dot" style={{ background: TISSUE_COLORS[cls] }} />
-                  {cls}
+                  {TISSUE_SHORT_NAMES[cls]}
                 </span>
                 <span className="insight-bar">
                   {mean != null && maxMean > 0 && (
@@ -82,91 +99,41 @@ export default function TissueInsights({
                 <span className="insight-n">n={count}</span>
               </div>
             ))}
-            <p className="insight-note">Mean predicted expression per tile. Pick a gene from the list on the left or here.</p>
           </section>
           <section>
-            <h4>Highest in Cancer tiles vs the rest</h4>
+            <h4 title="Mean predicted expression in Cancer tiles minus all other tiles">Highest in Cancer vs other tiles</h4>
             {enriched.length ? (
-              <table className="insight-table">
-                <thead>
-                  <tr>
-                    <th>Gene</th>
-                    <th>Cancer</th>
-                    <th>Other</th>
-                    <th>Δ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {enriched.map((row) => (
-                    <tr key={row.gene} className={row.gene === gene ? "on" : ""}>
-                      <td>
-                        <button type="button" className="insight-gene-btn" onClick={() => onPickGene(row.gene)}>
-                          {row.gene}
-                        </button>
-                      </td>
-                      <td>{row.cancerMean.toFixed(2)}</td>
-                      <td>{row.restMean.toFixed(2)}</td>
-                      <td>+{row.diff.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              enriched.map((row) => (
+                <div key={row.gene} className={`insight-row enriched${row.gene === gene ? " on" : ""}`}>
+                  <button type="button" className="insight-gene-btn" onClick={() => onPickGene(row.gene)}>
+                    {row.gene}
+                  </button>
+                  <span className="insight-val" title="Cancer tiles vs other tiles">
+                    {row.cancerMean.toFixed(2)} vs {row.restMean.toFixed(2)}
+                  </span>
+                  <span className="insight-diff">+{row.diff.toFixed(2)}</span>
+                </div>
+              ))
             ) : (
               <p className="insight-note">Needs both Cancer and non-cancer tiles in this section.</p>
             )}
           </section>
         </div>
       ) : (
-        <div role="tabpanel">
-          <div className="tissue-cancer-area">
-            Cancer area: <strong>{formatPercent(tissue.summary.Cancer.fraction)}</strong> of tiles
+        <div className="composition" role="tabpanel">
+          <div className="composition-row overall">
+            <span className="composition-label">All tiles</span>
+            <CompositionBar counts={overall} />
           </div>
-          <div
-            className="tissue-stack"
-            role="img"
-            aria-label={TISSUE_CLASSES.map((name) => `${name} ${formatPercent(tissue.summary[name].fraction)}`).join(", ")}
-          >
-            {TISSUE_CLASSES.map((name) => (
-              <span
-                key={name}
-                title={`${name}: ${formatPercent(tissue.summary[name].fraction)}`}
-                style={{ width: `${tissue.summary[name].fraction * 100}%`, background: TISSUE_COLORS[name] }}
-              />
-            ))}
-          </div>
-          <table className="insight-table crosstab">
-            <thead>
-              <tr>
-                <th>Expression cluster</th>
-                {TISSUE_CLASSES.map((name) => (
-                  <th key={name} title={name}>
-                    <span className="dot" style={{ background: TISSUE_COLORS[name] }} />
-                    {name.split(" ")[0]}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {crossTab.map((row, cluster) => {
-                const total = row.reduce((a, b) => a + b, 0);
-                const top = row.indexOf(Math.max(...row));
-                return (
-                  <tr key={cluster}>
-                    <td>
-                      <span className="dot" style={{ background: CL[cluster] }} />
-                      cluster {cluster}
-                    </td>
-                    {row.map((count, i) => (
-                      <td key={i} className={total && i === top ? "top" : ""}>
-                        {count ? formatPercent(count / total) : "—"}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <p className="insight-note">Share of each expression cluster&apos;s tiles in each tissue class.</p>
+          {crossTab.map((counts, cluster) => (
+            <div key={cluster} className="composition-row">
+              <span className="composition-label">
+                <span className="dot" style={{ background: CL[cluster] }} />
+                cluster {cluster}
+              </span>
+              <CompositionBar counts={counts} />
+            </div>
+          ))}
         </div>
       )}
     </div>

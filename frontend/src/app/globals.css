@@ -219,13 +219,6 @@ button.legend-item{font:inherit;font-family:var(--mono);font-size:11px}
 .tip-prob-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.14);overflow:hidden}
 .tip-prob-bar span{display:block;height:100%}
 .tip-prob-val{text-align:right;font-variant-numeric:tabular-nums}
-.tissue-stack{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--surface3)}
-.tissue-stack span{height:100%}
-.tissue-stats{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
-.tissue-stats .stat{display:inline-flex;align-items:center;gap:5px}
-.tissue-stats .dot{width:8px;height:8px;border-radius:50%}
-.tissue-cancer-area{font-size:13px;font-weight:600;margin-bottom:8px}
-.tissue-cancer-area strong{color:#D55E00}
 
 /* cluster analysis */
 .cluster-analysis-header{padding:13px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -405,12 +398,7 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 
 @media (max-width:1200px){.grid{grid-template-columns:300px 1fr 400px}}
 @media (max-width:980px){.grid{grid-template-columns:1fr;overflow-y:auto}.col{overflow:visible}.col-1,.col-2{border-right:none;border-bottom:1px solid var(--border)}.col-3{min-height:520px}.col-1 .gene-card{flex:none}.gene-grid{overflow:visible}}
-.seg-sub button{padding:4px 10px;font-size:11.5px}
-.tissue-insights .card-title{margin-bottom:8px}
-.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.insight-grid h4{font-size:11.5px;font-weight:600;margin-bottom:5px}
 .insight-gene{font-family:var(--mono);color:var(--accent)}
-.insight-row{display:grid;grid-template-columns:118px 1fr 38px 40px;align-items:center;gap:6px;font-size:11px;line-height:1.7}
 .insight-name{display:inline-flex;align-items:center;gap:5px;color:var(--muted);white-space:nowrap}
 .tissue-insights .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;flex-shrink:0}
 .insight-name .dot{margin-right:0}
@@ -418,14 +406,6 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .insight-bar span{display:block;height:100%}
 .insight-val,.insight-n{font-family:var(--mono);font-size:10.5px;text-align:right;font-variant-numeric:tabular-nums}
 .insight-n{color:var(--muted2)}
-.insight-note{font-size:10.5px;color:var(--muted2);margin-top:5px}
-.insight-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10.5px}
-.insight-table th{font-weight:500;color:var(--muted2);text-align:right;padding:2px 4px;white-space:nowrap}
-.insight-table th:first-child,.insight-table td:first-child{text-align:left}
-.insight-table td{padding:2px 4px;text-align:right;border-top:1px solid var(--surface3);font-variant-numeric:tabular-nums}
-.insight-table tr.on td{background:var(--accent-soft)}
-.insight-table td.top{font-weight:700;color:var(--text)}
-.insight-table.crosstab{margin-top:8px}
 .insight-gene-btn{border:none;background:none;padding:0;font:inherit;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 /* Main view tabs stay on one line (a wrapped tab grows the header and shrinks the map). */
 .plot-header .seg-tabs,.plot-header .seg-mode{flex-shrink:0}
@@ -441,3 +421,23 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .legend-compact{padding:2px 8px;font-size:10.5px;white-space:nowrap}
 .opacity-control{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);flex-shrink:0}
 .opacity-control input{accent-color:var(--accent);width:80px}
+.breakdown-slot{position:relative;flex-shrink:0}
+.breakdown-slot .is-covered{visibility:hidden}
+.tissue-insights{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column}
+.tissue-insights .card-title{margin-bottom:5px}
+.tissue-insights .card-title .meta{font-family:var(--sans);font-size:11px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.seg-sub{flex-shrink:0}
+.seg-sub button{padding:2px 9px;font-size:11px}
+.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:0}
+.insight-grid h4{font-size:10.5px;font-weight:600;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.insight-row{display:grid;grid-template-columns:82px 1fr 34px 40px;align-items:center;gap:5px;font-size:10.5px;line-height:12px;height:12px}
+.insight-row.enriched{grid-template-columns:62px 1fr 40px}
+.insight-row.enriched.on{background:var(--accent-soft)}
+.insight-diff{font-family:var(--mono);font-size:10.5px;text-align:right;color:#D55E00;font-variant-numeric:tabular-nums}
+.insight-note{font-size:10.5px;color:var(--muted2)}
+.composition{display:flex;flex-direction:column;gap:2px}
+.composition-row{display:grid;grid-template-columns:72px 1fr;align-items:center;gap:8px;height:10px;font-family:var(--mono);font-size:10px;color:var(--muted)}
+.composition-row.overall{color:var(--text);font-weight:600}
+.composition-label{display:inline-flex;align-items:center;white-space:nowrap}
+.tissue-stack{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--surface3)}
+.tissue-stack span{height:100%}

@@ -89,11 +89,12 @@ describe("predictions without tissue data, and the Genes view", () => {
 });
 
 describe("TissueInsights", () => {
-  it("opens on expression by tissue type for the selected gene", () => {
+  it("opens on expression by tissue type and states the cancer share", () => {
     render(<TissueInsights pred={toPrediction(TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />);
     expect(screen.getByRole("tab", { name: "Expression by tissue type" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("heading", { level: 4, name: "ERBB2 by tissue type" })).toBeTruthy();
-    const cancerRow = screen.getAllByText("Cancer")[0].closest(".insight-row")!;
+    expect(screen.getByText("Cancer-classified tissue: 3 of 4 tiles (75.0%)")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 4, name: "ERBB2 mean by tissue type" })).toBeTruthy();
+    const cancerRow = screen.getByTitle("Cancer: 3 tiles");
     expect(cancerRow.textContent).toContain("2.00");
     expect(cancerRow.textContent).toContain("n=3");
   });
@@ -101,17 +102,20 @@ describe("TissueInsights", () => {
   it("lists genes highest in Cancer tiles and lets one be picked", () => {
     const onPickGene = vi.fn();
     render(<TissueInsights pred={toPrediction(TISSUE_RESPONSE)} gene="CD74" onPickGene={onPickGene} />);
-    const row = screen.getByRole("button", { name: "ERBB2" }).closest("tr")!;
+    const row = screen.getByRole("button", { name: "ERBB2" }).closest(".insight-row")!;
+    expect(row.textContent).toContain("2.00 vs 1.50");
     expect(row.textContent).toContain("+0.50");
     fireEvent.click(screen.getByRole("button", { name: "ERBB2" }));
     expect(onPickGene).toHaveBeenCalledWith("ERBB2");
   });
 
-  it("switches to composition: cancer area, stacked bar and cluster table", () => {
+  it("switches to composition: whole-section and per-cluster stacked bars", () => {
     render(<TissueInsights pred={toPrediction(TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />);
     fireEvent.click(screen.getByRole("tab", { name: "Composition" }));
-    expect(screen.getByText(/Cancer area:/).textContent).toBe("Cancer area: 75.0% of tiles");
-    expect(screen.getByRole("img").getAttribute("aria-label")).toContain("Adipose tissue 25.0%");
-    expect(screen.getByText("Expression cluster")).toBeTruthy();
+    const bars = screen.getAllByRole("img");
+    expect(bars[0].getAttribute("aria-label")).toContain("Cancer 75.0%");
+    expect(bars[0].getAttribute("aria-label")).toContain("Adipose tissue 25.0%");
+    expect(bars).toHaveLength(1 + toPrediction(TISSUE_RESPONSE).counts.length);
+    expect(screen.getByText("All tiles")).toBeTruthy();
   });
 });

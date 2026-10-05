@@ -941,14 +941,21 @@ export default function GeneXApp() {
             )}
           </div>
 
-          {view === "tissue" && ready && pred.tissue ? (
+          {/* The Tissue tab's card is laid over the cluster breakdown (kept in
+              place, invisible) so the bottom box — and therefore the map above
+              it — is exactly the same height on every tab. */}
+          <div className="breakdown-slot">
+          {view === "tissue" && ready && pred.tissue && (
             <TissueInsights
               pred={pred}
               gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
               onPickGene={setGene}
             />
-          ) : (
-          <div className="card cluster-card" data-tour="cluster-breakdown">
+          )}
+          <div
+            className={`card cluster-card${view === "tissue" && ready && pred.tissue ? " is-covered" : ""}`}
+            data-tour="cluster-breakdown"
+          >
             <div className="card-title">
               Cluster breakdown
               <span className="meta">click a gene row or legend to explore</span>
@@ -983,7 +990,7 @@ export default function GeneXApp() {
                   ))}
             </div>
           </div>
-          )}
+          </div>
         </div>
 
         {/* Column 3 — cluster analysis */}
