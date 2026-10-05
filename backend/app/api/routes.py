@@ -7,11 +7,52 @@ from fastapi.responses import Response
 
 from app.models.schemas import PredictionResponse, HealthResponse, PathwayRequest, PathwayResult
 from app.services.david_client import PathwayLookupError
+from app.services.wsi import is_wsi_filename, convert_wsi_to_image_bytes
 
 router = APIRouter()
 
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024   # 50 MB
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024        # 50 MB -- regular jpeg/png/tiff uploads
+MAX_WSI_UPLOAD_BYTES = 500 * 1024 * 1024   # 500 MB -- .svs/.ndpi/.mrxs-as-zip uploads
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/tiff"}
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    """
+    Shared by all three /predict* endpoints below. Returns plain image
+    bytes, ready for predictor.predict()/.explain()/.explain_batch()
+    exactly as before.
+
+    Whole-slide uploads (.svs/.ndpi/.../.mrxs-as-zip) are converted to PNG
+    bytes right here, at the edge -- predictor.py, and Modal's separately
+    deployed infer.py, never find out a WSI was involved.
+
+    Checked by filename extension, not file.content_type: browsers send
+    inconsistent, often generic content types (frequently
+    application/octet-stream) for these scanner formats, since they are
+    not a type a browser recognises natively the way it does jpeg/png/tiff.
+    """
+    if is_wsi_filename(file.filename):
+        data = await file.read()
+        if len(data) > MAX_WSI_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Whole-slide file too large (max "
+                       f"{MAX_WSI_UPLOAD_BYTES // (1024 * 1024)}MB)")
+        try:
+            return convert_wsi_to_image_bytes(data, file.filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported type {file.content_type}. "
+                   f"Allowed: {sorted(ALLOWED_TYPES)}",
+        )
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+    return data
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -26,16 +67,7 @@ async def health(request: Request):
 
 @router.post("/predict", response_model=PredictionResponse)
 async def predict(request: Request, file: UploadFile = File(...)):
-    if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(
-            status_code=415,
-            detail=f"Unsupported type {file.content_type}. "
-                   f"Allowed: {sorted(ALLOWED_TYPES)}",
-        )
-
-    image_bytes = await file.read()
-    if len(image_bytes) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+    image_bytes = await _read_upload(file)
 
     predictor = request.app.state.predictor
     try:
@@ -60,16 +92,7 @@ async def predict_gradcam(
     spot_index: int = Form(...),
     gene: str | None = Form(None),
 ):
-    if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(
-            status_code=415,
-            detail=f"Unsupported type {file.content_type}. "
-                   f"Allowed: {sorted(ALLOWED_TYPES)}",
-        )
-
-    image_bytes = await file.read()
-    if len(image_bytes) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+    image_bytes = await _read_upload(file)
 
     predictor = request.app.state.predictor
     try:
@@ -91,16 +114,7 @@ async def predict_gradcam_batch(
     spot_indices: str = Form(...),  # comma-separated ints, e.g. "0,1,2,3"
     gene: str | None = Form(None),
 ):
-    if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(
-            status_code=415,
-            detail=f"Unsupported type {file.content_type}. "
-                   f"Allowed: {sorted(ALLOWED_TYPES)}",
-        )
-
-    image_bytes = await file.read()
-    if len(image_bytes) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+    image_bytes = await _read_upload(file)
 
     try:
         indices = [int(x) for x in spot_indices.split(",") if x.strip()]
