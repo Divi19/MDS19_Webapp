@@ -66,8 +66,25 @@ API docs: http://localhost:8000/docs
 
 ## Tissue classifier (tissue-v1)
 
-Each prediction spot can also carry a predicted **tissue type**, shown in the
-Genes view under *Colour spots by → Tissue type*.
+Each prediction tile can also carry a predicted **tissue type**. When it
+does, a **Tissue** tab appears next to Clusters / Genes / Grad-CAM:
+
+- **Tissue types** map: one colour per class, with a legend of counts and
+  percentages. Hover or focus a legend item to highlight that class.
+  Uncertain tiles (top class below 50%) are faded with a dashed outline, and
+  *Show only uncertain* isolates them.
+- **Cancer probability** map: P(Cancer) per tile, from blue (not cancer) to
+  orange (cancer).
+- **Status line:** "Cancer-classified tissue: X of Y tiles", how many tiles
+  are uncertain, and how many adipose tiles sit on the tissue edge (these may
+  be partly background). It is deliberately not a slide-level verdict.
+- **Spot opacity** slider and *Show image*, so the H&E stays readable.
+- **Bottom card:**
+  - *Expression by tissue type* (default): the selected gene's mean predicted
+    expression per class, and the genes highest in Cancer tiles versus the
+    rest. Click one to select it.
+  - *Composition*: Cancer area, a stacked bar, and how the expression
+    clusters map onto tissue classes.
 
 - **What it is:** a logistic regression (numpy only) on the same H0-mini
   features the v7 expression model uses: the native 224 crop (1536-d) plus the
