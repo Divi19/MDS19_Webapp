@@ -410,3 +410,25 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 @media (max-width:980px){.grid{grid-template-columns:1fr;overflow-y:auto}.col{overflow:visible}.col-1,.col-2{border-right:none;border-bottom:1px solid var(--border)}.col-3{min-height:520px}.col-1 .gene-card{flex:none}.gene-grid{overflow:visible}}
 .plot-subheader{display:flex;align-items:center;gap:8px;margin:-2px 0 10px;flex-shrink:0}
 .plot-subheader-label{font-size:11px;color:var(--muted)}
+.seg-sub button{padding:4px 10px;font-size:11.5px}
+.tissue-insights .card-title{margin-bottom:8px}
+.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.insight-grid h4{font-size:11.5px;font-weight:600;margin-bottom:5px}
+.insight-gene{font-family:var(--mono);color:var(--accent)}
+.insight-row{display:grid;grid-template-columns:118px 1fr 38px 40px;align-items:center;gap:6px;font-size:11px;line-height:1.7}
+.insight-name{display:inline-flex;align-items:center;gap:5px;color:var(--muted);white-space:nowrap}
+.tissue-insights .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;flex-shrink:0}
+.insight-name .dot{margin-right:0}
+.insight-bar{height:6px;border-radius:3px;background:var(--surface3);overflow:hidden}
+.insight-bar span{display:block;height:100%}
+.insight-val,.insight-n{font-family:var(--mono);font-size:10.5px;text-align:right;font-variant-numeric:tabular-nums}
+.insight-n{color:var(--muted2)}
+.insight-note{font-size:10.5px;color:var(--muted2);margin-top:5px}
+.insight-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10.5px}
+.insight-table th{font-weight:500;color:var(--muted2);text-align:right;padding:2px 4px;white-space:nowrap}
+.insight-table th:first-child,.insight-table td:first-child{text-align:left}
+.insight-table td{padding:2px 4px;text-align:right;border-top:1px solid var(--surface3);font-variant-numeric:tabular-nums}
+.insight-table tr.on td{background:var(--accent-soft)}
+.insight-table td.top{font-weight:700;color:var(--text)}
+.insight-table.crosstab{margin-top:8px}
+.insight-gene-btn{border:none;background:none;padding:0;font:inherit;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
