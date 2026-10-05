@@ -14,6 +14,7 @@ import HistoryPanel from "./HistoryPanel";
 import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
+import TissueLayerToggle, { type SpotLayer } from "./TissueLayerToggle";
 import TissueSummary from "./TissueSummary";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
@@ -67,7 +68,7 @@ export default function GeneXApp() {
   const [showImage, setShowImage] = useState(true);
   // Genes view colouring: predicted expression (default, unchanged) or
   // predicted tissue type — only offered when the prediction has tissue data.
-  const [layer, setLayer] = useState<"expression" | "tissue">("expression");
+  const [layer, setLayer] = useState<SpotLayer>("expression");
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
@@ -870,26 +871,6 @@ export default function GeneXApp() {
                   )}
                 </div>
               )}
-              {view === "genes" && ready && pred.tissue && (
-                <div className="seg seg-layer" role="group" aria-label="Spot colouring">
-                  <button
-                    type="button"
-                    className={layer === "expression" ? "on" : ""}
-                    aria-pressed={layer === "expression"}
-                    onClick={() => setLayer("expression")}
-                  >
-                    Gene expression
-                  </button>
-                  <button
-                    type="button"
-                    className={layer === "tissue" ? "on" : ""}
-                    aria-pressed={layer === "tissue"}
-                    onClick={() => setLayer("tissue")}
-                  >
-                    Tissue type
-                  </button>
-                </div>
-              )}
               {view === "genes" && uploaded?.url && (
                 <label className="overlay-toggle">
                   <input
@@ -902,6 +883,9 @@ export default function GeneXApp() {
               )}
               {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
             </div>
+            {view === "genes" && ready && (
+              <TissueLayerToggle tissue={pred.tissue} layer={layer} onChange={setLayer} />
+            )}
 
             {gradcamMounted && (
               <GradCamPanel
