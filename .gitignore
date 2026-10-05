@@ -144,6 +144,7 @@ vite.config.ts.timestamp-*
 
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -161,6 +162,8 @@ node_modules/
 # Model artefacts — too large for git
 *.pt
 *.pth
+*.ckpt
+*.h5ad
 *.npy
 backend/model_data/
 
