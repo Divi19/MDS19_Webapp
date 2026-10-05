@@ -125,7 +125,8 @@ export default function ClusterAnalysisPanel({
                           <span
                             key={r.term}
                             className="cluster-analysis-pathway"
-                            title={`${r.term} · p=${r.pvalue.toFixed(3)} · genes: ${r.genes.join(", ")}`}
+                            data-tooltip={`${r.term} · p=${r.pvalue.toFixed(3)} · genes: ${r.genes.join(", ")}`}
+                            aria-label={`${r.term}, p=${r.pvalue.toFixed(3)}, genes: ${r.genes.join(", ")}`}
                           >
                             {formatTerm(r.term)}
                           </span>
