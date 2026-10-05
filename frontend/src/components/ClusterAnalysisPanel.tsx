@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CL, type Prediction } from "@/lib/mockPrediction";
 import { analyzeClusters } from "@/lib/clusterAnalysis";
 import { fetchPathways, type PathwayResult } from "@/lib/pathways";
@@ -33,6 +33,15 @@ export default function ClusterAnalysisPanel({
   // firing one per cluster on every prediction would burn through that
   // fast across a few users' sessions.
   const [pathways, setPathways] = useState<Record<number, PathwayState>>({});
+
+  // Cluster index alone doesn't identify which prediction a lookup belongs
+  // to — "cluster 2" in one upload has nothing to do with "cluster 2" in
+  // the next. Without this, a stale pathway result from a previous image
+  // stays attached to the same cluster slot after a new one is uploaded,
+  // since this component never unmounts between predictions.
+  useEffect(() => {
+    queueMicrotask(() => setPathways({}));
+  }, [pred]);
 
   async function findPathways(clusterIndex: number, genes: string[]) {
     setPathways((prev) => ({ ...prev, [clusterIndex]: { status: "loading" } }));
