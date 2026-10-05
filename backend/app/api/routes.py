@@ -21,6 +21,7 @@ async def health(request: Request):
         status="ok",
         model_loaded=predictor.is_loaded,
         predictor_type=type(predictor).__name__,
+        tissue_model_version=getattr(predictor, "tissue_model_version", None),
     )
 
 
@@ -50,6 +51,8 @@ async def predict(request: Request, file: UploadFile = File(...)):
         created_at=datetime.now(timezone.utc),
         spots=result["spots"],
         top_genes=result["top_genes"],
+        tissue_model_version=result.get("tissue_model_version"),
+        tissue_summary=result.get("tissue_summary"),
     )
 
 

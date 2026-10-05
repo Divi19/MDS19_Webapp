@@ -27,6 +27,17 @@ class Settings(BaseSettings):
     enable_smoothing: bool = True
     smoothing_alpha: float = 0.6
 
+    # Tissue-type classifier (tissue-v1, see app/services/tissue.py). Runs on
+    # the H0-mini features after expression is predicted; any failure leaves
+    # the tissue fields null and never affects the expression result.
+    # tissue_classifier_dir holds tissue_clf.npz + stage_config.json.
+    # hf_token: access to the gated bioptimus/H0-mini weights, only needed
+    # when the expression encoder is densenet121 (the classifier then
+    # computes its own H0-mini features). Never logged.
+    tissue_classifier_enabled: bool = True
+    tissue_classifier_dir: str = "model_data/tissue_clf_v1"
+    hf_token: str = ""
+
     # Modal GPU inference (see MDS19_Modal_Handover.md). When true,
     # get_predictor() returns ModalPredictor and ignores use_dummy_predictor
     # / encoder_backend / model_checkpoint_path / model_data_root entirely —
