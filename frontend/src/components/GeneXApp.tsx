@@ -13,16 +13,15 @@ import GradCamPanel from "./GradCamPanel";
 import HistoryPanel from "./HistoryPanel";
 import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
-import SpatialPlot from "./SpatialPlot";
-import TissueLayerToggle, { type SpotLayer } from "./TissueLayerToggle";
-import TissueSummary from "./TissueSummary";
+import SpatialPlot, { type TissueMode } from "./SpatialPlot";
+import TissueInsights from "./TissueInsights";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
 import { TUTORIAL_LOADING_STEP, TUTORIAL_STEPS } from "@/lib/tutorial";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type View = "clusters" | "genes" | "gradcam";
+type View = "clusters" | "genes" | "tissue" | "gradcam";
 type GeneFilter = "all" | "High" | "Mid" | "Low" | "markers";
 
 function levelClass(level: Level): string {
@@ -66,9 +65,10 @@ export default function GeneXApp() {
   // forcing a full restart on returning to the tab.
   const [gradcamMounted, setGradcamMounted] = useState(false);
   const [showImage, setShowImage] = useState(true);
-  // Genes view colouring: predicted expression (default, unchanged) or
-  // predicted tissue type — only offered when the prediction has tissue data.
-  const [layer, setLayer] = useState<SpotLayer>("expression");
+  // Tissue tab (only offered when the prediction has tissue data): class map
+  // or cancer-probability map, and spot opacity so the H&E stays readable.
+  const [tissueMode, setTissueMode] = useState<TissueMode>("types");
+  const [spotOpacity, setSpotOpacity] = useState(0.85);
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
@@ -130,7 +130,8 @@ export default function GeneXApp() {
         setStepIndex(5);
         const converted = toPrediction(response);
         setPred(converted);
-        setLayer("expression");
+        // A prediction without tissue data has no Tissue tab to stay on.
+        if (!converted.tissue) setView((v) => (v === "tissue" ? "clusters" : v));
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setGenePage(0);
         setGeneFilter("all");
@@ -178,7 +179,8 @@ export default function GeneXApp() {
             });
         }
         setPred(converted);
-        setLayer("expression");
+        // A prediction without tissue data has no Tissue tab to stay on.
+        if (!converted.tissue) setView((v) => (v === "tissue" ? "clusters" : v));
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setGenePage(0);
         setGeneFilter("all");
@@ -458,7 +460,9 @@ export default function GeneXApp() {
     ? ""
     : view === "genes"
       ? (pred.geneMeta[gene]?.label ?? "ERBB2")
-      : `k=5 · ${pred.total} spots`;
+      : view === "tissue" && pred.tissue
+        ? `${pred.tissue.version} · ${pred.total} tiles`
+        : `k=5 · ${pred.total} spots`;
 
   return (
     <div className="app">
@@ -657,7 +661,9 @@ export default function GeneXApp() {
                 ) => {
                   if (pred.geneMeta[g.name]) {
                     setGene(g.name);
-                    changeView("genes");
+                    // On the Tissue tab the gene feeds "Expression by tissue
+                    // type", so stay there instead of jumping to Genes.
+                    if (view !== "tissue") changeView("genes");
                   }
                   const rect = e.currentTarget.getBoundingClientRect();
                   setPopoverAnchor({ gene: g.name, x: rect.left, top: rect.top, bottom: rect.bottom });
@@ -785,6 +791,14 @@ export default function GeneXApp() {
                 >
                   Genes
                 </button>
+                {ready && pred.tissue && (
+                  <button
+                    className={view === "tissue" ? "on" : ""}
+                    onClick={() => changeView("tissue")}
+                  >
+                    Tissue
+                  </button>
+                )}
                 <button
                   className={view === "gradcam" ? "on" : ""}
                   onClick={() => changeView("gradcam")}
@@ -871,7 +885,7 @@ export default function GeneXApp() {
                   )}
                 </div>
               )}
-              {view === "genes" && uploaded?.url && (
+              {(view === "genes" || view === "tissue") && uploaded?.url && (
                 <label className="overlay-toggle">
                   <input
                     type="checkbox"
@@ -883,8 +897,39 @@ export default function GeneXApp() {
               )}
               {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
             </div>
-            {view === "genes" && ready && (
-              <TissueLayerToggle tissue={pred.tissue} layer={layer} onChange={setLayer} />
+            {view === "tissue" && ready && pred.tissue && (
+              <div className="plot-subheader tissue-controls">
+                <div className="seg seg-layer" role="group" aria-label="Tissue map">
+                  <button
+                    type="button"
+                    className={tissueMode === "types" ? "on" : ""}
+                    aria-pressed={tissueMode === "types"}
+                    onClick={() => setTissueMode("types")}
+                  >
+                    Tissue types
+                  </button>
+                  <button
+                    type="button"
+                    className={tissueMode === "cancer" ? "on" : ""}
+                    aria-pressed={tissueMode === "cancer"}
+                    onClick={() => setTissueMode("cancer")}
+                  >
+                    Cancer probability
+                  </button>
+                </div>
+                <label className="opacity-control">
+                  Spot opacity
+                  <input
+                    type="range"
+                    min={0.15}
+                    max={1}
+                    step={0.05}
+                    value={spotOpacity}
+                    onChange={(e) => setSpotOpacity(Number(e.target.value))}
+                    aria-label="Spot opacity"
+                  />
+                </label>
+              </div>
             )}
 
             {gradcamMounted && (
@@ -905,13 +950,18 @@ export default function GeneXApp() {
                 gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
                 imageUrl={uploaded?.url}
                 showImage={showImage}
-                layer={layer}
+                tissueMode={tissueMode}
+                spotOpacity={spotOpacity}
               />
             )}
           </div>
 
-          {view === "genes" && layer === "tissue" && ready && pred.tissue ? (
-            <TissueSummary tissue={pred.tissue} total={pred.total} />
+          {view === "tissue" && ready && pred.tissue ? (
+            <TissueInsights
+              pred={pred}
+              gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
+              onPickGene={setGene}
+            />
           ) : (
           <div className="card cluster-card" data-tour="cluster-breakdown">
             <div className="card-title">

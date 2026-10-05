@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
 import {
-  formatPercent, LOW_CONFIDENCE, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_DISCLAIMER, type TissueClass,
+  cancerProbabilityColor, cancerStatement, edgeAdiposeCount, formatPercent, isUncertain, LOW_CONFIDENCE,
+  TISSUE_CLASSES, TISSUE_COLORS, TISSUE_DISCLAIMER, uncertainCount, type TissueClass,
 } from "@/lib/tissue";
+
+export type TissueMode = "types" | "cancer";
 
 const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -47,31 +50,43 @@ function spotXY(s: Spot, g: Geom): [number, number] {
   return [g.mL + s.x * g.pw, g.mT + s.y * g.ph];
 }
 
-/** One spot on the tissue-type layer: its class colour, or faded with a
- * dashed outline when the classifier's top probability is below
- * LOW_CONFIDENCE. Spots without tissue data are drawn as faint grey. */
+/** One spot on the Tissue view.
+ *  - "types": its class colour; tiles whose top probability is below
+ *    LOW_CONFIDENCE are faded with a dashed outline.
+ *  - "cancer": coloured by P(Cancer) on a blue -> orange scale.
+ * `focus` fades every spot it rejects (legend highlight / uncertain-only),
+ * keeping them faintly visible for context. Spots without tissue data are
+ * drawn as faint grey. */
 function drawTissueSpot(
   ctx: CanvasRenderingContext2D,
   px: number,
   py: number,
   r: number,
   s: Spot,
-  baseAlpha: number,
-  dimmed: boolean,
+  opacity: number,
+  mode: TissueMode,
+  focused: boolean,
 ) {
   ctx.beginPath();
   ctx.arc(px, py, r, 0, 6.2832);
   if (!s.tissue) {
-    ctx.globalAlpha = 0.35 * baseAlpha;
+    ctx.globalAlpha = 0.3 * opacity;
     ctx.fillStyle = "#9a978d";
     ctx.fill();
     ctx.globalAlpha = 1;
     return;
   }
+  const fade = focused ? 1 : 0.12;
+  if (mode === "cancer") {
+    ctx.globalAlpha = opacity * fade;
+    ctx.fillStyle = cancerProbabilityColor(s.tissue.probs.Cancer);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    return;
+  }
   const col = TISSUE_COLORS[s.tissue.cls];
-  const fade = dimmed ? 0.15 : 1;
-  const low = s.tissue.confidence < LOW_CONFIDENCE;
-  ctx.globalAlpha = (low ? 0.3 : baseAlpha) * fade;
+  const low = isUncertain(s);
+  ctx.globalAlpha = (low ? 0.35 : 1) * opacity * fade;
   ctx.fillStyle = col;
   ctx.fill();
   if (low) {
@@ -92,16 +107,17 @@ export default function SpatialPlot({
   gene,
   imageUrl,
   showImage = true,
-  layer = "expression",
+  tissueMode = "types",
+  spotOpacity = 0.85,
 }: {
   pred: Prediction;
   ready: boolean;
-  view: "clusters" | "genes";
+  view: "clusters" | "genes" | "tissue";
   gene: string;
-  /** Genes view only: colour spots by predicted expression (default) or by
-   * predicted tissue type. "tissue" is ignored when the prediction has no
-   * tissue data. */
-  layer?: "expression" | "tissue";
+  /** Tissue view only: class map or cancer-probability map. */
+  tissueMode?: TissueMode;
+  /** Tissue view only: spot fill opacity, so the H&E underneath stays readable. */
+  spotOpacity?: number;
   imageUrl?: string | null;
   /** Only meaningful in the Genes view overlaying a real image — lets the
    * user strip the tissue background and see just the spatial dot map,
@@ -118,7 +134,13 @@ export default function SpatialPlot({
   const [imgTick, setImgTick] = useState(0);
   const [tip, setTip] = useState<{ x: number; y: number; text: string; spot: Spot } | null>(null);
   const [tissueHighlight, setTissueHighlight] = useState<TissueClass | null>(null);
-  const tissueLayer = view === "genes" && layer === "tissue" && !!pred.tissue;
+  const [uncertainOnly, setUncertainOnly] = useState(false);
+  // The Tissue view only draws tissue when the prediction has it; GeneXApp
+  // never offers the tab otherwise.
+  const tissueLayer = view === "tissue" && !!pred.tissue;
+  const nUncertain = useMemo(() => uncertainCount(pred), [pred]);
+  const nEdgeAdipose = useMemo(() => edgeAdiposeCount(pred), [pred]);
+  const showUncertainOnly = uncertainOnly && tissueMode === "types" && nUncertain > 0;
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -174,12 +196,16 @@ export default function SpatialPlot({
     }
 
     const genesView = view === "genes";
+    // Whether a spot passes the current legend highlight / uncertain-only filter.
+    const tissueFocus = (s: Spot) =>
+      (tissueHighlight == null || s.tissue?.cls === tissueHighlight) &&
+      (!showUncertainOnly || isUncertain(s));
     let gk = gene;
     if (!pred.geneMeta[gk]) gk = pred.genes[0] ?? "";
 
     // Genes view with a real section loaded: overlay predicted expression
     // directly on the tissue instead of an abstract grid.
-    if (genesView && imgRef.current) {
+    if ((genesView || tissueLayer) && imgRef.current) {
       const img = imgRef.current;
       const ir = img.naturalWidth / img.naturalHeight;
       const cr = w / h;
@@ -209,8 +235,7 @@ export default function SpatialPlot({
       if (tissueLayer) {
         for (const s of pred.spots) {
           const [px, py] = spotXY(s, geom);
-          const dimmed = tissueHighlight != null && s.tissue?.cls !== tissueHighlight;
-          drawTissueSpot(ctx, px, py, r, s, 0.85, dimmed);
+          drawTissueSpot(ctx, px, py, r, s, spotOpacity, tissueMode, tissueFocus(s));
         }
         return;
       }
@@ -271,8 +296,7 @@ export default function SpatialPlot({
       const px = mL + s.x * pw;
       const py = mT + s.y * ph;
       if (tissueLayer) {
-        const dimmed = tissueHighlight != null && s.tissue?.cls !== tissueHighlight;
-        drawTissueSpot(ctx, px, py, r, s, 1, dimmed);
+        drawTissueSpot(ctx, px, py, r, s, spotOpacity, tissueMode, tissueFocus(s));
         continue;
       }
       ctx.beginPath();
@@ -283,7 +307,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight]);
+  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueMode, spotOpacity, showUncertainOnly]);
 
   useEffect(() => {
     draw();
@@ -308,7 +332,7 @@ export default function SpatialPlot({
     }
     if (best && bd < 200) {
       const text =
-        view === "genes"
+        view === "genes" || view === "tissue"
           ? `${pred.geneMeta[g.gk]?.label ?? g.gk} ${(best.s.expr[g.gk] ?? 0).toFixed(2)} · cluster ${best.s.cluster}`
           : (pred.clusters[best.s.cluster]?.name ?? `cluster ${best.s.cluster}`);
       setTip({ x: best.px, y: best.py, text, spot: best.s });
@@ -338,8 +362,11 @@ export default function SpatialPlot({
               <div className="tip-tissue-head">
                 <span className="legend-dot" style={{ background: TISSUE_COLORS[tip.spot.tissue.cls] }} />
                 {tip.spot.tissue.cls} · {formatPercent(tip.spot.tissue.confidence)}
-                {tip.spot.tissue.confidence < LOW_CONFIDENCE && <span className="tip-low">low confidence</span>}
+                {isUncertain(tip.spot) && <span className="tip-low">uncertain</span>}
               </div>
+              {tissueMode === "cancer" && (
+                <div className="tip-cancer">Cancer probability {formatPercent(tip.spot.tissue.probs.Cancer)}</div>
+              )}
               {TISSUE_CLASSES.map((name) => (
                 <div key={name} className="tip-prob">
                   <span className="tip-prob-name">{name}</span>
@@ -375,35 +402,64 @@ export default function SpatialPlot({
 
       {ready && tissueLayer && pred.tissue && (
         <>
-          <div className="legend tissue-legend" aria-label="Tissue type legend">
-            {TISSUE_CLASSES.map((name) => (
-              <button
-                key={name}
-                type="button"
-                className="legend-item"
-                aria-pressed={tissueHighlight === name}
-                onMouseEnter={() => setTissueHighlight(name)}
-                onMouseLeave={() => setTissueHighlight(null)}
-                onFocus={() => setTissueHighlight(name)}
-                onBlur={() => setTissueHighlight(null)}
-              >
-                <span className="legend-dot" style={{ background: TISSUE_COLORS[name] }} />
-                <span>{name}</span>
-                <span className="legend-count">
-                  {pred.tissue!.summary[name].count} · {formatPercent(pred.tissue!.summary[name].fraction)}
-                </span>
-              </button>
-            ))}
-            <span className="legend-item legend-static" title={`Top class probability below ${LOW_CONFIDENCE}`}>
-              <span className="legend-dot legend-dot-low" />
-              <span>confidence &lt; {LOW_CONFIDENCE}</span>
+          {tissueMode === "types" ? (
+            <div className="legend tissue-legend" aria-label="Tissue type legend">
+              {TISSUE_CLASSES.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="legend-item"
+                  aria-pressed={tissueHighlight === name}
+                  onMouseEnter={() => setTissueHighlight(name)}
+                  onMouseLeave={() => setTissueHighlight(null)}
+                  onFocus={() => setTissueHighlight(name)}
+                  onBlur={() => setTissueHighlight(null)}
+                >
+                  <span className="legend-dot" style={{ background: TISSUE_COLORS[name] }} />
+                  <span>{name}</span>
+                  <span className="legend-count">
+                    {pred.tissue!.summary[name].count} · {formatPercent(pred.tissue!.summary[name].fraction)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="legend">
+                <div className="vbar vbar-cancer" />
+              </div>
+              <div className="vscale">
+                <span>0 · not cancer</span>
+                <span>predicted probability of cancer</span>
+                <span>1 · cancer</span>
+              </div>
+            </>
+          )}
+          <div className="tissue-status">
+            <strong>{cancerStatement(pred.tissue, pred.total)}</strong>
+            <span>
+              {nUncertain
+                ? `${nUncertain} uncertain ${nUncertain === 1 ? "tile" : "tiles"} (top class below ${formatPercent(LOW_CONFIDENCE).replace(".0", "")})${tissueMode === "types" ? ", drawn faded with a dashed outline" : ""}`
+                : "No uncertain tiles"}
             </span>
+            {tissueMode === "types" && nUncertain > 0 && (
+              <label className="overlay-toggle">
+                <input type="checkbox" checked={uncertainOnly} onChange={(e) => setUncertainOnly(e.target.checked)} />
+                Show only uncertain
+              </label>
+            )}
+            {nEdgeAdipose > 0 && (
+              <span>
+                {nEdgeAdipose} adipose {nEdgeAdipose === 1 ? "tile sits" : "tiles sit"} on the tissue edge and may be
+                partly background
+              </span>
+            )}
           </div>
           <p className="tissue-disclaimer">{TISSUE_DISCLAIMER}</p>
         </>
       )}
 
-      {ready && view === "genes" && !tissueLayer && (
+      {ready && view === "genes" && (
         <>
           <div className="legend">
             <div className="vbar" />
