@@ -11,6 +11,33 @@ export interface HistoryEntry {
   imagePath: string | null;
 }
 
+// Tissue columns come from supabase/migrations/0004_tissue_classifier.sql.
+const PREDICTION_TISSUE_COLUMNS = ["tissue_model_version", "tissue_summary"] as const;
+const SPOT_TISSUE_COLUMNS = ["tissue_class", "tissue_confidence", "tissue_probs"] as const;
+
+/** PostgREST's "column not in schema" errors — what an insert with tissue
+ * columns gets from a database that hasn't had migration 0004 applied. */
+function isMissingColumnError(error: { code?: string } | null): boolean {
+  return !!error && (error.code === "PGRST204" || error.code === "42703");
+}
+
+function withoutColumns<T extends Record<string, unknown>>(row: T, columns: readonly string[]) {
+  return Object.fromEntries(Object.entries(row).filter(([key]) => !columns.includes(key)));
+}
+
+/** Inserts rows; if the database predates the tissue columns, retries once
+ * without them so the prediction itself is still saved (tissue isn't). */
+async function insertWithTissueFallback(
+  table: "predictions" | "prediction_spots",
+  rows: Record<string, unknown>[],
+  tissueColumns: readonly string[],
+) {
+  const { error } = await supabase.from(table).insert(rows);
+  if (!isMissingColumnError(error)) return { error };
+  console.warn(`${table}: tissue columns missing (apply migration 0004) — saving without them`);
+  return supabase.from(table).insert(rows.map((row) => withoutColumns(row, tissueColumns)));
+}
+
 /** Uploads the original image and persists a completed prediction under the
  * signed-in user. Called after a successful /api/predict — the backend is
  * unaware this happens. */
@@ -27,15 +54,26 @@ export async function savePrediction(
     .upload(imagePath, file, { upsert: true, contentType: file.type || undefined });
   if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
-  const { error: predictionError } = await supabase.from("predictions").insert({
-    id: response.prediction_id,
-    user_id: userId,
-    filename: file.name,
-    image_path: imagePath,
-    model_version: response.model_version,
-    status: response.status,
-    created_at: response.created_at,
-  });
+  // Tissue columns are only sent when the prediction has tissue data, so a
+  // prediction without it saves exactly as it did before migration 0004.
+  const hasTissue = !!response.tissue_model_version && !!response.tissue_summary;
+  const { error: predictionError } = await insertWithTissueFallback(
+    "predictions",
+    [{
+      id: response.prediction_id,
+      user_id: userId,
+      filename: file.name,
+      image_path: imagePath,
+      model_version: response.model_version,
+      status: response.status,
+      created_at: response.created_at,
+      ...(hasTissue && {
+        tissue_model_version: response.tissue_model_version,
+        tissue_summary: response.tissue_summary,
+      }),
+    }],
+    PREDICTION_TISSUE_COLUMNS,
+  );
   if (predictionError) throw new Error(`Saving prediction failed: ${predictionError.message}`);
 
   const spotRows = response.spots.map((s) => ({
@@ -44,6 +82,11 @@ export async function savePrediction(
     x: s.x,
     y: s.y,
     expression: s.expression,
+    ...(hasTissue && {
+      tissue_class: s.tissue_class ?? null,
+      tissue_confidence: s.tissue_confidence ?? null,
+      tissue_probs: s.tissue_probs ?? null,
+    }),
   }));
   const geneRows = response.top_genes.map((g) => ({
     prediction_id: response.prediction_id,
@@ -56,7 +99,8 @@ export async function savePrediction(
   // very large spot counts.
   const BATCH = 500;
   for (let i = 0; i < spotRows.length; i += BATCH) {
-    const { error } = await supabase.from("prediction_spots").insert(spotRows.slice(i, i + BATCH));
+    const { error } = await insertWithTissueFallback(
+      "prediction_spots", spotRows.slice(i, i + BATCH), SPOT_TISSUE_COLUMNS);
     if (error) throw new Error(`Saving spots failed: ${error.message}`);
   }
   if (geneRows.length) {
@@ -156,7 +200,9 @@ export async function getPredictionResponse(
       supabase.from("predictions").select("*").eq("id", predictionId).single(),
       supabase
         .from("prediction_spots")
-        .select("spot_index, x, y, expression")
+        // "*" rather than a column list: works whether or not migration 0004
+        // (the tissue columns) has been applied; absent columns read as null.
+        .select("*")
         .eq("prediction_id", predictionId)
         .order("spot_index", { ascending: true }),
       supabase
@@ -184,8 +230,18 @@ export async function getPredictionResponse(
       status: pred.status,
       model_version: pred.model_version,
       created_at: pred.created_at,
-      spots: spots ?? [],
+      spots: (spots ?? []).map((s) => ({
+        spot_index: s.spot_index,
+        x: s.x,
+        y: s.y,
+        expression: s.expression,
+        tissue_class: s.tissue_class ?? null,
+        tissue_confidence: s.tissue_confidence ?? null,
+        tissue_probs: s.tissue_probs ?? null,
+      })),
       top_genes: genes ?? [],
+      tissue_model_version: pred.tissue_model_version ?? null,
+      tissue_summary: pred.tissue_summary ?? null,
     },
     imageUrl,
     imagePath: pred.image_path ?? null,
