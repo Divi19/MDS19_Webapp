@@ -28,7 +28,10 @@ match without any error and give garbage (see encoders.py).
 
 Endpoint: POST {"image_url", "spot_indices": [...], "gene": "ERBB2"|null}
       ->  {"tiles": [{"spot_index", "png_base64", "peak"}, ...]}
-Same shape as the Render API's /api/predict/gradcam/batch response.
+Same shape as the Render API's /api/predict/gradcam/batch response. Each tile
+also carries the raw heat grid and tissue mask ("heat", "mask", "heat_size"),
+so the browser can draw one continuous map; a deployment from before that
+change just omits them and the browser falls back to the per-tile PNG.
 """
 import os
 from pathlib import Path
@@ -98,9 +101,9 @@ class V7GradCam:
 
     @modal.fastapi_endpoint(method="POST")
     def explain_batch(self, item: dict):
-        import base64
-
         from fastapi import HTTPException
+
+        from app.services.gradcam import tile_json
 
         url = item.get("image_url")
         indices = item.get("spot_indices") or []
@@ -113,10 +116,7 @@ class V7GradCam:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
-        return {"tiles": [
-            {"spot_index": i, "png_base64": base64.b64encode(png).decode("ascii"), "peak": peak}
-            for i, (png, peak) in zip(indices, results)
-        ]}
+        return {"tiles": [tile_json(i, t) for i, t in zip(indices, results)]}
 
     @modal.fastapi_endpoint(method="GET")
     def health(self):

@@ -1,4 +1,3 @@
-import base64
 import uuid
 from datetime import datetime, timezone
 
@@ -6,6 +5,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import Response
 
 from app.models.schemas import PredictionResponse, HealthResponse
+from app.services.gradcam import tile_json
 
 router = APIRouter()
 
@@ -118,9 +118,4 @@ async def predict_gradcam_batch(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Grad-CAM batch failed: {exc}")
 
-    return {
-        "tiles": [
-            {"spot_index": i, "png_base64": base64.b64encode(png).decode("ascii"), "peak": peak}
-            for i, (png, peak) in zip(indices, results)
-        ]
-    }
+    return {"tiles": [tile_json(i, t) for i, t in zip(indices, results)]}
