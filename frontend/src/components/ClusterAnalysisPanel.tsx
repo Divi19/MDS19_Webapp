@@ -33,9 +33,6 @@ export default function ClusterAnalysisPanel({
   // firing one per cluster on every prediction would burn through that
   // fast across a few users' sessions.
   const [pathways, setPathways] = useState<Record<number, PathwayState>>({});
-  // Which pathway term (if any) is expanded, per cluster — click to show
-  // its p-value and contributing genes inline, click again to collapse.
-  const [expanded, setExpanded] = useState<Record<number, string | null>>({});
 
   async function findPathways(clusterIndex: number, genes: string[]) {
     setPathways((prev) => ({ ...prev, [clusterIndex]: { status: "loading" } }));
@@ -122,40 +119,19 @@ export default function ClusterAnalysisPanel({
                     <div className="cluster-analysis-text">{pathwayState.message}</div>
                   )}
                   {pathwayState.status === "done" && (
-                    <>
-                      <div className="cluster-analysis-genes">
-                        {pathwayState.results.length ? (
-                          pathwayState.results.slice(0, 3).map((r) => {
-                            const isOpen = expanded[a.index] === r.term;
-                            return (
-                              <button
-                                key={r.term}
-                                type="button"
-                                className={`cluster-analysis-pathway${isOpen ? " on" : ""}`}
-                                onClick={() =>
-                                  setExpanded((prev) => ({
-                                    ...prev,
-                                    [a.index]: prev[a.index] === r.term ? null : r.term,
-                                  }))
-                                }
-                              >
-                                {formatTerm(r.term)}
-                              </button>
-                            );
-                          })
-                        ) : (
-                          <span className="cluster-analysis-text">no significant KEGG pathways found</span>
-                        )}
-                      </div>
-                      {(() => {
-                        const detail = pathwayState.results.find((r) => r.term === expanded[a.index]);
-                        return detail ? (
-                          <div className="cluster-analysis-pathway-detail">
-                            FDR={detail.benjamini.toFixed(3)} · genes: {detail.genes.join(", ")}
-                          </div>
-                        ) : null;
-                      })()}
-                    </>
+                    <div className="cluster-analysis-genes">
+                      {pathwayState.results.length ? (
+                        pathwayState.results
+                          .slice(0, 3)
+                          .map((r) => (
+                            <span key={r.term} className="cluster-analysis-pathway">
+                              {formatTerm(r.term)}
+                            </span>
+                          ))
+                      ) : (
+                        <span className="cluster-analysis-text">no significant KEGG pathways found</span>
+                      )}
+                    </div>
                   )}
                 </div>
               );
