@@ -42,6 +42,9 @@ export interface Spot {
   cluster: number;
   /** normalised 0..1 expression per gene */
   expr: Record<string, number>;
+  /** Raw model-scale predicted expression per gene, as the API returned it
+   * (used for per-tissue-type means). Absent on synthetic demo data. */
+  raw?: Record<string, number>;
   /** Predicted tissue type — null/absent when the prediction has none. */
   tissue?: SpotTissue | null;
 }

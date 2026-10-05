@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { toPrediction } from "@/lib/api";
-import { predictionTissueFromApi, spotTissueFromApi, TISSUE_CLASSES } from "@/lib/tissue";
+import {
+  cancerEnrichedGenes, cancerProbabilityColor, cancerStatement, clusterTissueTable, edgeAdiposeCount,
+  geneByTissue, predictionTissueFromApi, spotTissueFromApi, TISSUE_CLASSES, uncertainCount,
+} from "@/lib/tissue";
 import { OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
 
 describe("tissue fields from the API", () => {
@@ -43,5 +46,48 @@ describe("tissue fields from the API", () => {
     expect(spotTissueFromApi({ tissue_class: "invasive cancer", tissue_confidence: 0.9, tissue_probs: {} })).toBeNull();
     expect(spotTissueFromApi({ tissue_class: "Cancer", tissue_confidence: 0.9, tissue_probs: { Cancer: 0.9 } })).toBeNull();
     expect(predictionTissueFromApi({ tissue_model_version: "tissue-v1", tissue_summary: {} })).toBeNull();
+  });
+});
+
+describe("tissue statistics", () => {
+  const pred = toPrediction(TISSUE_RESPONSE);
+
+  it("states the cancer share without a slide-level verdict", () => {
+    expect(cancerStatement(pred.tissue!, pred.total)).toBe("Cancer-classified tissue: 3 of 4 tiles (75.0%)");
+    const none = { ...pred.tissue!, summary: { ...pred.tissue!.summary, Cancer: { count: 0, fraction: 0 } } };
+    expect(cancerStatement(none, 4)).toBe("No tiles classified as cancer (0 of 4)");
+  });
+
+  it("averages raw (not normalised) expression per tissue class", () => {
+    const stats = geneByTissue(pred, "ERBB2");
+    expect(stats.map((s) => s.cls)).toEqual([...TISSUE_CLASSES]);
+    expect(stats[0]).toEqual({ cls: "Cancer", count: 3, mean: 2 });
+    expect(stats[4]).toEqual({ cls: "Adipose tissue", count: 1, mean: 1.5 });
+    expect(stats[1]).toEqual({ cls: "Immune infiltrate", count: 0, mean: null });
+  });
+
+  it("ranks genes by cancer-minus-rest mean expression", () => {
+    const top = cancerEnrichedGenes(pred);
+    expect(top[0].gene).toBe("ERBB2");
+    expect(top[0].diff).toBeCloseTo(0.5);
+    expect(top[1].gene).toBe("CD74");
+    expect(cancerEnrichedGenes(toPrediction(OLD_RESPONSE))).toEqual([]);
+  });
+
+  it("counts uncertain tiles and adipose tiles on the tissue edge", () => {
+    expect(uncertainCount(pred)).toBe(1);
+    expect(edgeAdiposeCount(pred)).toBe(1);
+  });
+
+  it("cross-tabulates expression clusters against tissue classes", () => {
+    const table = clusterTissueTable(pred);
+    expect(table).toHaveLength(pred.counts.length);
+    expect(table.reduce((sum, row) => sum + row[0], 0)).toBe(3);
+    expect(table.flat().reduce((a, b) => a + b, 0)).toBe(4);
+  });
+
+  it("maps cancer probability onto the blue-to-orange scale", () => {
+    expect(cancerProbabilityColor(0)).toBe("rgb(0, 114, 178)");
+    expect(cancerProbabilityColor(1)).toBe("rgb(213, 94, 0)");
   });
 });

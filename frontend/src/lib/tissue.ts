@@ -8,6 +8,8 @@
  * or saved before it existed, carry none and the tissue UI stays hidden.
  */
 
+import type { Prediction, Spot } from "./mockPrediction";
+
 export const TISSUE_CLASSES = [
   "Cancer",
   "Immune infiltrate",
@@ -85,4 +87,106 @@ export function predictionTissueFromApi(response: {
 
 export function formatPercent(fraction: number): string {
   return `${(fraction * 100).toFixed(1)}%`;
+}
+
+/* ---------- derived statistics (all computed in the browser) ---------- */
+
+function rawValue(spot: Spot, gene: string): number {
+  return spot.raw?.[gene] ?? spot.expr[gene] ?? 0;
+}
+
+function mean(values: number[]): number | null {
+  return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+}
+
+/** One sentence on cancer-classified tiles. Deliberately not a slide-level
+ * verdict: the model is validated per tile, not per slide. */
+export function cancerStatement(tissue: PredictionTissue, total: number): string {
+  const cancer = tissue.summary.Cancer;
+  if (!cancer.count) return `No tiles classified as cancer (0 of ${total})`;
+  return `Cancer-classified tissue: ${cancer.count} of ${total} tiles (${formatPercent(cancer.fraction)})`;
+}
+
+export interface ClassGeneStat {
+  cls: TissueClass;
+  count: number;
+  mean: number | null;
+}
+
+/** Mean raw predicted expression of `gene` within each tissue class. */
+export function geneByTissue(pred: Prediction, gene: string): ClassGeneStat[] {
+  return TISSUE_CLASSES.map((cls) => {
+    const values = pred.spots.filter((s) => s.tissue?.cls === cls).map((s) => rawValue(s, gene));
+    return { cls, count: values.length, mean: mean(values) };
+  });
+}
+
+export interface EnrichedGene {
+  gene: string;
+  cancerMean: number;
+  restMean: number;
+  diff: number;
+}
+
+/** Genes with the largest mean predicted expression in Cancer tiles minus
+ * all other classified tiles. Empty unless both groups have tiles. */
+export function cancerEnrichedGenes(pred: Prediction, limit = 5): EnrichedGene[] {
+  const cancer = pred.spots.filter((s) => s.tissue?.cls === "Cancer");
+  const rest = pred.spots.filter((s) => s.tissue && s.tissue.cls !== "Cancer");
+  if (!cancer.length || !rest.length) return [];
+  return pred.genes
+    .map((gene) => {
+      const cancerMean = mean(cancer.map((s) => rawValue(s, gene)))!;
+      const restMean = mean(rest.map((s) => rawValue(s, gene)))!;
+      return { gene, cancerMean, restMean, diff: cancerMean - restMean };
+    })
+    .sort((a, b) => b.diff - a.diff)
+    .slice(0, limit);
+}
+
+export function isUncertain(spot: Spot): boolean {
+  return !!spot.tissue && spot.tissue.confidence < LOW_CONFIDENCE;
+}
+
+export function uncertainCount(pred: Prediction): number {
+  return pred.spots.filter(isUncertain).length;
+}
+
+/** Adipose-classified tiles on the tissue border (fewer than 8 tissue
+ * neighbours on the tile grid). Half-glass tiles look pale like fat, so these
+ * may be partly background. 0 when grid positions are unavailable. */
+export function edgeAdiposeCount(pred: Prediction): number {
+  const key = (x: number, y: number) => `${x},${y}`;
+  const occupied = new Set(
+    pred.spots.filter((s) => s.gridX != null && s.gridY != null).map((s) => key(s.gridX!, s.gridY!)),
+  );
+  if (!occupied.size) return 0;
+  return pred.spots.filter((s) => {
+    if (s.tissue?.cls !== "Adipose tissue" || s.gridX == null || s.gridY == null) return false;
+    let neighbours = 0;
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        if ((dx || dy) && occupied.has(key(s.gridX + dx, s.gridY + dy))) neighbours++;
+    return neighbours < 8;
+  }).length;
+}
+
+/** Tile counts per expression cluster (rows) and tissue class (columns). */
+export function clusterTissueTable(pred: Prediction): number[][] {
+  const rows = pred.counts.map(() => TISSUE_CLASSES.map(() => 0));
+  for (const s of pred.spots) {
+    if (!s.tissue || !rows[s.cluster]) continue;
+    rows[s.cluster][TISSUE_CLASSES.indexOf(s.tissue.cls)]++;
+  }
+  return rows;
+}
+
+/** Colour for a cancer probability: blue (non-cancer) -> light -> orange
+ * (cancer), the colour-blind-safe Okabe-Ito pair. */
+export function cancerProbabilityColor(p: number): string {
+  const stops: [number, number, number][] = [[0, 114, 178], [242, 240, 235], [213, 94, 0]];
+  const t = Math.max(0, Math.min(1, p)) * 2;
+  const [a, b] = t <= 1 ? [stops[0], stops[1]] : [stops[1], stops[2]];
+  const f = t <= 1 ? t : t - 1;
+  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * f)).join(", ")})`;
 }

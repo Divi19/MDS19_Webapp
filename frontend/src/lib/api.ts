@@ -255,6 +255,7 @@ export function toPrediction(response: PredictionResponse): Prediction {
     gridY: spot.y,
     cluster: assignments[index] ?? 0,
     expr: Object.fromEntries(genes.map((gene) => [gene, normalisedByGene[gene][index]])),
+    raw: spot.expression,
     tissue: spotTissueFromApi(spot),
   }));
   const tissue = predictionTissueFromApi(response);
