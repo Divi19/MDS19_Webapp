@@ -1,4 +1,5 @@
 import type { Prediction, Spot, TopGene } from "@/lib/mockPrediction";
+import { predictionTissueFromApi, spotTissueFromApi } from "@/lib/tissue";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -7,6 +8,16 @@ export interface SpotPrediction {
   x: number;
   y: number;
   expression: Record<string, number>;
+  // Tissue-type classifier (tissue-v1). Absent or null on predictions made
+  // without it — older saved ones included.
+  tissue_class?: string | null;
+  tissue_confidence?: number | null;
+  tissue_probs?: Record<string, number> | null;
+}
+
+export interface TissueClassSummary {
+  count: number;
+  fraction: number;
 }
 
 export interface GeneRanking {
@@ -22,6 +33,8 @@ export interface PredictionResponse {
   created_at: string;
   spots: SpotPrediction[];
   top_genes: GeneRanking[];
+  tissue_model_version?: string | null;
+  tissue_summary?: Record<string, TissueClassSummary> | null;
 }
 
 export async function predict(file: File): Promise<PredictionResponse> {
@@ -242,7 +255,9 @@ export function toPrediction(response: PredictionResponse): Prediction {
     gridY: spot.y,
     cluster: assignments[index] ?? 0,
     expr: Object.fromEntries(genes.map((gene) => [gene, normalisedByGene[gene][index]])),
+    tissue: spotTissueFromApi(spot),
   }));
+  const tissue = predictionTissueFromApi(response);
 
   const counts = [0, 0, 0, 0, 0];
   for (const spot of spots) counts[spot.cluster]++;
@@ -269,5 +284,6 @@ export function toPrediction(response: PredictionResponse): Prediction {
     })),
     counts,
     total: spots.length,
+    tissue,
   };
 }

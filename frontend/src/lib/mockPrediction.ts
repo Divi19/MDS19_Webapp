@@ -11,6 +11,8 @@
  * Nothing else in the UI needs to change.
  */
 
+import type { PredictionTissue, SpotTissue } from "./tissue";
+
 /* ---------- palette ---------- */
 export const CL = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]; // tab10 0..4
 export const CL_NAME = [
@@ -40,6 +42,8 @@ export interface Spot {
   cluster: number;
   /** normalised 0..1 expression per gene */
   expr: Record<string, number>;
+  /** Predicted tissue type — null/absent when the prediction has none. */
+  tissue?: SpotTissue | null;
 }
 
 export interface GeneMeta {
@@ -72,6 +76,9 @@ export interface Prediction {
   clusters: ClusterInfo[];
   counts: number[];
   total: number;
+  /** Tissue classifier output — null/absent when the prediction has none
+   * (classifier off, failed, or a prediction saved before it existed). */
+  tissue?: PredictionTissue | null;
 }
 
 /* ---------- deterministic rng ---------- */
