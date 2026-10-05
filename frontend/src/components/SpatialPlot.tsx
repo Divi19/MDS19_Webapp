@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
+import {
+  formatPercent, LOW_CONFIDENCE, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_DISCLAIMER, type TissueClass,
+} from "@/lib/tissue";
 
 const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -44,6 +47,44 @@ function spotXY(s: Spot, g: Geom): [number, number] {
   return [g.mL + s.x * g.pw, g.mT + s.y * g.ph];
 }
 
+/** One spot on the tissue-type layer: its class colour, or faded with a
+ * dashed outline when the classifier's top probability is below
+ * LOW_CONFIDENCE. Spots without tissue data are drawn as faint grey. */
+function drawTissueSpot(
+  ctx: CanvasRenderingContext2D,
+  px: number,
+  py: number,
+  r: number,
+  s: Spot,
+  baseAlpha: number,
+  dimmed: boolean,
+) {
+  ctx.beginPath();
+  ctx.arc(px, py, r, 0, 6.2832);
+  if (!s.tissue) {
+    ctx.globalAlpha = 0.35 * baseAlpha;
+    ctx.fillStyle = "#9a978d";
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    return;
+  }
+  const col = TISSUE_COLORS[s.tissue.cls];
+  const fade = dimmed ? 0.15 : 1;
+  const low = s.tissue.confidence < LOW_CONFIDENCE;
+  ctx.globalAlpha = (low ? 0.3 : baseAlpha) * fade;
+  ctx.fillStyle = col;
+  ctx.fill();
+  if (low) {
+    ctx.globalAlpha = fade;
+    ctx.setLineDash([2, 2]);
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = col;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.globalAlpha = 1;
+}
+
 export default function SpatialPlot({
   pred,
   ready,
@@ -51,11 +92,16 @@ export default function SpatialPlot({
   gene,
   imageUrl,
   showImage = true,
+  layer = "expression",
 }: {
   pred: Prediction;
   ready: boolean;
   view: "clusters" | "genes";
   gene: string;
+  /** Genes view only: colour spots by predicted expression (default) or by
+   * predicted tissue type. "tissue" is ignored when the prediction has no
+   * tissue data. */
+  layer?: "expression" | "tissue";
   imageUrl?: string | null;
   /** Only meaningful in the Genes view overlaying a real image — lets the
    * user strip the tissue background and see just the spatial dot map,
@@ -70,7 +116,9 @@ export default function SpatialPlot({
   const [width, setWidth] = useState(520);
   const [height, setHeight] = useState(0);
   const [imgTick, setImgTick] = useState(0);
-  const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [tip, setTip] = useState<{ x: number; y: number; text: string; spot: Spot } | null>(null);
+  const [tissueHighlight, setTissueHighlight] = useState<TissueClass | null>(null);
+  const tissueLayer = view === "genes" && layer === "tissue" && !!pred.tissue;
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -158,6 +206,14 @@ export default function SpatialPlot({
       geomRef.current = geom;
 
       const r = Math.max(2.4, w / 130);
+      if (tissueLayer) {
+        for (const s of pred.spots) {
+          const [px, py] = spotXY(s, geom);
+          const dimmed = tissueHighlight != null && s.tissue?.cls !== tissueHighlight;
+          drawTissueSpot(ctx, px, py, r, s, 0.85, dimmed);
+        }
+        return;
+      }
       ctx.globalAlpha = 0.72;
       for (const s of pred.spots) {
         const [px, py] = spotXY(s, geom);
@@ -214,6 +270,11 @@ export default function SpatialPlot({
     for (const s of pred.spots) {
       const px = mL + s.x * pw;
       const py = mT + s.y * ph;
+      if (tissueLayer) {
+        const dimmed = tissueHighlight != null && s.tissue?.cls !== tissueHighlight;
+        drawTissueSpot(ctx, px, py, r, s, 1, dimmed);
+        continue;
+      }
       ctx.beginPath();
       ctx.arc(px, py, r, 0, 6.2832);
       const col = genesView ? viridis(s.expr[gk] ?? 0) : CL[s.cluster];
@@ -222,7 +283,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage]);
+  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight]);
 
   useEffect(() => {
     draw();
@@ -250,7 +311,7 @@ export default function SpatialPlot({
         view === "genes"
           ? `${pred.geneMeta[g.gk]?.label ?? g.gk} ${(best.s.expr[g.gk] ?? 0).toFixed(2)} · cluster ${best.s.cluster}`
           : (pred.clusters[best.s.cluster]?.name ?? `cluster ${best.s.cluster}`);
-      setTip({ x: best.px, y: best.py, text });
+      setTip({ x: best.px, y: best.py, text, spot: best.s });
     } else {
       setTip(null);
     }
@@ -268,10 +329,28 @@ export default function SpatialPlot({
         />
         {!ready && <div className="canvas-empty">spatial map renders after prediction</div>}
         <div
-          className="plot-tip"
+          className={`plot-tip${tissueLayer && tip?.spot.tissue ? " plot-tip-tissue" : ""}`}
           style={{ opacity: tip ? 1 : 0, left: tip?.x ?? 0, top: tip?.y ?? 0 }}
         >
           {tip?.text}
+          {tissueLayer && tip?.spot.tissue && (
+            <div className="tip-tissue">
+              <div className="tip-tissue-head">
+                <span className="legend-dot" style={{ background: TISSUE_COLORS[tip.spot.tissue.cls] }} />
+                {tip.spot.tissue.cls} · {formatPercent(tip.spot.tissue.confidence)}
+                {tip.spot.tissue.confidence < LOW_CONFIDENCE && <span className="tip-low">low confidence</span>}
+              </div>
+              {TISSUE_CLASSES.map((name) => (
+                <div key={name} className="tip-prob">
+                  <span className="tip-prob-name">{name}</span>
+                  <span className="tip-prob-bar">
+                    <span style={{ width: `${tip.spot.tissue!.probs[name] * 100}%`, background: TISSUE_COLORS[name] }} />
+                  </span>
+                  <span className="tip-prob-val">{tip.spot.tissue!.probs[name].toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -294,7 +373,37 @@ export default function SpatialPlot({
         </div>
       )}
 
-      {ready && view === "genes" && (
+      {ready && tissueLayer && pred.tissue && (
+        <>
+          <div className="legend tissue-legend" aria-label="Tissue type legend">
+            {TISSUE_CLASSES.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className="legend-item"
+                aria-pressed={tissueHighlight === name}
+                onMouseEnter={() => setTissueHighlight(name)}
+                onMouseLeave={() => setTissueHighlight(null)}
+                onFocus={() => setTissueHighlight(name)}
+                onBlur={() => setTissueHighlight(null)}
+              >
+                <span className="legend-dot" style={{ background: TISSUE_COLORS[name] }} />
+                <span>{name}</span>
+                <span className="legend-count">
+                  {pred.tissue!.summary[name].count} · {formatPercent(pred.tissue!.summary[name].fraction)}
+                </span>
+              </button>
+            ))}
+            <span className="legend-item legend-static" title={`Top class probability below ${LOW_CONFIDENCE}`}>
+              <span className="legend-dot legend-dot-low" />
+              <span>confidence &lt; {LOW_CONFIDENCE}</span>
+            </span>
+          </div>
+          <p className="tissue-disclaimer">{TISSUE_DISCLAIMER}</p>
+        </>
+      )}
+
+      {ready && view === "genes" && !tissueLayer && (
         <>
           <div className="legend">
             <div className="vbar" />

@@ -206,6 +206,30 @@ canvas{display:block;width:100%;height:auto}
 .cluster-tile .count{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
 .cluster-tile .pct{font-family:var(--mono);font-size:9.5px;color:var(--muted2)}
 
+/* tissue type (tissue-v1) */
+.seg-layer button{padding:6px 11px}
+button.legend-item{font:inherit;font-family:var(--mono);font-size:11px}
+.legend-static{cursor:default}
+.legend-static:hover{border-color:var(--border)}
+.legend-dot-low{background:rgba(213,94,0,.3);border:1px dashed #D55E00}
+.tissue-disclaimer{font-size:10.5px;line-height:1.4;color:var(--muted2);margin-top:6px;flex-shrink:0}
+.plot-tip-tissue{white-space:normal;min-width:220px}
+.tip-tissue{margin-top:4px;padding-top:5px;border-top:1px solid rgba(255,255,255,.18)}
+.tip-tissue-head{display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:4px}
+.tip-low{margin-left:auto;font-weight:400;color:#f0c27a}
+.tip-prob{display:grid;grid-template-columns:110px 1fr 30px;align-items:center;gap:6px;line-height:1.5}
+.tip-prob-name{color:rgba(255,255,255,.75)}
+.tip-prob-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.14);overflow:hidden}
+.tip-prob-bar span{display:block;height:100%}
+.tip-prob-val{text-align:right;font-variant-numeric:tabular-nums}
+.tissue-stack{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--surface3)}
+.tissue-stack span{height:100%}
+.tissue-stats{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.tissue-stats .stat{display:inline-flex;align-items:center;gap:5px}
+.tissue-stats .dot{width:8px;height:8px;border-radius:50%}
+.tissue-cancer-area{font-size:13px;font-weight:600;margin-bottom:8px}
+.tissue-cancer-area strong{color:#D55E00}
+
 /* cluster analysis */
 .cluster-analysis-header{padding:13px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
 .cluster-analysis-title{font-size:13px;font-weight:600}
