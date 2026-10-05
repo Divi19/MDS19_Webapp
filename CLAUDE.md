@@ -10,11 +10,17 @@ Never edit or commit directly on `main`. `main` is the live production website.
    - New feature: `git checkout -b feature/<short-name>`
    - Bug fix: `git checkout -b fix/<short-name>`
    - Setup or tidy-up: `git checkout -b chore/<short-name>`
-4. Tell me the branch name before making changes.
+4. Push it to GitHub immediately, before making any changes:
+   `git push -u origin <branch-name>`
+   This is so everyone's work is visible on GitHub as a real branch from the
+   start — not just something that shows up once merged into `main`.
+5. Tell me the branch name before making changes.
 
 ## While working
 - Commit in small, logical steps with clear present-tense messages
   (e.g. "Add session history table", "Fix export CSV encoding").
+- Push commits to the branch regularly, not only at the very end — the whole
+  point of pushing early is so progress is visible on GitHub as it happens.
 - Never commit `.env`, `.env.local`, API keys, Supabase keys, model weights, or datasets.
 - If a new environment variable is needed, add its name (no value) to the relevant `.env.example`.
 
@@ -37,7 +43,10 @@ Only after my confirmation:
 3. `git merge <branch-name>`
 4. If there are conflicts, stop and show them to me. Do not resolve them silently.
 5. `git push`
-6. `git branch -d <branch-name>`
+6. `git branch -d <branch-name>` — this deletes your *local* copy only.
+   Leave the remote branch on GitHub as-is (do not `git push origin --delete`
+   it) — that's the footprint of the work, it should stay visible after
+   merging, not disappear.
 
 ## Never do
 - `git push --force` to main
