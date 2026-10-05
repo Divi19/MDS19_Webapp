@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { toPrediction } from "@/lib/api";
 import {
-  cancerEnrichedGenes, cancerProbabilityColor, cancerStatement, clusterTissueTable, edgeAdiposeCount,
-  geneByTissue, predictionTissueFromApi, spotTissueFromApi, TISSUE_CLASSES, uncertainCount,
+  cancerEnrichedGenes, cancerProbabilityColor, cancerStatement, clusterTissueTable, geneByTissue,
+  isUncertain, predictionTissueFromApi, spotTissueFromApi, TISSUE_CLASSES,
 } from "@/lib/tissue";
 import { OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
 
@@ -74,9 +74,8 @@ describe("tissue statistics", () => {
     expect(cancerEnrichedGenes(toPrediction(OLD_RESPONSE))).toEqual([]);
   });
 
-  it("counts uncertain tiles and adipose tiles on the tissue edge", () => {
-    expect(uncertainCount(pred)).toBe(1);
-    expect(edgeAdiposeCount(pred)).toBe(1);
+  it("marks tiles whose top class is below 50% as uncertain", () => {
+    expect(pred.spots.map(isUncertain)).toEqual([false, false, true, false]);
   });
 
   it("cross-tabulates expression clusters against tissue classes", () => {

@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { toPrediction } from "@/lib/api";
-import { TISSUE_DISCLAIMER } from "@/lib/tissue";
 import { OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
 import SpatialPlot from "./SpatialPlot";
 import TissueInsights from "./TissueInsights";
@@ -37,13 +36,11 @@ describe("SpatialPlot Tissue view — tissue types", () => {
     expect(screen.queryByText(/confidence </)).toBeNull();
   });
 
-  it("states the cancer share, uncertainty and edge caveat in plain language", () => {
-    renderTypes();
-    expect(screen.getByText("Cancer-classified tissue: 3 of 4 tiles (75.0%)")).toBeTruthy();
-    expect(screen.getByText(/1 uncertain tile \(top class below 50%\), drawn faded/)).toBeTruthy();
-    expect(screen.getByLabelText("Show only uncertain")).toBeTruthy();
-    expect(screen.getByText(/1 adipose tile sits on the tissue edge/)).toBeTruthy();
-    expect(screen.getByText(TISSUE_DISCLAIMER)).toBeTruthy();
+  it("shows no status text, disclaimer or uncertain-only filter under the map", () => {
+    const { container } = renderTypes();
+    expect(container.querySelector(".tissue-status")).toBeNull();
+    expect(screen.queryByText(/not for diagnosis/)).toBeNull();
+    expect(screen.queryByLabelText("Show only uncertain")).toBeNull();
   });
 
   it("shows class, confidence and all five probabilities in the tooltip", () => {
@@ -69,8 +66,6 @@ describe("SpatialPlot Tissue view — cancer probability", () => {
     );
     expect(screen.getByText("predicted probability of cancer")).toBeTruthy();
     expect(container.querySelector(".tissue-legend")).toBeNull();
-    expect(screen.queryByLabelText("Show only uncertain")).toBeNull();
-    expect(screen.getByText("Cancer-classified tissue: 3 of 4 tiles (75.0%)")).toBeTruthy();
     hover(container, 34, 10);
     expect(container.querySelector(".tip-cancer")!.textContent).toBe("Cancer probability 90.0%");
   });
@@ -80,8 +75,6 @@ describe("predictions without tissue data, and the Genes view", () => {
   it("renders an old prediction with no tissue UI", () => {
     const { container } = render(<SpatialPlot pred={toPrediction(OLD_RESPONSE)} ready view="tissue" gene="ERBB2" />);
     expect(container.querySelector(".tissue-legend")).toBeNull();
-    expect(container.querySelector(".tissue-status")).toBeNull();
-    expect(screen.queryByText(TISSUE_DISCLAIMER)).toBeNull();
     hover(container, 34, 10);
     expect(container.querySelector(".tip-tissue")).toBeNull();
   });

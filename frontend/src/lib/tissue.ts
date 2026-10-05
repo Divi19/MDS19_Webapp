@@ -30,13 +30,8 @@ export const TISSUE_COLORS: Record<TissueClass, string> = {
 };
 
 /** Spots whose top class probability is below this are drawn faded with a
- * dashed outline, and called out in the legend. */
+ * dashed outline and marked "uncertain" in the tooltip. */
 export const LOW_CONFIDENCE = 0.5;
-
-export const TISSUE_DISCLAIMER =
-  "Tissue type: research prototype, HER2+ breast cancer only, not for diagnosis. " +
-  "On unseen patients, cancer vs non-cancer: 87% sensitivity, 82% specificity. " +
-  "Does not distinguish in situ from invasive cancer.";
 
 export type TissueProbs = Record<TissueClass, number>;
 
@@ -146,29 +141,6 @@ export function cancerEnrichedGenes(pred: Prediction, limit = 5): EnrichedGene[]
 
 export function isUncertain(spot: Spot): boolean {
   return !!spot.tissue && spot.tissue.confidence < LOW_CONFIDENCE;
-}
-
-export function uncertainCount(pred: Prediction): number {
-  return pred.spots.filter(isUncertain).length;
-}
-
-/** Adipose-classified tiles on the tissue border (fewer than 8 tissue
- * neighbours on the tile grid). Half-glass tiles look pale like fat, so these
- * may be partly background. 0 when grid positions are unavailable. */
-export function edgeAdiposeCount(pred: Prediction): number {
-  const key = (x: number, y: number) => `${x},${y}`;
-  const occupied = new Set(
-    pred.spots.filter((s) => s.gridX != null && s.gridY != null).map((s) => key(s.gridX!, s.gridY!)),
-  );
-  if (!occupied.size) return 0;
-  return pred.spots.filter((s) => {
-    if (s.tissue?.cls !== "Adipose tissue" || s.gridX == null || s.gridY == null) return false;
-    let neighbours = 0;
-    for (let dx = -1; dx <= 1; dx++)
-      for (let dy = -1; dy <= 1; dy++)
-        if ((dx || dy) && occupied.has(key(s.gridX + dx, s.gridY + dy))) neighbours++;
-    return neighbours < 8;
-  }).length;
 }
 
 /** Tile counts per expression cluster (rows) and tissue class (columns). */
