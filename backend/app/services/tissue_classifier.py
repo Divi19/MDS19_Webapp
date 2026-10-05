@@ -61,7 +61,12 @@ def predict_tissue(model, native, wide672, coords, pred_expr=None):
     cfg, w = model["cfg"], model["w"]
     native = np.asarray(native, dtype=np.float64)
     img = native if cfg["img"] == "nat" else np.hstack([native, np.asarray(wide672, dtype=np.float64)])
-    W, has = neighbour_matrix(coords, cfg["radius"])
+    # The neighbour matrix is (n, n): built only when a stage actually uses it
+    # (neighbour features or smoothing), so large slides stay O(n) in memory.
+    if cfg["nbr"] or cfg["alpha"] > 0:
+        W, has = neighbour_matrix(coords, cfg["radius"])
+    else:
+        W, has = None, None
     blocks = {"img": img}
     if cfg["nbr"]:
         blocks["nbr"] = nbr_mean(W, has, img)
