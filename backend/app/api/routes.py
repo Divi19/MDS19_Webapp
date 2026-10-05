@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import Response
 
-from app.models.schemas import PredictionResponse, HealthResponse
+from app.models.schemas import PredictionResponse, HealthResponse, PathwayRequest, PathwayResult
+from app.services.david_client import PathwayLookupError
 
 router = APIRouter()
 
@@ -124,3 +125,21 @@ async def predict_gradcam_batch(
             for i, (png, peak) in zip(indices, results)
         ]
     }
+
+
+@router.post("/pathways", response_model=list[PathwayResult])
+async def pathways(request: Request, body: PathwayRequest):
+    client = request.app.state.david_client
+    if client is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Pathway enrichment is not configured (DAVID_EMAIL unset)")
+    if not body.genes:
+        raise HTTPException(status_code=400, detail="genes must not be empty")
+
+    try:
+        return client.get_pathways(body.genes, category=body.category)
+    except PathwayLookupError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Pathway lookup failed: {exc}")

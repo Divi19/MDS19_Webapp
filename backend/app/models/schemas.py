@@ -28,3 +28,19 @@ class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
     predictor_type: str
+
+
+class PathwayRequest(BaseModel):
+    genes: list[str]
+    category: str = "KEGG_PATHWAY"
+
+
+class PathwayResult(BaseModel):
+    term: str
+    category: str
+    pvalue: float
+    benjamini: float
+    fold_enrichment: float
+    list_hits: int
+    list_total: int
+    genes: list[str]

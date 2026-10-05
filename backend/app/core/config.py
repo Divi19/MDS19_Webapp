@@ -62,6 +62,15 @@ class Settings(BaseSettings):
     # CORS — frontend origins allowed to call this API
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # DAVID pathway enrichment (davidbioinformatics.nih.gov). Registered via
+    # an organisational email, not an API key — DAVID has no key system.
+    # Blank disables the /api/pathways route (returns 501) rather than
+    # failing startup, since this is an optional enrichment, not core to
+    # the app. Note: the registration page's own confirmation instructions
+    # point at david.ncifcrf.gov, which is dead (NXDOMAIN) — the working
+    # host is davidbioinformatics.nih.gov, same path.
+    david_email: str = ""
+
     class Config:
         env_file = ".env"
 

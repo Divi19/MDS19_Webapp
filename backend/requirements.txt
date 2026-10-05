@@ -19,3 +19,7 @@ einops>=0.7.0
 
 # Model data fetched from Drive at startup (app/main.py)
 gdown>=6.0.0        # 5.x caps download_folder at 50 files; this folder has 98
+
+# DAVID pathway enrichment (app/services/david_client.py) — DAVID-WS is a
+# SOAP/WSDL service, not REST+JSON.
+zeep>=4.2.0

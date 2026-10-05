@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
 from app.core.config import settings
+from app.services.david_client import DavidClient
 from app.services.predictor import get_predictor
 
 # Model data ships as one gzipped tarball rather than N loose files: Drive
@@ -97,9 +98,17 @@ async def lifespan(app: FastAPI):
     # This is the single most important performance decision in the API.
     app.state.predictor = get_predictor(settings)
     app.state.predictor.load()
+
+    # Optional: DAVID pathway enrichment. None when unconfigured (no
+    # DAVID_EMAIL) — the route checks for that and returns 501 rather than
+    # the app failing to boot over an optional feature. The WSDL is parsed
+    # once here, not per request, same reasoning as the predictor above.
+    app.state.david_client = DavidClient(settings.david_email) if settings.david_email else None
+
     yield
     # Shutdown
     app.state.predictor = None
+    app.state.david_client = None
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
