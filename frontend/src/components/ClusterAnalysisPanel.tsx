@@ -151,7 +151,7 @@ export default function ClusterAnalysisPanel({
                         const detail = pathwayState.results.find((r) => r.term === expanded[a.index]);
                         return detail ? (
                           <div className="cluster-analysis-pathway-detail">
-                            p={detail.pvalue.toFixed(3)} · genes: {detail.genes.join(", ")}
+                            FDR={detail.benjamini.toFixed(3)} · genes: {detail.genes.join(", ")}
                           </div>
                         ) : null;
                       })()}
