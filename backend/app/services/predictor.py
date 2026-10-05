@@ -20,6 +20,7 @@ from app.services.gradcam import GradCAM, TileResult, ViTGradCAM, overlay_heatma
 from app.services.encoders import (
     build_encoder, H0MINI_COMBINED_DIM, H0MINI_CONTEXT_MULTIPLIER,
 )
+from app.services.tissue import H0MiniFeatureExtractor, attach_tissue, load_tissue_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,10 @@ class BasePredictor(ABC):
     @abstractmethod
     def is_loaded(self) -> bool:
         ...
+
+    # Version of the tissue classifier attached to predictions, or None when
+    # this predictor does not run one. Reported by /api/health.
+    tissue_model_version: str | None = None
 
     def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
         """
@@ -257,7 +262,10 @@ class MclSTExpPredictor(BasePredictor):
                  enable_smoothing: bool = True,
                  smoothing_alpha: float | None = None,
                  encoder_backend: str = "densenet121",
-                 device: str = "cpu"):
+                 device: str = "cpu",
+                 tissue_classifier_enabled: bool = False,
+                 tissue_classifier_dir: str = "",
+                 hf_token: str = ""):
         self.checkpoint_path = checkpoint_path
         self.data_root = data_root
         self.device = device   # "cuda" on the Modal Grad-CAM service; Render is CPU-only
@@ -312,6 +320,14 @@ class MclSTExpPredictor(BasePredictor):
         self.model_version = (f"{base}+smooth{self.smoothing_alpha:g}"
                               if self.enable_smoothing else base)
 
+        # Tissue-type classifier (app/services/tissue.py). Off by default so
+        # callers that don't opt in (e.g. modal_gradcam_app) are unaffected.
+        self.tissue_classifier_enabled = tissue_classifier_enabled
+        self.tissue_classifier_dir = tissue_classifier_dir
+        self._hf_token = hf_token
+        self._tissue = None
+        self._tissue_extractor = None
+
     def load(self) -> None:
         """Called once at application startup. Never per request."""
         db = Path(self.data_root)
@@ -353,6 +369,38 @@ class MclSTExpPredictor(BasePredictor):
         if len(self.genes) != self.N_GENES:
             raise RuntimeError(
                 f"Expected {self.N_GENES} gene names, got {len(self.genes)}")
+
+        # 4. Tissue classifier — last, and never fatal: the expression model
+        #    above is fully loaded whatever happens here.
+        self._load_tissue_classifier()
+
+    def _load_tissue_classifier(self) -> None:
+        self._tissue = load_tissue_classifier(
+            self.tissue_classifier_enabled, self.tissue_classifier_dir)
+        if self._tissue is None or self.encoder_backend == "h0mini":
+            # h0mini reuses the features the expression model computes.
+            return
+        # densenet121 has no H0-mini features of its own, so the classifier
+        # gets a dedicated frozen H0-mini (gated weights: needs HF_TOKEN).
+        try:
+            self._tissue_extractor = H0MiniFeatureExtractor(self.device, self._hf_token)
+        except Exception:
+            logger.exception(
+                "H0-mini unavailable for the tissue classifier (gated weights "
+                "need an HF_TOKEN with access) — tissue feature disabled")
+            self._tissue = None
+
+    @property
+    def tissue_model_version(self) -> str | None:
+        return self._tissue.version if self._tissue is not None else None
+
+    def _tissue_features(self, image, patches, coords, native_feats, context_feats):
+        """(native, wide672) H0-mini features for the kept tissue tiles, in
+        predict()'s spot order. Reuses the expression model's own features
+        on the h0mini path; never re-encodes them."""
+        if self.encoder_backend == "h0mini":
+            return native_feats, context_feats
+        return self._tissue_extractor.features(patches, self._tile_context(image, coords))
 
     def _load_densenet_model(self) -> None:
         """
@@ -481,7 +529,8 @@ class MclSTExpPredictor(BasePredictor):
             patches.append(p)
         return patches
 
-    def _encode(self, patches, context_patches=None, batch_size: int | None = None):
+    def _encode(self, patches, context_patches=None, batch_size: int | None = None,
+                return_features: bool = False):
         """Patches -> 256-dim embeddings.
 
         Preprocessing lives in the encoder (app/services/encoders.py), because
@@ -506,6 +555,11 @@ class MclSTExpPredictor(BasePredictor):
 
         Plain loop, no DataLoader: forked workers inherit lazily-opened PIL
         file descriptors and concurrent reads silently corrupt the crops.
+
+        return_features=True additionally returns the raw encoder features
+        (native, context) — context is None without context_patches — so the
+        tissue classifier can reuse them. The embeddings are identical either
+        way.
         """
         batch_size = self.BATCH_SIZE if batch_size is None else batch_size
         project = (self._projection if self._projection is not None
@@ -520,15 +574,19 @@ class MclSTExpPredictor(BasePredictor):
             return np.concatenate(out, axis=0)
 
         feats = run(patches)
+        native_feats, context_feats = feats, None
         if context_patches is not None:
             if len(context_patches) != len(patches):
                 raise RuntimeError(
                     f"{len(patches)} native patches vs {len(context_patches)} "
                     f"context patches — must be paired 1:1")
-            feats = np.concatenate([feats, run(context_patches)], axis=1)
+            context_feats = run(context_patches)
+            feats = np.concatenate([feats, context_feats], axis=1)
 
         with torch.no_grad():
             embs = project(torch.from_numpy(feats).float().to(self.device))
+        if return_features:
+            return embs.cpu().numpy(), native_feats, context_feats
         return embs.cpu().numpy()
 
     def _retrieve(self, query: np.ndarray) -> np.ndarray:
@@ -597,7 +655,8 @@ class MclSTExpPredictor(BasePredictor):
 
         context_patches = (self._tile_context(image, coords)
                            if self.encoder_backend == "h0mini" else None)
-        query = self._encode(patches, context_patches)   # tissue tiles only
+        query, native_feats, context_feats = self._encode(
+            patches, context_patches, return_features=True)   # tissue tiles only
         pred = self._retrieve(query)                     # (n_tissue, 785)
 
         # Tissue-masked set only: `coords` is already filtered, so background
@@ -635,11 +694,19 @@ class MclSTExpPredictor(BasePredictor):
             for r, g in enumerate(order[:50])
         ]
 
-        return {
+        result = {
             "spots": spots,
             "top_genes": top_genes,
             "model_version": self.model_version,
         }
+
+        # Tissue type, after the expression result is complete. attach_tissue
+        # never raises and never touches the fields above: on any failure the
+        # tissue fields are null.
+        return attach_tissue(
+            result, self._tissue,
+            lambda: self._tissue_features(image, patches, coords, native_feats, context_feats),
+            coords)
 
     # ------------------------------------------------------------------
 
@@ -908,4 +975,7 @@ def get_predictor(settings) -> BasePredictor:
         settings.model_checkpoint_path, settings.model_data_root,
         enable_smoothing=settings.enable_smoothing,
         smoothing_alpha=settings.smoothing_alpha,
-        encoder_backend=settings.encoder_backend)
+        encoder_backend=settings.encoder_backend,
+        tissue_classifier_enabled=settings.tissue_classifier_enabled,
+        tissue_classifier_dir=settings.tissue_classifier_dir,
+        hf_token=settings.hf_token)
