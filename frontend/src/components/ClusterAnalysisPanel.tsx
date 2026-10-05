@@ -6,7 +6,7 @@ import { analyzeClusters } from "@/lib/clusterAnalysis";
 import { fetchPathways, type PathwayResult } from "@/lib/pathways";
 
 /** KEGG term names come back as "hsa05224:Breast cancer" — the pathway ID
- * prefix is noise for display, kept available via the title tooltip instead. */
+ * prefix is noise for display, stripped here and not shown anywhere. */
 function formatTerm(term: string): string {
   return term.replace(/^[a-zA-Z]+\d+:/, "");
 }
@@ -33,6 +33,9 @@ export default function ClusterAnalysisPanel({
   // firing one per cluster on every prediction would burn through that
   // fast across a few users' sessions.
   const [pathways, setPathways] = useState<Record<number, PathwayState>>({});
+  // Which pathway term (if any) is expanded, per cluster — click to show
+  // its p-value and contributing genes inline, click again to collapse.
+  const [expanded, setExpanded] = useState<Record<number, string | null>>({});
 
   async function findPathways(clusterIndex: number, genes: string[]) {
     setPathways((prev) => ({ ...prev, [clusterIndex]: { status: "loading" } }));
@@ -119,22 +122,40 @@ export default function ClusterAnalysisPanel({
                     <div className="cluster-analysis-text">{pathwayState.message}</div>
                   )}
                   {pathwayState.status === "done" && (
-                    <div className="cluster-analysis-genes">
-                      {pathwayState.results.length ? (
-                        pathwayState.results.slice(0, 3).map((r) => (
-                          <span
-                            key={r.term}
-                            className="cluster-analysis-pathway"
-                            data-tooltip={`${r.term} · p=${r.pvalue.toFixed(3)} · genes: ${r.genes.join(", ")}`}
-                            aria-label={`${r.term}, p=${r.pvalue.toFixed(3)}, genes: ${r.genes.join(", ")}`}
-                          >
-                            {formatTerm(r.term)}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="cluster-analysis-text">no significant KEGG pathways found</span>
-                      )}
-                    </div>
+                    <>
+                      <div className="cluster-analysis-genes">
+                        {pathwayState.results.length ? (
+                          pathwayState.results.slice(0, 3).map((r) => {
+                            const isOpen = expanded[a.index] === r.term;
+                            return (
+                              <button
+                                key={r.term}
+                                type="button"
+                                className={`cluster-analysis-pathway${isOpen ? " on" : ""}`}
+                                onClick={() =>
+                                  setExpanded((prev) => ({
+                                    ...prev,
+                                    [a.index]: prev[a.index] === r.term ? null : r.term,
+                                  }))
+                                }
+                              >
+                                {formatTerm(r.term)}
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <span className="cluster-analysis-text">no significant KEGG pathways found</span>
+                        )}
+                      </div>
+                      {(() => {
+                        const detail = pathwayState.results.find((r) => r.term === expanded[a.index]);
+                        return detail ? (
+                          <div className="cluster-analysis-pathway-detail">
+                            p={detail.pvalue.toFixed(3)} · genes: {detail.genes.join(", ")}
+                          </div>
+                        ) : null;
+                      })()}
+                    </>
                   )}
                 </div>
               );
