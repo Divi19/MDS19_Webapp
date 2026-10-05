@@ -66,9 +66,8 @@ export default function GeneXApp() {
   const [gradcamMounted, setGradcamMounted] = useState(false);
   const [showImage, setShowImage] = useState(true);
   // Tissue tab (only offered when the prediction has tissue data): class map
-  // or cancer-probability map, and spot opacity so the H&E stays readable.
+  // or cancer-probability map.
   const [tissueMode, setTissueMode] = useState<TissueMode>("types");
-  const [spotOpacity, setSpotOpacity] = useState(0.85);
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
@@ -460,8 +459,8 @@ export default function GeneXApp() {
     ? ""
     : view === "genes"
       ? (pred.geneMeta[gene]?.label ?? "ERBB2")
-      : view === "tissue" && pred.tissue
-        ? `${pred.tissue.version} · ${pred.total} tiles`
+      : view === "tissue"
+        ? ""
         : `k=5 · ${pred.total} spots`;
 
   return (
@@ -778,7 +777,7 @@ export default function GeneXApp() {
         <div className="col col-2">
           <div className="card plot-card" data-tour="plot-card">
             <div className="plot-header">
-              <div className="seg">
+              <div className="seg seg-tabs">
                 <button
                   className={view === "clusters" ? "on" : ""}
                   onClick={() => changeView("clusters")}
@@ -806,6 +805,28 @@ export default function GeneXApp() {
                   Grad-CAM
                 </button>
               </div>
+              {view === "tissue" && ready && pred.tissue && (
+                <div className="seg seg-mode" role="group" aria-label="Tissue map">
+                  <button
+                    type="button"
+                    className={tissueMode === "types" ? "on" : ""}
+                    aria-pressed={tissueMode === "types"}
+                    title="Tissue types: one colour per predicted class"
+                    onClick={() => setTissueMode("types")}
+                  >
+                    Types
+                  </button>
+                  <button
+                    type="button"
+                    className={tissueMode === "cancer" ? "on" : ""}
+                    aria-pressed={tissueMode === "cancer"}
+                    title="Cancer probability: predicted probability of cancer per tile"
+                    onClick={() => setTissueMode("cancer")}
+                  >
+                    Cancer prob.
+                  </button>
+                </div>
+              )}
               {view === "genes" && (
                 <div className="gene-combo">
                   <input
@@ -897,41 +918,6 @@ export default function GeneXApp() {
               )}
               {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
             </div>
-            {view === "tissue" && ready && pred.tissue && (
-              <div className="plot-subheader tissue-controls">
-                <div className="seg seg-layer" role="group" aria-label="Tissue map">
-                  <button
-                    type="button"
-                    className={tissueMode === "types" ? "on" : ""}
-                    aria-pressed={tissueMode === "types"}
-                    onClick={() => setTissueMode("types")}
-                  >
-                    Tissue types
-                  </button>
-                  <button
-                    type="button"
-                    className={tissueMode === "cancer" ? "on" : ""}
-                    aria-pressed={tissueMode === "cancer"}
-                    onClick={() => setTissueMode("cancer")}
-                  >
-                    Cancer probability
-                  </button>
-                </div>
-                <label className="opacity-control">
-                  Spot opacity
-                  <input
-                    type="range"
-                    min={0.15}
-                    max={1}
-                    step={0.05}
-                    value={spotOpacity}
-                    onChange={(e) => setSpotOpacity(Number(e.target.value))}
-                    aria-label="Spot opacity"
-                  />
-                </label>
-              </div>
-            )}
-
             {gradcamMounted && (
               <GradCamPanel
                 pred={pred}
@@ -951,7 +937,6 @@ export default function GeneXApp() {
                 imageUrl={uploaded?.url}
                 showImage={showImage}
                 tissueMode={tissueMode}
-                spotOpacity={spotOpacity}
               />
             )}
           </div>

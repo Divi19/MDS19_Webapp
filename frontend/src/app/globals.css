@@ -207,7 +207,6 @@ canvas{display:block;width:100%;height:auto}
 .cluster-tile .pct{font-family:var(--mono);font-size:9.5px;color:var(--muted2)}
 
 /* tissue type (tissue-v1) */
-.seg-layer button{padding:6px 11px}
 button.legend-item{font:inherit;font-family:var(--mono);font-size:11px}
 .vbar-cancer{background:linear-gradient(90deg,#0072B2,#f2f0eb,#D55E00)}
 .tip-cancer{margin-bottom:4px;color:#ffb27a}
@@ -406,8 +405,6 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 
 @media (max-width:1200px){.grid{grid-template-columns:300px 1fr 400px}}
 @media (max-width:980px){.grid{grid-template-columns:1fr;overflow-y:auto}.col{overflow:visible}.col-1,.col-2{border-right:none;border-bottom:1px solid var(--border)}.col-3{min-height:520px}.col-1 .gene-card{flex:none}.gene-grid{overflow:visible}}
-.plot-subheader{display:flex;align-items:center;gap:8px;margin:-2px 0 10px;flex-shrink:0}
-.plot-subheader-label{font-size:11px;color:var(--muted)}
 .seg-sub button{padding:4px 10px;font-size:11.5px}
 .tissue-insights .card-title{margin-bottom:8px}
 .insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -430,6 +427,17 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .insight-table td.top{font-weight:700;color:var(--text)}
 .insight-table.crosstab{margin-top:8px}
 .insight-gene-btn{border:none;background:none;padding:0;font:inherit;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
-.tissue-controls{justify-content:space-between}
-.opacity-control{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
-.opacity-control input{accent-color:var(--accent);width:90px}
+/* Main view tabs stay on one line (a wrapped tab grows the header and shrinks the map). */
+.plot-header .seg-tabs,.plot-header .seg-mode{flex-shrink:0}
+.plot-header .seg-tabs button,.plot-header .seg-mode button{white-space:nowrap;padding:6px 10px}
+.plot-header .dataset-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tissue-legend-slot{position:relative;flex-shrink:0}
+.tissue-legend-slot .legend,.tissue-legend-slot .vscale{padding-right:140px}
+.tissue-legend-slot .is-hidden{visibility:hidden}
+.tissue-legend-row{position:absolute;left:0;right:0;top:10px;height:28px;display:flex;align-items:center;gap:8px;pointer-events:none}
+.tissue-legend-row>*{pointer-events:auto}
+.tissue-legend{display:flex;gap:4px;min-width:0;overflow:hidden}
+.tissue-legend.legend{margin-top:0}
+.legend-compact{padding:2px 8px;font-size:10.5px;white-space:nowrap}
+.opacity-control{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);flex-shrink:0}
+.opacity-control input{accent-color:var(--accent);width:80px}

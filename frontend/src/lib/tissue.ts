@@ -29,6 +29,15 @@ export const TISSUE_COLORS: Record<TissueClass, string> = {
   "Adipose tissue": "#F0E442",
 };
 
+/** Compact legend labels (the full name is in the tooltip). */
+export const TISSUE_SHORT_NAMES: Record<TissueClass, string> = {
+  Cancer: "Cancer",
+  "Immune infiltrate": "Immune",
+  "Breast glands": "Glands",
+  "Connective tissue": "Connective",
+  "Adipose tissue": "Adipose",
+};
+
 /** Spots whose top class probability is below this are drawn faded with a
  * dashed outline and marked "uncertain" in the tooltip. */
 export const LOW_CONFIDENCE = 0.5;
