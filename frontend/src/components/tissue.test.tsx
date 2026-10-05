@@ -64,7 +64,7 @@ describe("SpatialPlot Tissue view — cancer probability", () => {
     const { container } = render(
       <SpatialPlot pred={toPrediction(TISSUE_RESPONSE)} ready view="tissue" gene="ERBB2" tissueMode="cancer" />,
     );
-    expect(screen.getByText("predicted probability of cancer")).toBeTruthy();
+    expect(screen.getByText("P(cancer)")).toBeTruthy();
     expect(container.querySelector(".tissue-legend")).toBeNull();
     hover(container, 34, 10);
     expect(container.querySelector(".tip-cancer")!.textContent).toBe("Cancer probability 90.0%");

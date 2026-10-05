@@ -459,8 +459,8 @@ export default function GeneXApp() {
     ? ""
     : view === "genes"
       ? (pred.geneMeta[gene]?.label ?? "ERBB2")
-      : view === "tissue"
-        ? ""
+      : view === "tissue" && pred.tissue
+        ? pred.tissue.version
         : `k=5 · ${pred.total} spots`;
 
   return (

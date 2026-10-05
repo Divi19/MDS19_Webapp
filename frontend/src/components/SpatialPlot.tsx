@@ -405,7 +405,7 @@ export default function SpatialPlot({
           </div>
           <div className={`vscale${tissueMode === "cancer" ? "" : " is-hidden"}`} aria-hidden={tissueMode !== "cancer"}>
             <span>0 · not cancer</span>
-            <span>predicted probability of cancer</span>
+            <span>P(cancer)</span>
             <span>1 · cancer</span>
           </div>
           <div className="tissue-legend-row">
