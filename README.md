@@ -69,11 +69,14 @@ API docs: http://localhost:8000/docs
 Each prediction tile can also carry a predicted **tissue type**. When it
 does, a **Tissue** tab appears next to Clusters / Genes / Grad-CAM:
 
-- **Header switch:** *Types* shows one colour per class. A legend below the
-  map gives counts and percentages on hover, and hovering or focusing a class
-  highlights it. Uncertain tiles (top class below 50%) are faded with a dashed
-  outline and marked "uncertain" in the tooltip. *Cancer prob.* shows
-  P(Cancer) per tile, from blue (not cancer) to orange (cancer).
+The tissue types are context for the predicted expression, not a diagnosis.
+
+- **Map:** one colour per class. A legend below the map gives counts and
+  percentages on hover, and hovering or focusing a class highlights it.
+  Uncertain tiles (top class below 50%) are faded with a dashed outline and
+  marked "uncertain" in the tooltip.
+- **Gene picker** in the header, as on the Genes tab. Picking a gene keeps you
+  on the Tissue tab and updates the bottom card.
 - **Opacity slider** (and *Show image*) keeps the H&E readable.
 - **Bottom card:**
   - *Expression by tissue type* (default): the selected gene's mean predicted
@@ -81,10 +84,12 @@ does, a **Tissue** tab appears next to Clusters / Genes / Grad-CAM:
     rest. Click one to select it.
   - *Composition*: stacked bars of tissue classes for the whole section and
     for each expression cluster.
-  - Its header states "Cancer-classified tissue: X of Y tiles". This is
-    deliberately not a slide-level verdict.
+- **Export:** the Excel workbook adds an *Expression by tissue type* sheet
+  (every gene's mean per class, plus tile counts) and a *Tiles* sheet (grid
+  position, cluster, tissue type, confidence and the five class
+  probabilities per tile).
 - **Layout:** the map, header and bottom card are the same size as on the
-  Genes tab, in both modes and both sub-tabs.
+  Genes tab, in both sub-tabs.
 
 - **What it is:** a logistic regression (numpy only) on the same H0-mini
   features the v7 expression model uses: the native 224 crop (1536-d) plus the
