@@ -73,6 +73,13 @@ The tissue types are context for the predicted expression, not a diagnosis.
 
 - **Map:** one colour per class. A legend below the map gives counts and
   percentages on hover, and hovering or focusing a class highlights it.
+  **Click a class to pin it**: its tiles are coloured by the selected gene,
+  scaled from the lowest to the highest of those tiles (the legend shows the
+  range), and every other tile fades. This shows where within, say, the
+  tumour a gene is highest. Click the pinned class (×) to unpin. The pin is
+  shared with the *Genes higher in* picker, and hovering a row of the
+  *[gene] by tissue type* section highlights that class on the map. The
+  tooltip shows raw predicted expression, the same scale as the panel.
   Uncertain tiles (top class below 50%) are faded with a dashed outline and
   marked "uncertain" in the tooltip.
 - **Gene picker** in the header, as on the Genes tab. Picking a gene keeps you
@@ -95,7 +102,8 @@ The tissue types are context for the predicted expression, not a diagnosis.
 - **Export:** the Excel workbook adds an *Expression by tissue type* sheet
   (every gene's mean per class, plus tile counts) and a *Tiles* sheet (grid
   position, cluster, tissue type, confidence and the five class
-  probabilities per tile).
+  probabilities per tile) and a *Genes higher by tissue type* sheet (the
+  panel's lists for every type with enough tiles).
 - **Layout:** the map, header and bottom card are the same size as on the
   Genes tab.
 
