@@ -4,7 +4,7 @@ import {
   cancerEnrichedGenes, clusterTissueTable, geneByTissue,
   isUncertain, predictionTissueFromApi, spotTissueFromApi, TISSUE_CLASSES,
 } from "@/lib/tissue";
-import { OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
+import { LARGE_TISSUE_RESPONSE, OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
 
 describe("tissue fields from the API", () => {
   it("leaves an old prediction without any tissue data", () => {
@@ -55,9 +55,20 @@ describe("tissue statistics", () => {
   it("averages raw (not normalised) expression per tissue class", () => {
     const stats = geneByTissue(pred, "ERBB2");
     expect(stats.map((s) => s.cls)).toEqual([...TISSUE_CLASSES]);
-    expect(stats[0]).toEqual({ cls: "Cancer", count: 3, mean: 2 });
-    expect(stats[4]).toEqual({ cls: "Adipose tissue", count: 1, mean: 1.5 });
-    expect(stats[1]).toEqual({ cls: "Immune infiltrate", count: 0, mean: null });
+    expect(stats[0]).toMatchObject({ cls: "Cancer", count: 3, mean: 2 });
+    expect(stats[4]).toMatchObject({ cls: "Adipose tissue", count: 1, mean: 1.5 });
+    expect(stats[1]).toMatchObject({ cls: "Immune infiltrate", count: 0, mean: null, q1: null, q3: null });
+  });
+
+  it("gives the middle half of each type's tiles and flags types with too few tiles", () => {
+    const stats = geneByTissue(toPrediction(LARGE_TISSUE_RESPONSE), "ERBB2");
+    const cancer = stats.find((s) => s.cls === "Cancer")!;
+    expect(cancer).toMatchObject({ count: 20, enough: true });
+    expect(cancer.q1).toBeCloseTo(2.05);
+    expect(cancer.q3).toBeCloseTo(2.15);
+    expect(stats.find((s) => s.cls === "Connective tissue")!.enough).toBe(true);
+    expect(stats.find((s) => s.cls === "Adipose tissue")).toMatchObject({ count: 3, enough: false });
+    expect(stats.find((s) => s.cls === "Immune infiltrate")).toMatchObject({ count: 0, enough: false });
   });
 
   it("ranks genes by cancer-minus-rest mean expression", () => {

@@ -43,3 +43,41 @@ export const TISSUE_RESPONSE: PredictionResponse = {
     }),
   ),
 };
+
+/** A larger section for the per-type statistics: 20 Cancer and 12
+ * Connective tiles (enough to compare) and 3 Adipose tiles (too few).
+ *  - ERBB2 is clearly higher in Cancer (2.0-2.2 vs 1.0-1.2).
+ *  - CD74 is the same everywhere.
+ *  - LTF is slightly higher in Connective, but by less than its spread. */
+export const LARGE_TISSUE_RESPONSE: PredictionResponse = (() => {
+  const groups: [(typeof TISSUE_CLASSES)[number], number, (i: number) => Record<string, number>][] = [
+    ["Cancer", 20, (i) => ({ ERBB2: 2.0 + 0.05 * (i % 5), CD74: 0.5 + 0.02 * (i % 5), LTF: 0.3 + 0.1 * (i % 5) })],
+    ["Connective tissue", 12, (i) => ({ ERBB2: 1.0 + 0.05 * (i % 5), CD74: 0.5 + 0.02 * (i % 5), LTF: 0.35 + 0.1 * (i % 5) })],
+    ["Adipose tissue", 3, () => ({ ERBB2: 0.5, CD74: 0.5, LTF: 0.5 })],
+  ];
+  const spots = groups.flatMap(([cls, n, expression]) =>
+    Array.from({ length: n }, (_, i) => ({ cls, expression: expression(i) })),
+  ).map(({ cls, expression }, index) => ({
+    spot_index: index,
+    x: index % 6,
+    y: Math.floor(index / 6),
+    expression,
+    tissue_class: cls,
+    tissue_confidence: 0.9,
+    tissue_probs: probs(cls, 0.9),
+  }));
+  const counts = Object.fromEntries(TISSUE_CLASSES.map((name) => [name, spots.filter((s) => s.tissue_class === name).length]));
+  return {
+    ...OLD_RESPONSE,
+    spots,
+    top_genes: [
+      { gene_name: "ERBB2", mean_expression: 1.6, rank: 1 },
+      { gene_name: "LTF", mean_expression: 0.5, rank: 2 },
+      { gene_name: "CD74", mean_expression: 0.5, rank: 3 },
+    ],
+    tissue_model_version: "tissue-v1",
+    tissue_summary: Object.fromEntries(
+      TISSUE_CLASSES.map((name) => [name, { count: counts[name], fraction: counts[name] / spots.length }]),
+    ),
+  };
+})();

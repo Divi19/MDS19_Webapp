@@ -438,9 +438,18 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .col-3[hidden]{display:none}
 .tissue-analysis .dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .ta-title{font-size:12.5px;font-weight:600}
-.ta-row{display:grid;grid-template-columns:86px 1fr 38px 44px;align-items:center;gap:6px;font-size:11px;min-height:18px}
+.ta-row{display:grid;grid-template-columns:86px 1fr 44px 44px;align-items:center;gap:6px;font-size:11px;min-height:18px}
 .ta-bar{position:relative;height:8px;border-radius:4px;background:var(--surface3)}
-.ta-fill{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+.ta-fill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;opacity:.85}
+/* Middle half of the tiles: a dark line with end caps across the bar. */
+.ta-range{position:absolute;top:50%;height:2px;margin-top:-1px;background:var(--text)}
+.ta-range::before,.ta-range::after{content:"";position:absolute;top:-3px;width:2px;height:8px;background:var(--text)}
+.ta-range::before{left:-1px}
+.ta-range::after{right:-1px}
+.ta-row.few{color:var(--muted2)}
+.ta-row.few .dot{opacity:.35}
+.ta-row.few .insight-name{color:var(--muted2)}
+.ta-row.few .insight-val{font-family:var(--sans);font-style:italic;color:var(--muted2)}
 .ta-gene-row{display:grid;grid-template-columns:1fr auto 48px;align-items:center;gap:8px;font-size:11px;min-height:18px;padding:0 4px;border-radius:4px}
 .ta-gene-row.on{background:var(--accent-soft)}
 .tissue-analysis .insight-val,.tissue-analysis .insight-n,.tissue-analysis .insight-diff{font-size:11px}

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { toPrediction } from "@/lib/api";
-import { OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
+import { LARGE_TISSUE_RESPONSE, OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
 import SpatialPlot from "./SpatialPlot";
 import TissueAnalysisPanel from "./TissueAnalysisPanel";
 import TissueComposition from "./TissueComposition";
@@ -80,12 +80,23 @@ describe("predictions without tissue data, and the Genes view", () => {
 });
 
 describe("TissueAnalysisPanel", () => {
-  it("shows the selected gene's mean per tissue type", () => {
-    render(<TissueAnalysisPanel pred={toPrediction(TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />);
+  it("shows the selected gene's mean and spread for types with enough tiles", () => {
+    const { container } = render(
+      <TissueAnalysisPanel pred={toPrediction(LARGE_TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />,
+    );
     expect(screen.getByRole("heading", { level: 4, name: "ERBB2 by tissue type" })).toBeTruthy();
-    const cancerRow = screen.getByTitle("Cancer: 3 tiles");
-    expect(cancerRow.textContent).toContain("2.00");
-    expect(cancerRow.textContent).toContain("n=3");
+    const cancerRow = screen.getByTitle(/^Cancer: 20 tiles · mean 2\.10 · middle half 2\.05–2\.15$/);
+    expect(cancerRow.textContent).toContain("2.10");
+    expect(cancerRow.textContent).toContain("n=20");
+    expect(container.querySelectorAll(".ta-range")).toHaveLength(2);
+  });
+
+  it("greys out types with fewer than 10 tiles instead of showing a mean", () => {
+    render(<TissueAnalysisPanel pred={toPrediction(LARGE_TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />);
+    const adipose = screen.getByTitle("Adipose tissue: 3 tiles · too few to compare");
+    expect(adipose.className).toContain("few");
+    expect(adipose.textContent).toContain("too few");
+    expect(adipose.textContent).not.toContain("0.50");
   });
 
   it("lists genes higher in Cancer tiles and lets one be picked", () => {

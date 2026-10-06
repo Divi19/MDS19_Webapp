@@ -42,6 +42,10 @@ export const TISSUE_SHORT_NAMES: Record<TissueClass, string> = {
  * dashed outline and marked "uncertain" in the tooltip. */
 export const LOW_CONFIDENCE = 0.5;
 
+/** Tissue types with fewer tiles than this are greyed out in the per-type
+ * statistics: a mean from a handful of tiles is not worth comparing. */
+export const MIN_TILES = 10;
+
 export type TissueProbs = Record<TissueClass, number>;
 
 export interface SpotTissue {
@@ -103,17 +107,39 @@ function mean(values: number[]): number | null {
   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 }
 
+/** Quantile of already-sorted values, linearly interpolated. */
+function quantile(sorted: number[], q: number): number {
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
 export interface ClassGeneStat {
   cls: TissueClass;
   count: number;
   mean: number | null;
+  /** Middle half of the tiles (25th to 75th percentile); null without tiles. */
+  q1: number | null;
+  q3: number | null;
+  /** At least MIN_TILES tiles, so the numbers are worth comparing. */
+  enough: boolean;
 }
 
-/** Mean raw predicted expression of `gene` within each tissue class. */
+/** Mean and spread of raw predicted expression of `gene` within each tissue
+ * class. */
 export function geneByTissue(pred: Prediction, gene: string): ClassGeneStat[] {
   return TISSUE_CLASSES.map((cls) => {
     const values = pred.spots.filter((s) => s.tissue?.cls === cls).map((s) => rawValue(s, gene));
-    return { cls, count: values.length, mean: mean(values) };
+    const sorted = [...values].sort((a, b) => a - b);
+    return {
+      cls,
+      count: values.length,
+      mean: mean(values),
+      q1: sorted.length ? quantile(sorted, 0.25) : null,
+      q3: sorted.length ? quantile(sorted, 0.75) : null,
+      enough: values.length >= MIN_TILES,
+    };
   });
 }
 
