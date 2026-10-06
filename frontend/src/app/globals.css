@@ -461,3 +461,11 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .tissue-legend .legend-item.pinned{border-color:var(--text);color:var(--text);font-weight:600;background:var(--surface2)}
 .ta-row.pinned{background:var(--surface3);border-radius:4px}
 .ta-row{padding:0 4px;margin:0 -4px}
+/* Pinned type: the selected gene's colour scale within that type. */
+.tissue-gene-scale{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.tissue-gene-scale .unpin{margin-left:4px;color:var(--muted)}
+.tgs{display:flex;align-items:center;gap:6px;min-width:0;flex:1;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.tgs-gene{color:var(--accent);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:90px}
+.tgs-val{font-variant-numeric:tabular-nums;flex-shrink:0}
+.tgs .tgs-bar{flex:1;min-width:40px;max-width:180px;height:8px}
+.tgs-empty{font-style:italic}

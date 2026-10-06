@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
 import {
   formatPercent, isUncertain, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
@@ -88,6 +88,29 @@ function drawTissueSpot(
   ctx.globalAlpha = 1;
 }
 
+/** Raw (model-scale) predicted expression, as the Tissue Analysis panel uses. */
+function rawExpr(s: Spot, gene: string): number {
+  return s.raw?.[gene] ?? s.expr[gene] ?? 0;
+}
+
+/** A tile of the pinned tissue type, coloured by the selected gene's level
+ * relative to the other tiles of that type (viridis, low -> high). */
+function drawGeneSpot(
+  ctx: CanvasRenderingContext2D,
+  px: number,
+  py: number,
+  r: number,
+  t: number,
+  opacity: number,
+) {
+  ctx.beginPath();
+  ctx.arc(px, py, r, 0, 6.2832);
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = viridis(t);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
 export default function SpatialPlot({
   pred,
   ready,
@@ -130,6 +153,14 @@ export default function SpatialPlot({
   // The Tissue view only draws tissue when the prediction has it; GeneXApp
   // never offers the tab otherwise.
   const tissueLayer = view === "tissue" && !!pred.tissue;
+  // With a type pinned, its tiles show the selected gene's level within that
+  // type; the range sets the colour scale and the legend's min/max.
+  const pinRange = useMemo(() => {
+    if (!tissueLayer || !tissuePin) return null;
+    const values = pred.spots.filter((s) => s.tissue?.cls === tissuePin).map((s) => rawExpr(s, gene));
+    if (!values.length) return { min: 0, max: 0, count: 0 };
+    return { min: Math.min(...values), max: Math.max(...values), count: values.length };
+  }, [pred, gene, tissueLayer, tissuePin]);
 
 
   useEffect(() => {
@@ -190,6 +221,17 @@ export default function SpatialPlot({
     // Hovering (legend or analysis panel) previews a type; otherwise the pin holds.
     const focusType = tissueHighlight ?? tissueHover ?? tissuePin;
     const tissueFocus = (s: Spot) => focusType == null || s.tissue?.cls === focusType;
+    // Gene-within-type colouring while a type is pinned and nothing is being
+    // previewed by hover.
+    const geneInPin = pinRange && pinRange.count && !(tissueHighlight ?? tissueHover) ? pinRange : null;
+    const drawTissue = (px: number, py: number, r: number, s: Spot) => {
+      if (geneInPin && s.tissue?.cls === tissuePin) {
+        const span = geneInPin.max - geneInPin.min;
+        drawGeneSpot(ctx, px, py, r, span > 0 ? (rawExpr(s, gene) - geneInPin.min) / span : 0.5, spotOpacity);
+      } else {
+        drawTissueSpot(ctx, px, py, r, s, spotOpacity, tissueFocus(s));
+      }
+    };
     let gk = gene;
     if (!pred.geneMeta[gk]) gk = pred.genes[0] ?? "";
 
@@ -225,7 +267,7 @@ export default function SpatialPlot({
       if (tissueLayer) {
         for (const s of pred.spots) {
           const [px, py] = spotXY(s, geom);
-          drawTissueSpot(ctx, px, py, r, s, spotOpacity, tissueFocus(s));
+          drawTissue(px, py, r, s);
         }
         return;
       }
@@ -286,7 +328,7 @@ export default function SpatialPlot({
       const px = mL + s.x * pw;
       const py = mT + s.y * ph;
       if (tissueLayer) {
-        drawTissueSpot(ctx, px, py, r, s, spotOpacity, tissueFocus(s));
+        drawTissue(px, py, r, s);
         continue;
       }
       ctx.beginPath();
@@ -297,7 +339,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueHover, tissuePin, spotOpacity]);
+  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueHover, tissuePin, pinRange, spotOpacity]);
 
   useEffect(() => {
     draw();
@@ -322,8 +364,11 @@ export default function SpatialPlot({
     }
     if (best && bd < 200) {
       const text =
-        view === "genes" || view === "tissue"
+        view === "genes"
           ? `${pred.geneMeta[g.gk]?.label ?? g.gk} ${(best.s.expr[g.gk] ?? 0).toFixed(2)} · cluster ${best.s.cluster}`
+          : view === "tissue"
+          ? // Raw predicted expression, the same scale as the Tissue Analysis panel.
+            `${pred.geneMeta[g.gk]?.label ?? g.gk} ${rawExpr(best.s, g.gk).toFixed(2)} · cluster ${best.s.cluster}`
           : (pred.clusters[best.s.cluster]?.name ?? `cluster ${best.s.cluster}`);
       setTip({ x: best.px, y: best.py, text, spot: best.s });
     } else {
@@ -400,30 +445,60 @@ export default function SpatialPlot({
             <span>&nbsp;</span>
           </div>
           <div className="tissue-legend-row">
-            <div className="tissue-legend" aria-label="Tissue type legend">
-              {TISSUE_CLASSES.map((name) => {
-                const { count, fraction } = pred.tissue!.summary[name];
-                const label = `${name} ${count} · ${formatPercent(fraction)}`;
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    aria-label={label}
-                    title={`${label} · click to ${tissuePin === name ? "unpin" : "pin"}`}
-                    className={`legend-item legend-compact${tissuePin === name ? " pinned" : ""}`}
-                    aria-pressed={tissuePin === name}
-                    onClick={() => onTissuePin?.(tissuePin === name ? null : name)}
-                    onMouseEnter={() => setTissueHighlight(name)}
-                    onMouseLeave={() => setTissueHighlight(null)}
-                    onFocus={() => setTissueHighlight(name)}
-                    onBlur={() => setTissueHighlight(null)}
+            {tissuePin && pinRange ? (
+              <div className="tissue-gene-scale">
+                <button
+                  type="button"
+                  className="legend-item legend-compact pinned"
+                  aria-pressed
+                  aria-label={`Unpin ${tissuePin}`}
+                  title={`${tissuePin} pinned · click to unpin`}
+                  onClick={() => onTissuePin?.(null)}
+                >
+                  <span className="legend-dot" style={{ background: TISSUE_COLORS[tissuePin] }} />
+                  {TISSUE_SHORT_NAMES[tissuePin]}
+                  <span aria-hidden className="unpin">×</span>
+                </button>
+                {pinRange.count ? (
+                  <span
+                    className="tgs"
+                    title={`${gene} in ${tissuePin} tiles, scaled from the lowest to the highest of those tiles`}
                   >
-                    <span className="legend-dot" style={{ background: TISSUE_COLORS[name] }} />
-                    {TISSUE_SHORT_NAMES[name]}
-                  </button>
-                );
-              })}
-            </div>
+                    <span className="tgs-gene">{gene}</span>
+                    <span className="tgs-val">{pinRange.min.toFixed(2)}</span>
+                    <span className="vbar tgs-bar" />
+                    <span className="tgs-val">{pinRange.max.toFixed(2)}</span>
+                  </span>
+                ) : (
+                  <span className="tgs tgs-empty">no {TISSUE_SHORT_NAMES[tissuePin]} tiles</span>
+                )}
+              </div>
+            ) : (
+              <div className="tissue-legend" aria-label="Tissue type legend">
+                {TISSUE_CLASSES.map((name) => {
+                  const { count, fraction } = pred.tissue!.summary[name];
+                  const label = `${name} ${count} · ${formatPercent(fraction)}`;
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      aria-label={label}
+                      title={`${label} · click to ${tissuePin === name ? "unpin" : "pin"}`}
+                      className={`legend-item legend-compact${tissuePin === name ? " pinned" : ""}`}
+                      aria-pressed={tissuePin === name}
+                      onClick={() => onTissuePin?.(tissuePin === name ? null : name)}
+                      onMouseEnter={() => setTissueHighlight(name)}
+                      onMouseLeave={() => setTissueHighlight(null)}
+                      onFocus={() => setTissueHighlight(name)}
+                      onBlur={() => setTissueHighlight(null)}
+                    >
+                      <span className="legend-dot" style={{ background: TISSUE_COLORS[name] }} />
+                      {TISSUE_SHORT_NAMES[name]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <label className="opacity-control">
               Opacity
               <input

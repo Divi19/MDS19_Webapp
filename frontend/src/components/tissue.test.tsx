@@ -52,6 +52,8 @@ describe("SpatialPlot Tissue view", () => {
     expect(tip.textContent).toContain("Cancer · 90.0%");
     expect(tip.textContent).toContain("ERBB2");
     expect(tip.querySelectorAll(".tip-prob")).toHaveLength(5);
+    // Raw predicted expression, matching the Tissue Analysis panel.
+    expect(tip.textContent).toContain("ERBB2 1.00");
     expect(tip.textContent).not.toContain("Cancer probability");
   });
 
@@ -63,9 +65,9 @@ describe("SpatialPlot Tissue view", () => {
 });
 
 describe("SpatialPlot Tissue view — pinning", () => {
-  it("pins and unpins a tissue type from the legend", () => {
+  it("pins a type from the legend, shows the gene's range within it, and unpins", () => {
     const onTissuePin = vi.fn();
-    const { rerender } = render(
+    const { container, rerender } = render(
       <SpatialPlot pred={toPrediction(TISSUE_RESPONSE)} ready view="tissue" gene="ERBB2" onTissuePin={onTissuePin} />,
     );
     const cancer = screen.getByRole("button", { name: /^Cancer\s*3/ });
@@ -83,9 +85,11 @@ describe("SpatialPlot Tissue view — pinning", () => {
         onTissuePin={onTissuePin}
       />,
     );
-    const pinned = screen.getByRole("button", { name: /^Cancer\s*3/ });
-    expect(pinned.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(pinned);
+    // Pinned: the pills give way to the pinned type and the selected gene's
+    // range within it (raw ERBB2 in the three Cancer tiles: 1.0, 2.0, 3.0).
+    expect(container.querySelector(".tissue-legend")).toBeNull();
+    expect(container.querySelector(".tgs")!.textContent).toBe("ERBB21.003.00");
+    fireEvent.click(screen.getByRole("button", { name: "Unpin Cancer" }));
     expect(onTissuePin).toHaveBeenLastCalledWith(null);
   });
 });
