@@ -78,18 +78,26 @@ The tissue types are context for the predicted expression, not a diagnosis.
 - **Gene picker** in the header, as on the Genes tab. Picking a gene keeps you
   on the Tissue tab and updates the bottom card.
 - **Opacity slider** (and *Show image*) keeps the H&E readable.
-- **Bottom card:**
-  - *Expression by tissue type* (default): the selected gene's mean predicted
-    expression per class, and the genes highest in Cancer tiles versus the
-    rest. Click one to select it.
-  - *Composition*: stacked bars of tissue classes for the whole section and
-    for each expression cluster.
+- **Right column (Tissue tab only):** *Tissue Analysis* replaces Cluster
+  Analysis, which comes back on every other tab with any pathway results
+  kept.
+  - *[gene] by tissue type*: the selected gene's mean predicted expression
+    per type, with a line showing where the middle half of that type's tiles
+    fall. A difference smaller than the lines is within normal tile-to-tile
+    variation. Types with fewer than 10 tiles are greyed out ("too few").
+  - *Genes higher in [type]*: pick any type with at least 10 tiles (and at
+    least 10 other tiles). Lists up to 10 genes whose mean is higher than in
+    all other tiles by at least the typical tile-to-tile spread (pooled
+    standard deviation), or says none are clearly higher. Click one to select
+    it.
+- **Bottom card:** *Tissue composition*: stacked bars of tissue types for the
+  whole section and for each expression cluster.
 - **Export:** the Excel workbook adds an *Expression by tissue type* sheet
   (every gene's mean per class, plus tile counts) and a *Tiles* sheet (grid
   position, cluster, tissue type, confidence and the five class
   probabilities per tile).
 - **Layout:** the map, header and bottom card are the same size as on the
-  Genes tab, in both sub-tabs.
+  Genes tab.
 
 - **What it is:** a logistic regression (numpy only) on the same H0-mini
   features the v7 expression model uses: the native 224 crop (1536-d) plus the
