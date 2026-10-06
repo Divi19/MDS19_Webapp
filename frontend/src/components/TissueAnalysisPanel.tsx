@@ -13,22 +13,30 @@ import {
  *    the spread of its tiles; types with too few tiles are greyed out.
  *  - Genes clearly higher in a chosen tissue type than in all other tiles,
  *    for any type with enough tiles.
+ * Picking a type here pins it on the map (and pinning a comparable type from
+ * the map legend picks it here); hovering a row highlights that type.
  */
 export default function TissueAnalysisPanel({
   pred,
   gene,
   onPickGene,
+  pinned = null,
+  onPin,
+  onHoverType,
 }: {
   pred: Prediction;
   gene: string;
   onPickGene: (gene: string) => void;
+  pinned?: TissueClass | null;
+  onPin?: (cls: TissueClass | null) => void;
+  onHoverType?: (cls: TissueClass | null) => void;
 }) {
   const byClass = useMemo(() => geneByTissue(pred, gene), [pred, gene]);
   const types = useMemo(() => comparableTypes(pred), [pred]);
   const [picked, setPicked] = useState<TissueClass>("Cancer");
-  // Falls back to the first comparable type when the picked one has too few
-  // tiles in this prediction.
-  const type = types.includes(picked) ? picked : types[0];
+  // The pinned type wins when it can be compared; otherwise the last pick,
+  // falling back to the first comparable type.
+  const type = pinned && types.includes(pinned) ? pinned : types.includes(picked) ? picked : types[0];
   const higher = useMemo(() => (type ? genesHigherIn(pred, type, 10) : []), [pred, type]);
   // One scale for every compared type, wide enough for the spread lines.
   const scale = Math.max(0, ...byClass.filter((c) => c.enough).map((c) => Math.max(c.mean ?? 0, c.q3 ?? 0)));
@@ -55,7 +63,9 @@ export default function TissueAnalysisPanel({
           {byClass.map(({ cls, count, mean, q1, q3, enough }) => (
             <div
               key={cls}
-              className={`ta-row${enough ? "" : " few"}`}
+              className={`ta-row${enough ? "" : " few"}${pinned === cls ? " pinned" : ""}`}
+              onMouseEnter={() => onHoverType?.(cls)}
+              onMouseLeave={() => onHoverType?.(null)}
               title={
                 enough
                   ? `${cls}: ${count} tiles · mean ${mean!.toFixed(2)} · middle half ${q1!.toFixed(2)}–${q3!.toFixed(2)}`
@@ -91,7 +101,11 @@ export default function TissueAnalysisPanel({
                     type="button"
                     className={`legend-item legend-compact${cls === type ? " on" : ""}`}
                     aria-pressed={cls === type}
-                    onClick={() => setPicked(cls)}
+                    title={pinned === cls ? "Pinned on the map · click to unpin" : "Show and pin on the map"}
+                    onClick={() => {
+                      setPicked(cls);
+                      onPin?.(pinned === cls ? null : cls);
+                    }}
                   >
                     <span className="legend-dot" style={{ background: TISSUE_COLORS[cls] }} />
                     {TISSUE_SHORT_NAMES[cls]}

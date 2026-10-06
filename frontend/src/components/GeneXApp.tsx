@@ -18,6 +18,7 @@ import TissueAnalysisPanel from "./TissueAnalysisPanel";
 import TissueComposition from "./TissueComposition";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
+import type { TissueClass } from "@/lib/tissue";
 import { TUTORIAL_LOADING_STEP, TUTORIAL_STEPS } from "@/lib/tutorial";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -66,6 +67,10 @@ export default function GeneXApp() {
   // forcing a full restart on returning to the tab.
   const [gradcamMounted, setGradcamMounted] = useState(false);
   const [showImage, setShowImage] = useState(true);
+  // Tissue tab: the pinned tissue type (shared by the map legend and the
+  // Tissue Analysis picker), and the type hovered in the analysis panel.
+  const [tissuePin, setTissuePin] = useState<TissueClass | null>(null);
+  const [tissueHover, setTissueHover] = useState<TissueClass | null>(null);
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
@@ -130,6 +135,7 @@ export default function GeneXApp() {
         // A prediction without tissue data has no Tissue tab to stay on.
         if (!converted.tissue) setView((v) => (v === "tissue" ? "clusters" : v));
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
+        setTissuePin(null);
         setGenePage(0);
         setGeneFilter("all");
         setStepIndex(PIPELINE_STEPS.length);
@@ -179,6 +185,7 @@ export default function GeneXApp() {
         // A prediction without tissue data has no Tissue tab to stay on.
         if (!converted.tissue) setView((v) => (v === "tissue" ? "clusters" : v));
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
+        setTissuePin(null);
         setGenePage(0);
         setGeneFilter("all");
         setView("clusters");
@@ -912,6 +919,9 @@ export default function GeneXApp() {
                 gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
                 imageUrl={uploaded?.url}
                 showImage={showImage}
+                tissuePin={tissuePin}
+                onTissuePin={setTissuePin}
+                tissueHover={tissueHover}
               />
             )}
           </div>
@@ -972,6 +982,9 @@ export default function GeneXApp() {
             pred={pred}
             gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
             onPickGene={setGene}
+            pinned={tissuePin}
+            onPin={setTissuePin}
+            onHoverType={setTissueHover}
           />
         )}
         <ClusterAnalysisPanel

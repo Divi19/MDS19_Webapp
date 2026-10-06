@@ -457,3 +457,7 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .insight-note{font-size:11px;color:var(--muted2)}
 .ta-types{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0}
 .ta-types .legend-item.on{border-color:var(--text);color:var(--text);font-weight:600}
+/* Pinned tissue type: legend pill, analysis row. */
+.tissue-legend .legend-item.pinned{border-color:var(--text);color:var(--text);font-weight:600;background:var(--surface2)}
+.ta-row.pinned{background:var(--surface3);border-radius:4px}
+.ta-row{padding:0 4px;margin:0 -4px}

@@ -62,6 +62,34 @@ describe("SpatialPlot Tissue view", () => {
   });
 });
 
+describe("SpatialPlot Tissue view — pinning", () => {
+  it("pins and unpins a tissue type from the legend", () => {
+    const onTissuePin = vi.fn();
+    const { rerender } = render(
+      <SpatialPlot pred={toPrediction(TISSUE_RESPONSE)} ready view="tissue" gene="ERBB2" onTissuePin={onTissuePin} />,
+    );
+    const cancer = screen.getByRole("button", { name: /^Cancer\s*3/ });
+    expect(cancer.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(cancer);
+    expect(onTissuePin).toHaveBeenLastCalledWith("Cancer");
+
+    rerender(
+      <SpatialPlot
+        pred={toPrediction(TISSUE_RESPONSE)}
+        ready
+        view="tissue"
+        gene="ERBB2"
+        tissuePin="Cancer"
+        onTissuePin={onTissuePin}
+      />,
+    );
+    const pinned = screen.getByRole("button", { name: /^Cancer\s*3/ });
+    expect(pinned.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(pinned);
+    expect(onTissuePin).toHaveBeenLastCalledWith(null);
+  });
+});
+
 describe("predictions without tissue data, and the Genes view", () => {
   it("renders an old prediction with no tissue UI", () => {
     const { container } = render(<SpatialPlot pred={toPrediction(OLD_RESPONSE)} ready view="tissue" gene="ERBB2" />);
@@ -116,6 +144,38 @@ describe("TissueAnalysisPanel", () => {
     expect([...picker.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Cancer", "Connective"]);
     fireEvent.click(screen.getByRole("button", { name: "Connective" }));
     expect(screen.getByText(/No genes clearly higher in Connective/)).toBeTruthy();
+  });
+
+  it("pins the picked type on the map and follows a pin made on the map", () => {
+    const onPin = vi.fn();
+    const pred = toPrediction(LARGE_TISSUE_RESPONSE);
+    const { rerender } = render(<TissueAnalysisPanel pred={pred} gene="ERBB2" onPickGene={() => {}} onPin={onPin} />);
+    fireEvent.click(screen.getByRole("button", { name: "Connective" }));
+    expect(onPin).toHaveBeenLastCalledWith("Connective tissue");
+
+    rerender(<TissueAnalysisPanel pred={pred} gene="ERBB2" onPickGene={() => {}} pinned="Cancer" onPin={onPin} />);
+    expect(screen.getByRole("heading", { level: 4, name: "Genes higher in Cancer" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancer" }));
+    expect(onPin).toHaveBeenLastCalledWith(null);
+  });
+
+  it("keeps its own pick when the pinned type is too small to compare", () => {
+    render(
+      <TissueAnalysisPanel pred={toPrediction(LARGE_TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} pinned="Adipose tissue" />,
+    );
+    expect(screen.getByRole("heading", { level: 4, name: "Genes higher in Cancer" })).toBeTruthy();
+  });
+
+  it("reports the hovered tissue type so the map can highlight it", () => {
+    const onHoverType = vi.fn();
+    render(
+      <TissueAnalysisPanel pred={toPrediction(LARGE_TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} onHoverType={onHoverType} />,
+    );
+    const row = screen.getByTitle(/^Connective tissue: 12 tiles/);
+    fireEvent.mouseEnter(row);
+    expect(onHoverType).toHaveBeenLastCalledWith("Connective tissue");
+    fireEvent.mouseLeave(row);
+    expect(onHoverType).toHaveBeenLastCalledWith(null);
   });
 
   it("explains when no type has enough tiles to compare", () => {

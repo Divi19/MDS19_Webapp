@@ -95,6 +95,9 @@ export default function SpatialPlot({
   gene,
   imageUrl,
   showImage = true,
+  tissuePin = null,
+  onTissuePin,
+  tissueHover = null,
 }: {
   pred: Prediction;
   ready: boolean;
@@ -105,6 +108,12 @@ export default function SpatialPlot({
    * user strip the tissue background and see just the spatial dot map,
    * with the dots still at their real pixel-accurate positions. */
   showImage?: boolean;
+  /** Tissue view: the pinned tissue type (click a legend pill to pin or
+   * unpin); everything else fades. Shared with the Tissue Analysis picker. */
+  tissuePin?: TissueClass | null;
+  onTissuePin?: (cls: TissueClass | null) => void;
+  /** Tissue view: a type hovered outside the map (Tissue Analysis rows). */
+  tissueHover?: TissueClass | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -178,7 +187,9 @@ export default function SpatialPlot({
 
     const genesView = view === "genes";
     // Whether a spot passes the current legend highlight.
-    const tissueFocus = (s: Spot) => tissueHighlight == null || s.tissue?.cls === tissueHighlight;
+    // Hovering (legend or analysis panel) previews a type; otherwise the pin holds.
+    const focusType = tissueHighlight ?? tissueHover ?? tissuePin;
+    const tissueFocus = (s: Spot) => focusType == null || s.tissue?.cls === focusType;
     let gk = gene;
     if (!pred.geneMeta[gk]) gk = pred.genes[0] ?? "";
 
@@ -286,7 +297,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, spotOpacity]);
+  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueHover, tissuePin, spotOpacity]);
 
   useEffect(() => {
     draw();
@@ -397,10 +408,11 @@ export default function SpatialPlot({
                   <button
                     key={name}
                     type="button"
-                    className="legend-item legend-compact"
                     aria-label={label}
-                    title={label}
-                    aria-pressed={tissueHighlight === name}
+                    title={`${label} · click to ${tissuePin === name ? "unpin" : "pin"}`}
+                    className={`legend-item legend-compact${tissuePin === name ? " pinned" : ""}`}
+                    aria-pressed={tissuePin === name}
+                    onClick={() => onTissuePin?.(tissuePin === name ? null : name)}
                     onMouseEnter={() => setTissueHighlight(name)}
                     onMouseLeave={() => setTissueHighlight(null)}
                     onFocus={() => setTissueHighlight(name)}
