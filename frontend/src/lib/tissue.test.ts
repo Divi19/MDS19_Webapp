@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toPrediction } from "@/lib/api";
 import {
-  cancerEnrichedGenes, cancerStatement, clusterTissueTable, geneByTissue,
+  cancerEnrichedGenes, clusterTissueTable, geneByTissue,
   isUncertain, predictionTissueFromApi, spotTissueFromApi, TISSUE_CLASSES,
 } from "@/lib/tissue";
 import { OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
@@ -51,12 +51,6 @@ describe("tissue fields from the API", () => {
 
 describe("tissue statistics", () => {
   const pred = toPrediction(TISSUE_RESPONSE);
-
-  it("states the cancer share without a slide-level verdict", () => {
-    expect(cancerStatement(pred.tissue!, pred.total)).toBe("Cancer-classified tissue: 3 of 4 tiles (75.0%)");
-    const none = { ...pred.tissue!, summary: { ...pred.tissue!.summary, Cancer: { count: 0, fraction: 0 } } };
-    expect(cancerStatement(none, 4)).toBe("No tiles classified as cancer (0 of 4)");
-  });
 
   it("averages raw (not normalised) expression per tissue class", () => {
     const stats = geneByTissue(pred, "ERBB2");

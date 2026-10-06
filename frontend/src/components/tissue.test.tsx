@@ -79,10 +79,11 @@ describe("predictions without tissue data, and the Genes view", () => {
 });
 
 describe("TissueInsights", () => {
-  it("opens on expression by tissue type and states the cancer share", () => {
+  it("opens on expression by tissue type with a neutral tile count", () => {
     render(<TissueInsights pred={toPrediction(TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />);
     expect(screen.getByRole("tab", { name: "Expression by tissue type" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByText("Cancer-classified tissue: 3 of 4 tiles (75.0%)")).toBeTruthy();
+    expect(screen.getByText("4 tiles classified")).toBeTruthy();
+    expect(screen.queryByText(/Cancer-classified/)).toBeNull();
     expect(screen.getByRole("heading", { level: 4, name: "ERBB2 mean by tissue type" })).toBeTruthy();
     const cancerRow = screen.getByTitle("Cancer: 3 tiles");
     expect(cancerRow.textContent).toContain("2.00");

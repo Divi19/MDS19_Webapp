@@ -103,14 +103,6 @@ function mean(values: number[]): number | null {
   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 }
 
-/** One sentence on cancer-classified tiles. Deliberately not a slide-level
- * verdict: the model is validated per tile, not per slide. */
-export function cancerStatement(tissue: PredictionTissue, total: number): string {
-  const cancer = tissue.summary.Cancer;
-  if (!cancer.count) return `No tiles classified as cancer (0 of ${total})`;
-  return `Cancer-classified tissue: ${cancer.count} of ${total} tiles (${formatPercent(cancer.fraction)})`;
-}
-
 export interface ClassGeneStat {
   cls: TissueClass;
   count: number;

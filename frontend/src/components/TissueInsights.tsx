@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { CL, type Prediction } from "@/lib/mockPrediction";
 import {
-  cancerEnrichedGenes, cancerStatement, clusterTissueTable, formatPercent, geneByTissue, TISSUE_CLASSES,
+  cancerEnrichedGenes, clusterTissueTable, formatPercent, geneByTissue, TISSUE_CLASSES,
   TISSUE_COLORS, TISSUE_SHORT_NAMES,
 } from "@/lib/tissue";
 
@@ -75,7 +75,7 @@ export default function TissueInsights({
             Composition
           </button>
         </div>
-        <span className="meta">{cancerStatement(tissue, pred.total)}</span>
+        <span className="meta">{pred.total} tiles classified</span>
       </div>
 
       {tab === "expression" ? (
