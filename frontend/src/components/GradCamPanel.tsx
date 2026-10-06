@@ -48,6 +48,13 @@ const OVERLAY_ALPHA = 0.4;
 // smoothed values so the strongest blobs still reach the top of the colour
 // range. Chosen by comparing widths on real v7 heat (1.5 to 2.5).
 const SMOOTH_SIGMA = 2;
+// Cells with almost no attention fade out instead of being tinted dark blue
+// (opacity ramps in between FADE_LO and FADE_HI of the shared scale). Tiles
+// along the tissue edge are only partly tissue, and the pink background inside
+// them has almost no attention; at constant opacity it showed as blue
+// stair-step squares along the edge. Only the weakest cells are affected.
+const FADE_LO = 0.03;
+const FADE_HI = 0.22;
 const JET_LUT: [number, number, number][] = Array.from({ length: 256 }, (_, i) => {
   const x = i / 255;
   const c = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
@@ -71,6 +78,11 @@ interface HeatGrid {
 }
 
 /** Separable Gaussian blur, edges replicated. */
+function smoothstep(lo: number, hi: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
+  return t * t * (3 - 2 * t);
+}
+
 function blurGauss(src: Float32Array, cols: number, rows: number, sigma: number): Float32Array {
   const r = Math.ceil(3 * sigma);
   const k = new Float32Array(2 * r + 1);
@@ -102,7 +114,7 @@ function blurGauss(src: Float32Array, cols: number, rows: number, sigma: number)
 /** Places every loaded tile's heat cells at its true grid position in one
  * slide-wide grid, smooths it across tile borders, and colours it against one
  * shared scale into an RGBA canvas (one pixel per heat cell). Cells outside
- * tissue stay transparent. Rebuilt after each batch, not on every draw. */
+ * tissue, or with almost no attention, stay transparent. Rebuilt after each batch, not on every draw. */
 function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | null {
   let tw = 0;
   let th = 0;
@@ -164,7 +176,7 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | nu
     img.data[4 * p] = r;
     img.data[4 * p + 1] = g;
     img.data[4 * p + 2] = b;
-    img.data[4 * p + 3] = Math.round(255 * OVERLAY_ALPHA * Math.min(1, den[p]));
+    img.data[4 * p + 3] = Math.round(255 * OVERLAY_ALPHA * Math.min(1, den[p]) * smoothstep(FADE_LO, FADE_HI, v));
   }
   ctx.putImageData(img, 0, 0);
   return { cv, cols, rows, tw, th, scale };
