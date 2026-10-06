@@ -41,6 +41,13 @@ const MIN_OPACITY = 0.35;
 // overlay_heatmap().
 const SCALE_PERCENTILE = 0.98;
 const OVERLAY_ALPHA = 0.4;
+// The stitched grid is smoothed with a Gaussian of this width (in heat cells)
+// before colouring. v7's ViT gives one value per 14px patch, which on its own
+// reads as scattered dots; smoothing merges neighbouring cells into larger,
+// closer-together blobs, and the shared scale is then re-fitted to the
+// smoothed values so the strongest blobs still reach the top of the colour
+// range. Chosen by comparing widths on real v7 heat (1.5 to 2.5).
+const SMOOTH_SIGMA = 2;
 const JET_LUT: [number, number, number][] = Array.from({ length: 256 }, (_, i) => {
   const x = i / 255;
   const c = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
@@ -63,9 +70,39 @@ interface HeatGrid {
   scale: number;
 }
 
+/** Separable Gaussian blur, edges replicated. */
+function blurGauss(src: Float32Array, cols: number, rows: number, sigma: number): Float32Array {
+  const r = Math.ceil(3 * sigma);
+  const k = new Float32Array(2 * r + 1);
+  let sum = 0;
+  for (let i = -r; i <= r; i++) {
+    k[i + r] = Math.exp(-0.5 * (i / sigma) ** 2);
+    sum += k[i + r];
+  }
+  for (let i = 0; i < k.length; i++) k[i] /= sum;
+  const tmp = new Float32Array(src.length);
+  const out = new Float32Array(src.length);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let acc = 0;
+      for (let d = -r; d <= r; d++) acc += k[d + r] * src[y * cols + Math.min(cols - 1, Math.max(0, x + d))];
+      tmp[y * cols + x] = acc;
+    }
+  }
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let acc = 0;
+      for (let d = -r; d <= r; d++) acc += k[d + r] * tmp[Math.min(rows - 1, Math.max(0, y + d)) * cols + x];
+      out[y * cols + x] = acc;
+    }
+  }
+  return out;
+}
+
 /** Places every loaded tile's heat cells at its true grid position in one
- * slide-wide RGBA canvas (one pixel per heat cell). Cells outside tissue stay
- * transparent. Rebuilt after each batch, not on every draw. */
+ * slide-wide grid, smooths it across tile borders, and colours it against one
+ * shared scale into an RGBA canvas (one pixel per heat cell). Cells outside
+ * tissue stay transparent. Rebuilt after each batch, not on every draw. */
 function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | null {
   let tw = 0;
   let th = 0;
@@ -85,23 +122,10 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | nu
   }
   if (maxGX < 0) return null;
 
-  const vals: number[] = [];
-  for (let i = 0; i < spots.length; i++) {
-    const t = tiles[i];
-    if (!t || t.w !== tw || t.h !== th) continue;
-    for (let j = 0; j < t.heat.length; j++) if (t.mask[j] >= 0.5) vals.push(t.heat[j]);
-  }
-  vals.sort((a, b) => a - b);
-  const scale = vals.length ? vals[Math.min(vals.length - 1, Math.floor(SCALE_PERCENTILE * vals.length))] : 0;
-
   const cols = (maxGX + 1) * tw;
   const rows = (maxGY + 1) * th;
-  const cv = document.createElement("canvas");
-  cv.width = cols;
-  cv.height = rows;
-  const ctx = cv.getContext("2d");
-  if (!ctx) return null;
-  const img = ctx.createImageData(cols, rows);
+  const heatG = new Float32Array(cols * rows);
+  const maskG = new Float32Array(cols * rows);
   for (let i = 0; i < spots.length; i++) {
     const t = tiles[i];
     const s = spots[i];
@@ -109,15 +133,38 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | nu
     for (let cy = 0; cy < th; cy++) {
       for (let cx = 0; cx < tw; cx++) {
         const j = cy * tw + cx;
-        const v = scale > 0 ? Math.min(1, Math.max(0, t.heat[j] / scale)) : 0;
-        const [r, g, b] = JET_LUT[Math.round(v * 255)];
-        const p = ((s.gridY * th + cy) * cols + s.gridX * tw + cx) * 4;
-        img.data[p] = r;
-        img.data[p + 1] = g;
-        img.data[p + 2] = b;
-        img.data[p + 3] = Math.round(255 * OVERLAY_ALPHA * t.mask[j]);
+        const p = (s.gridY * th + cy) * cols + s.gridX * tw + cx;
+        heatG[p] = t.heat[j] * t.mask[j];
+        maskG[p] = t.mask[j];
       }
     }
+  }
+  // Blur heat weighted by the tissue mask, then divide by the blurred mask, so
+  // values near the tissue edge are not pulled down by empty neighbours.
+  const num = blurGauss(heatG, cols, rows, SMOOTH_SIGMA);
+  const den = blurGauss(maskG, cols, rows, SMOOTH_SIGMA);
+  const heat = new Float32Array(heatG.length);
+  const inTissue: number[] = [];
+  for (let p = 0; p < heat.length; p++) {
+    heat[p] = den[p] > 1e-6 ? num[p] / den[p] : 0;
+    if (den[p] >= 0.5) inTissue.push(heat[p]);
+  }
+  const sorted = Float32Array.from(inTissue).sort();
+  const scale = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(SCALE_PERCENTILE * sorted.length))] : 0;
+
+  const cv = document.createElement("canvas");
+  cv.width = cols;
+  cv.height = rows;
+  const ctx = cv.getContext("2d");
+  if (!ctx) return null;
+  const img = ctx.createImageData(cols, rows);
+  for (let p = 0; p < heat.length; p++) {
+    const v = scale > 0 ? Math.min(1, Math.max(0, heat[p] / scale)) : 0;
+    const [r, g, b] = JET_LUT[Math.round(v * 255)];
+    img.data[4 * p] = r;
+    img.data[4 * p + 1] = g;
+    img.data[4 * p + 2] = b;
+    img.data[4 * p + 3] = Math.round(255 * OVERLAY_ALPHA * Math.min(1, den[p]));
   }
   ctx.putImageData(img, 0, 0);
   return { cv, cols, rows, tw, th, scale };
