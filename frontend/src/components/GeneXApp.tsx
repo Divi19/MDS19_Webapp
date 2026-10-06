@@ -376,11 +376,11 @@ export default function GeneXApp() {
       setGene(name);
       setGeneQuery("");
       setGeneMenuOpen(false);
-      // Only reachable from the Genes-tab dropdown now — Grad-CAM no
-      // longer has gene selection, so this always lands on "genes".
-      changeView("genes");
+      // Reachable from the Genes and Tissue dropdowns (Grad-CAM has no gene
+      // selection). The Tissue tab stays put: its bottom card follows the gene.
+      if (view !== "tissue") changeView("genes");
     },
-    [changeView],
+    [changeView, view],
   );
 
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
@@ -802,7 +802,7 @@ export default function GeneXApp() {
                   Grad-CAM
                 </button>
               </div>
-              {view === "genes" && (
+              {(view === "genes" || view === "tissue") && (
                 <div className="gene-combo">
                   <input
                     className="gsel"
