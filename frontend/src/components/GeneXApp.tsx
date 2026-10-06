@@ -13,7 +13,7 @@ import GradCamPanel from "./GradCamPanel";
 import HistoryPanel from "./HistoryPanel";
 import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
-import SpatialPlot, { type TissueMode } from "./SpatialPlot";
+import SpatialPlot from "./SpatialPlot";
 import TissueInsights from "./TissueInsights";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
@@ -65,9 +65,6 @@ export default function GeneXApp() {
   // forcing a full restart on returning to the tab.
   const [gradcamMounted, setGradcamMounted] = useState(false);
   const [showImage, setShowImage] = useState(true);
-  // Tissue tab (only offered when the prediction has tissue data): class map
-  // or cancer-probability map.
-  const [tissueMode, setTissueMode] = useState<TissueMode>("types");
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
@@ -805,28 +802,6 @@ export default function GeneXApp() {
                   Grad-CAM
                 </button>
               </div>
-              {view === "tissue" && ready && pred.tissue && (
-                <div className="seg seg-mode" role="group" aria-label="Tissue map">
-                  <button
-                    type="button"
-                    className={tissueMode === "types" ? "on" : ""}
-                    aria-pressed={tissueMode === "types"}
-                    title="Tissue types: one colour per predicted class"
-                    onClick={() => setTissueMode("types")}
-                  >
-                    Types
-                  </button>
-                  <button
-                    type="button"
-                    className={tissueMode === "cancer" ? "on" : ""}
-                    aria-pressed={tissueMode === "cancer"}
-                    title="Cancer probability: predicted probability of cancer per tile"
-                    onClick={() => setTissueMode("cancer")}
-                  >
-                    Cancer prob.
-                  </button>
-                </div>
-              )}
               {view === "genes" && (
                 <div className="gene-combo">
                   <input
@@ -936,7 +911,6 @@ export default function GeneXApp() {
                 gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
                 imageUrl={uploaded?.url}
                 showImage={showImage}
-                tissueMode={tissueMode}
               />
             )}
           </div>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toPrediction } from "@/lib/api";
 import {
-  cancerEnrichedGenes, cancerProbabilityColor, cancerStatement, clusterTissueTable, geneByTissue,
+  cancerEnrichedGenes, cancerStatement, clusterTissueTable, geneByTissue,
   isUncertain, predictionTissueFromApi, spotTissueFromApi, TISSUE_CLASSES,
 } from "@/lib/tissue";
 import { OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
@@ -83,10 +83,5 @@ describe("tissue statistics", () => {
     expect(table).toHaveLength(pred.counts.length);
     expect(table.reduce((sum, row) => sum + row[0], 0)).toBe(3);
     expect(table.flat().reduce((a, b) => a + b, 0)).toBe(4);
-  });
-
-  it("maps cancer probability onto the blue-to-orange scale", () => {
-    expect(cancerProbabilityColor(0)).toBe("rgb(0, 114, 178)");
-    expect(cancerProbabilityColor(1)).toBe("rgb(213, 94, 0)");
   });
 });

@@ -208,8 +208,6 @@ canvas{display:block;width:100%;height:auto}
 
 /* tissue type (tissue-v1) */
 button.legend-item{font:inherit;font-family:var(--mono);font-size:11px}
-.vbar-cancer{background:linear-gradient(90deg,#0072B2,#f2f0eb,#D55E00)}
-.tip-cancer{margin-bottom:4px;color:#ffb27a}
 .plot-tip-tissue{white-space:normal;min-width:220px}
 .tip-tissue{margin-top:4px;padding-top:5px;border-top:1px solid rgba(255,255,255,.18)}
 .tip-tissue-head{display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:4px}
@@ -408,17 +406,12 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .insight-n{color:var(--muted2)}
 .insight-gene-btn{border:none;background:none;padding:0;font:inherit;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 /* Main view tabs stay on one line (a wrapped tab grows the header and shrinks the map). */
-.plot-header .seg-tabs,.plot-header .seg-mode{flex-shrink:0}
-.plot-header .seg-tabs button,.plot-header .seg-mode button{white-space:nowrap;padding:6px 9px}
+.plot-header .seg-tabs{flex-shrink:0}
+.plot-header .seg-tabs button{white-space:nowrap;padding:6px 9px}
 /* When the column is too narrow, whole items wrap to a second row rather than
-   overflowing. The Tissue mode switch is as wide as the Genes gene box and the
-   label never forces a wrap, so Genes and Tissue wrap at the same width. */
+   overflowing. The label never forces a wrap. */
 .plot-header:has(.seg-tabs){flex-wrap:wrap;row-gap:6px}
 .plot-header .dataset-label{flex:1 1 0;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.plot-header .seg-mode{width:180px}
-.plot-header .seg-mode button{flex:1}
-/* Same height as the Genes tab's gene box, so the header (and the map below) match exactly. */
-.plot-header .seg-mode button{padding-top:6.5px;padding-bottom:6.5px}
 .tissue-legend-slot{position:relative;flex-shrink:0}
 .tissue-legend-slot .legend,.tissue-legend-slot .vscale{padding-right:140px}
 .tissue-legend-slot .is-hidden{visibility:hidden}

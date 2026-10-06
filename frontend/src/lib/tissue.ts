@@ -161,13 +161,3 @@ export function clusterTissueTable(pred: Prediction): number[][] {
   }
   return rows;
 }
-
-/** Colour for a cancer probability: blue (non-cancer) -> light -> orange
- * (cancer), the colour-blind-safe Okabe-Ito pair. */
-export function cancerProbabilityColor(p: number): string {
-  const stops: [number, number, number][] = [[0, 114, 178], [242, 240, 235], [213, 94, 0]];
-  const t = Math.max(0, Math.min(1, p)) * 2;
-  const [a, b] = t <= 1 ? [stops[0], stops[1]] : [stops[1], stops[2]];
-  const f = t <= 1 ? t : t - 1;
-  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * f)).join(", ")})`;
-}

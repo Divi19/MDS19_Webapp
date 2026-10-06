@@ -3,11 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
 import {
-  cancerProbabilityColor, formatPercent, isUncertain, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
+  formatPercent, isUncertain, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
   type TissueClass,
 } from "@/lib/tissue";
-
-export type TissueMode = "types" | "cancer";
 
 const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -50,10 +48,8 @@ function spotXY(s: Spot, g: Geom): [number, number] {
   return [g.mL + s.x * g.pw, g.mT + s.y * g.ph];
 }
 
-/** One spot on the Tissue view.
- *  - "types": its class colour; tiles whose top probability is below
- *    LOW_CONFIDENCE are faded with a dashed outline.
- *  - "cancer": coloured by P(Cancer) on a blue -> orange scale.
+/** One spot on the Tissue view, in its class colour; tiles whose top
+ * probability is below LOW_CONFIDENCE are faded with a dashed outline.
  * `focused` is false for spots outside the legend highlight; they fade,
  * keeping them faintly visible for context. Spots without tissue data are
  * drawn as faint grey. */
@@ -64,7 +60,6 @@ function drawTissueSpot(
   r: number,
   s: Spot,
   opacity: number,
-  mode: TissueMode,
   focused: boolean,
 ) {
   ctx.beginPath();
@@ -77,13 +72,6 @@ function drawTissueSpot(
     return;
   }
   const fade = focused ? 1 : 0.12;
-  if (mode === "cancer") {
-    ctx.globalAlpha = opacity * fade;
-    ctx.fillStyle = cancerProbabilityColor(s.tissue.probs.Cancer);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    return;
-  }
   const col = TISSUE_COLORS[s.tissue.cls];
   const low = isUncertain(s);
   ctx.globalAlpha = (low ? 0.35 : 1) * opacity * fade;
@@ -107,14 +95,11 @@ export default function SpatialPlot({
   gene,
   imageUrl,
   showImage = true,
-  tissueMode = "types",
 }: {
   pred: Prediction;
   ready: boolean;
   view: "clusters" | "genes" | "tissue";
   gene: string;
-  /** Tissue view only: class map or cancer-probability map. */
-  tissueMode?: TissueMode;
   imageUrl?: string | null;
   /** Only meaningful in the Genes view overlaying a real image — lets the
    * user strip the tissue background and see just the spatial dot map,
@@ -229,7 +214,7 @@ export default function SpatialPlot({
       if (tissueLayer) {
         for (const s of pred.spots) {
           const [px, py] = spotXY(s, geom);
-          drawTissueSpot(ctx, px, py, r, s, spotOpacity, tissueMode, tissueFocus(s));
+          drawTissueSpot(ctx, px, py, r, s, spotOpacity, tissueFocus(s));
         }
         return;
       }
@@ -290,7 +275,7 @@ export default function SpatialPlot({
       const px = mL + s.x * pw;
       const py = mT + s.y * ph;
       if (tissueLayer) {
-        drawTissueSpot(ctx, px, py, r, s, spotOpacity, tissueMode, tissueFocus(s));
+        drawTissueSpot(ctx, px, py, r, s, spotOpacity, tissueFocus(s));
         continue;
       }
       ctx.beginPath();
@@ -301,7 +286,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueMode, spotOpacity]);
+  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, spotOpacity]);
 
   useEffect(() => {
     draw();
@@ -358,9 +343,6 @@ export default function SpatialPlot({
                 {tip.spot.tissue.cls} · {formatPercent(tip.spot.tissue.confidence)}
                 {isUncertain(tip.spot) && <span className="tip-low" title="Top class probability below 50%">uncertain</span>}
               </div>
-              {tissueMode === "cancer" && (
-                <div className="tip-cancer">Cancer probability {formatPercent(tip.spot.tissue.probs.Cancer)}</div>
-              )}
               {TISSUE_CLASSES.map((name) => (
                 <div key={name} className="tip-prob">
                   <span className="tip-prob-name">{name}</span>
@@ -396,44 +378,40 @@ export default function SpatialPlot({
 
       {ready && tissueLayer && pred.tissue && (
         // Built from the same .legend/.vbar/.vscale elements as the Genes
-        // colour bar, so this slot (and therefore the map above it) is
-        // exactly the same height as on the Genes tab. In "types" mode the
-        // bar is hidden and the class legend sits on top of it.
+        // colour bar (kept invisible), so this slot, and therefore the map
+        // above it, is exactly the same height as on the Genes tab. The class
+        // legend and opacity slider sit on top of it.
         <div className="tissue-legend-slot">
-          <div className="legend" aria-hidden={tissueMode !== "cancer"}>
-            <div className={`vbar vbar-cancer${tissueMode === "cancer" ? "" : " is-hidden"}`} />
+          <div className="legend" aria-hidden>
+            <div className="vbar is-hidden" />
           </div>
-          <div className={`vscale${tissueMode === "cancer" ? "" : " is-hidden"}`} aria-hidden={tissueMode !== "cancer"}>
-            <span>0 · not cancer</span>
-            <span>P(cancer)</span>
-            <span>1 · cancer</span>
+          <div className="vscale is-hidden" aria-hidden>
+            <span>&nbsp;</span>
           </div>
           <div className="tissue-legend-row">
-            {tissueMode === "types" && (
-              <div className="tissue-legend" aria-label="Tissue type legend">
-                {TISSUE_CLASSES.map((name) => {
-                  const { count, fraction } = pred.tissue!.summary[name];
-                  const label = `${name} ${count} · ${formatPercent(fraction)}`;
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      className="legend-item legend-compact"
-                      aria-label={label}
-                      title={label}
-                      aria-pressed={tissueHighlight === name}
-                      onMouseEnter={() => setTissueHighlight(name)}
-                      onMouseLeave={() => setTissueHighlight(null)}
-                      onFocus={() => setTissueHighlight(name)}
-                      onBlur={() => setTissueHighlight(null)}
-                    >
-                      <span className="legend-dot" style={{ background: TISSUE_COLORS[name] }} />
-                      {TISSUE_SHORT_NAMES[name]}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            <div className="tissue-legend" aria-label="Tissue type legend">
+              {TISSUE_CLASSES.map((name) => {
+                const { count, fraction } = pred.tissue!.summary[name];
+                const label = `${name} ${count} · ${formatPercent(fraction)}`;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    className="legend-item legend-compact"
+                    aria-label={label}
+                    title={label}
+                    aria-pressed={tissueHighlight === name}
+                    onMouseEnter={() => setTissueHighlight(name)}
+                    onMouseLeave={() => setTissueHighlight(null)}
+                    onFocus={() => setTissueHighlight(name)}
+                    onBlur={() => setTissueHighlight(null)}
+                  >
+                    <span className="legend-dot" style={{ background: TISSUE_COLORS[name] }} />
+                    {TISSUE_SHORT_NAMES[name]}
+                  </button>
+                );
+              })}
+            </div>
             <label className="opacity-control">
               Opacity
               <input

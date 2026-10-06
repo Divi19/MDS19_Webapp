@@ -24,9 +24,9 @@ afterEach(cleanup);
 const hover = (container: HTMLElement, x: number, y: number) =>
   fireEvent.mouseMove(container.querySelector("canvas")!, { clientX: x, clientY: y });
 
-describe("SpatialPlot Tissue view — tissue types", () => {
+describe("SpatialPlot Tissue view", () => {
   const renderTypes = () =>
-    render(<SpatialPlot pred={toPrediction(TISSUE_RESPONSE)} ready view="tissue" gene="ERBB2" tissueMode="types" />);
+    render(<SpatialPlot pred={toPrediction(TISSUE_RESPONSE)} ready view="tissue" gene="ERBB2" />);
 
   it("shows class pills with counts and percentages, and no confidence pill", () => {
     renderTypes();
@@ -36,9 +36,10 @@ describe("SpatialPlot Tissue view — tissue types", () => {
     expect(screen.queryByText(/confidence </)).toBeNull();
   });
 
-  it("shows no status text, disclaimer or uncertain-only filter under the map", () => {
+  it("shows no status text, disclaimer, uncertain-only filter or cancer-probability scale", () => {
     const { container } = renderTypes();
     expect(container.querySelector(".tissue-status")).toBeNull();
+    expect(screen.queryByText("P(cancer)")).toBeNull();
     expect(screen.queryByText(/not for diagnosis/)).toBeNull();
     expect(screen.queryByLabelText("Show only uncertain")).toBeNull();
   });
@@ -50,24 +51,13 @@ describe("SpatialPlot Tissue view — tissue types", () => {
     expect(tip.textContent).toContain("Cancer · 90.0%");
     expect(tip.textContent).toContain("ERBB2");
     expect(tip.querySelectorAll(".tip-prob")).toHaveLength(5);
+    expect(tip.textContent).not.toContain("Cancer probability");
   });
 
   it("flags uncertain tiles in the tooltip", () => {
     const { container } = renderTypes();
     hover(container, 34, 350);
     expect(container.querySelector(".tip-low")!.textContent).toBe("uncertain");
-  });
-});
-
-describe("SpatialPlot Tissue view — cancer probability", () => {
-  it("shows a probability scale instead of class pills and reports P(cancer) on hover", () => {
-    const { container } = render(
-      <SpatialPlot pred={toPrediction(TISSUE_RESPONSE)} ready view="tissue" gene="ERBB2" tissueMode="cancer" />,
-    );
-    expect(screen.getByText("P(cancer)")).toBeTruthy();
-    expect(container.querySelector(".tissue-legend")).toBeNull();
-    hover(container, 34, 10);
-    expect(container.querySelector(".tip-cancer")!.textContent).toBe("Cancer probability 90.0%");
   });
 });
 
