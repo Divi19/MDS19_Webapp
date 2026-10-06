@@ -143,27 +143,49 @@ export function geneByTissue(pred: Prediction, gene: string): ClassGeneStat[] {
   });
 }
 
-export interface EnrichedGene {
+/** Tissue types with enough tiles, and enough other tiles, to compare
+ * against the rest of the section. */
+export function comparableTypes(pred: Prediction): TissueClass[] {
+  const classified = pred.spots.filter((s) => s.tissue).length;
+  return TISSUE_CLASSES.filter((cls) => {
+    const n = pred.spots.filter((s) => s.tissue?.cls === cls).length;
+    return n >= MIN_TILES && classified - n >= MIN_TILES;
+  });
+}
+
+export interface HigherGene {
   gene: string;
-  cancerMean: number;
+  typeMean: number;
   restMean: number;
   diff: number;
 }
 
-/** Genes with the largest mean predicted expression in Cancer tiles minus
- * all other classified tiles. Empty unless both groups have tiles. */
-export function cancerEnrichedGenes(pred: Prediction, limit = 5): EnrichedGene[] {
-  const cancer = pred.spots.filter((s) => s.tissue?.cls === "Cancer");
-  const rest = pred.spots.filter((s) => s.tissue && s.tissue.cls !== "Cancer");
-  if (!cancer.length || !rest.length) return [];
+function sd(values: number[], m: number): number {
+  return Math.sqrt(values.reduce((sum, v) => sum + (v - m) ** 2, 0) / values.length);
+}
+
+/** Genes whose mean predicted expression is higher in `cls` tiles than in
+ * all other classified tiles, largest difference first. A gene is only
+ * listed when the difference is at least the typical tile-to-tile spread
+ * (the pooled standard deviation of the two groups), so noise is left out.
+ * Empty when `cls` is not one of comparableTypes(). */
+export function genesHigherIn(pred: Prediction, cls: TissueClass, limit = 10): HigherGene[] {
+  if (!comparableTypes(pred).includes(cls)) return [];
+  const inType = pred.spots.filter((s) => s.tissue?.cls === cls);
+  const rest = pred.spots.filter((s) => s.tissue && s.tissue.cls !== cls);
   return pred.genes
     .map((gene) => {
-      const cancerMean = mean(cancer.map((s) => rawValue(s, gene)))!;
-      const restMean = mean(rest.map((s) => rawValue(s, gene)))!;
-      return { gene, cancerMean, restMean, diff: cancerMean - restMean };
+      const a = inType.map((s) => rawValue(s, gene));
+      const b = rest.map((s) => rawValue(s, gene));
+      const typeMean = mean(a)!;
+      const restMean = mean(b)!;
+      const spread = Math.sqrt((sd(a, typeMean) ** 2 + sd(b, restMean) ** 2) / 2);
+      return { gene, typeMean, restMean, diff: typeMean - restMean, spread };
     })
-    .sort((a, b) => b.diff - a.diff)
-    .slice(0, limit);
+    .filter((g) => g.diff > 0 && g.diff >= g.spread)
+    .sort((x, y) => y.diff - x.diff)
+    .slice(0, limit)
+    .map(({ gene, typeMean, restMean, diff }) => ({ gene, typeMean, restMean, diff }));
 }
 
 export function isUncertain(spot: Spot): boolean {

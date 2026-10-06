@@ -99,14 +99,29 @@ describe("TissueAnalysisPanel", () => {
     expect(adipose.textContent).not.toContain("0.50");
   });
 
-  it("lists genes higher in Cancer tiles and lets one be picked", () => {
+  it("lists genes clearly higher in Cancer and lets one be picked", () => {
     const onPickGene = vi.fn();
-    render(<TissueAnalysisPanel pred={toPrediction(TISSUE_RESPONSE)} gene="CD74" onPickGene={onPickGene} />);
+    render(<TissueAnalysisPanel pred={toPrediction(LARGE_TISSUE_RESPONSE)} gene="CD74" onPickGene={onPickGene} />);
+    expect(screen.getByRole("heading", { level: 4, name: "Genes higher in Cancer" })).toBeTruthy();
     const row = screen.getByRole("button", { name: "ERBB2" }).closest(".ta-gene-row")!;
-    expect(row.textContent).toContain("2.00 vs 1.50");
-    expect(row.textContent).toContain("+0.50");
+    expect(row.textContent).toContain("2.10 vs");
+    expect(screen.queryByRole("button", { name: "CD74" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "ERBB2" }));
     expect(onPickGene).toHaveBeenCalledWith("ERBB2");
+  });
+
+  it("offers only types with enough tiles and says so when nothing is clearly higher", () => {
+    render(<TissueAnalysisPanel pred={toPrediction(LARGE_TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />);
+    const picker = screen.getByRole("group", { name: "Tissue type" });
+    expect([...picker.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Cancer", "Connective"]);
+    fireEvent.click(screen.getByRole("button", { name: "Connective" }));
+    expect(screen.getByText(/No genes clearly higher in Connective/)).toBeTruthy();
+  });
+
+  it("explains when no type has enough tiles to compare", () => {
+    render(<TissueAnalysisPanel pred={toPrediction(TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />);
+    expect(screen.queryByRole("group", { name: "Tissue type" })).toBeNull();
+    expect(screen.getByText(/Needs a tissue type with at least 10 tiles/)).toBeTruthy();
   });
 });
 

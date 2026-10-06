@@ -455,3 +455,5 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .tissue-analysis .insight-val,.tissue-analysis .insight-n,.tissue-analysis .insight-diff{font-size:11px}
 .insight-diff{font-family:var(--mono);text-align:right;color:#D55E00;font-variant-numeric:tabular-nums}
 .insight-note{font-size:11px;color:var(--muted2)}
+.ta-types{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0}
+.ta-types .legend-item.on{border-color:var(--text);color:var(--text);font-weight:600}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toPrediction } from "@/lib/api";
 import {
-  cancerEnrichedGenes, clusterTissueTable, geneByTissue,
+  clusterTissueTable, comparableTypes, geneByTissue, genesHigherIn,
   isUncertain, predictionTissueFromApi, spotTissueFromApi, TISSUE_CLASSES,
 } from "@/lib/tissue";
 import { LARGE_TISSUE_RESPONSE, OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
@@ -71,12 +71,23 @@ describe("tissue statistics", () => {
     expect(stats.find((s) => s.cls === "Immune infiltrate")).toMatchObject({ count: 0, enough: false });
   });
 
-  it("ranks genes by cancer-minus-rest mean expression", () => {
-    const top = cancerEnrichedGenes(pred);
-    expect(top[0].gene).toBe("ERBB2");
-    expect(top[0].diff).toBeCloseTo(0.5);
-    expect(top[1].gene).toBe("CD74");
-    expect(cancerEnrichedGenes(toPrediction(OLD_RESPONSE))).toEqual([]);
+  it("only compares types with enough tiles of their own and enough other tiles", () => {
+    expect(comparableTypes(toPrediction(LARGE_TISSUE_RESPONSE))).toEqual(["Cancer", "Connective tissue"]);
+    expect(comparableTypes(pred)).toEqual([]);
+    expect(genesHigherIn(pred, "Cancer")).toEqual([]);
+    expect(comparableTypes(toPrediction(OLD_RESPONSE))).toEqual([]);
+  });
+
+  it("lists genes clearly higher in a type, largest difference first", () => {
+    const top = genesHigherIn(toPrediction(LARGE_TISSUE_RESPONSE), "Cancer");
+    expect(top.map((g) => g.gene)).toEqual(["ERBB2"]);
+    expect(top[0].typeMean).toBeCloseTo(2.1);
+    expect(top[0].diff).toBeGreaterThan(0.9);
+  });
+
+  it("leaves out differences smaller than the tile-to-tile spread", () => {
+    // LTF is 0.05 higher in Connective, but its tiles vary by about 0.14.
+    expect(genesHigherIn(toPrediction(LARGE_TISSUE_RESPONSE), "Connective tissue")).toEqual([]);
   });
 
   it("marks tiles whose top class is below 50% as uncertain", () => {
