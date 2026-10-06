@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Prediction } from "@/lib/mockPrediction";
-import { TISSUE_CLASSES } from "@/lib/tissue";
+import { comparableTypes, genesHigherIn, MIN_TILES, TISSUE_CLASSES } from "@/lib/tissue";
 
 const round = (value: number) => Number(value.toFixed(4));
 
@@ -10,7 +10,10 @@ const round = (value: number) => Number(value.toFixed(4));
  *  - "Expression by tissue type": each gene's mean raw predicted expression
  *    per tissue class (the Tissue tab's bottom card, for every gene);
  *  - "Tiles": one row per tile with its grid position, cluster, tissue class,
- *    confidence and all five class probabilities. */
+ *    confidence and all five class probabilities;
+ *  - "Genes higher by tissue type": the Tissue Analysis panel's lists for
+ *    every type with enough tiles (same rules: at least MIN_TILES tiles, and
+ *    a difference at least the tile-to-tile spread). */
 export function buildGeneExpressionWorkbook(pred: Prediction): XLSX.WorkBook {
   const workbook = XLSX.utils.book_new();
 
@@ -53,6 +56,24 @@ export function buildGeneExpressionWorkbook(pred: Prediction): XLSX.WorkBook {
     ...Object.fromEntries(TISSUE_CLASSES.map((cls) => [`P(${cls})`, s.tissue ? round(s.tissue.probs[cls]) : null])),
   }));
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(tiles), "Tiles");
+
+  const higher = comparableTypes(pred).flatMap((cls): Record<string, string | number | null>[] => {
+    const genes = genesHigherIn(pred, cls, 10);
+    if (!genes.length) return [{ "Tissue type": cls, Rank: null, Gene: "(none clearly higher)" }];
+    return genes.map((g, i) => ({
+      "Tissue type": cls,
+      Rank: i + 1,
+      Gene: g.gene,
+      "Mean in type": round(g.typeMean),
+      "Mean in other tiles": round(g.restMean),
+      Difference: round(g.diff),
+    }));
+  });
+  const higherSheet = higher.length
+    ? XLSX.utils.json_to_sheet(higher)
+    : XLSX.utils.aoa_to_sheet([[`No tissue type has at least ${MIN_TILES} tiles and ${MIN_TILES} other tiles to compare.`]]);
+  higherSheet["!cols"] = [{ wch: 18 }, { wch: 6 }, { wch: 20 }, { wch: 13 }, { wch: 19 }, { wch: 11 }];
+  XLSX.utils.book_append_sheet(workbook, higherSheet, "Genes higher by tissue type");
 
   return workbook;
 }
