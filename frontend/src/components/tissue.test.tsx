@@ -3,7 +3,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { toPrediction } from "@/lib/api";
 import { OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
 import SpatialPlot from "./SpatialPlot";
-import TissueInsights from "./TissueInsights";
+import TissueAnalysisPanel from "./TissueAnalysisPanel";
+import TissueComposition from "./TissueComposition";
 
 beforeAll(() => {
   // jsdom has no canvas or ResizeObserver; the viewer only needs them to
@@ -78,31 +79,31 @@ describe("predictions without tissue data, and the Genes view", () => {
   });
 });
 
-describe("TissueInsights", () => {
-  it("opens on expression by tissue type with a neutral tile count", () => {
-    render(<TissueInsights pred={toPrediction(TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />);
-    expect(screen.getByRole("tab", { name: "Expression by tissue type" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByText("4 tiles classified")).toBeTruthy();
-    expect(screen.queryByText(/Cancer-classified/)).toBeNull();
-    expect(screen.getByRole("heading", { level: 4, name: "ERBB2 mean by tissue type" })).toBeTruthy();
+describe("TissueAnalysisPanel", () => {
+  it("shows the selected gene's mean per tissue type", () => {
+    render(<TissueAnalysisPanel pred={toPrediction(TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />);
+    expect(screen.getByRole("heading", { level: 4, name: "ERBB2 by tissue type" })).toBeTruthy();
     const cancerRow = screen.getByTitle("Cancer: 3 tiles");
     expect(cancerRow.textContent).toContain("2.00");
     expect(cancerRow.textContent).toContain("n=3");
   });
 
-  it("lists genes highest in Cancer tiles and lets one be picked", () => {
+  it("lists genes higher in Cancer tiles and lets one be picked", () => {
     const onPickGene = vi.fn();
-    render(<TissueInsights pred={toPrediction(TISSUE_RESPONSE)} gene="CD74" onPickGene={onPickGene} />);
-    const row = screen.getByRole("button", { name: "ERBB2" }).closest(".insight-row")!;
+    render(<TissueAnalysisPanel pred={toPrediction(TISSUE_RESPONSE)} gene="CD74" onPickGene={onPickGene} />);
+    const row = screen.getByRole("button", { name: "ERBB2" }).closest(".ta-gene-row")!;
     expect(row.textContent).toContain("2.00 vs 1.50");
     expect(row.textContent).toContain("+0.50");
     fireEvent.click(screen.getByRole("button", { name: "ERBB2" }));
     expect(onPickGene).toHaveBeenCalledWith("ERBB2");
   });
+});
 
-  it("switches to composition: whole-section and per-cluster stacked bars", () => {
-    render(<TissueInsights pred={toPrediction(TISSUE_RESPONSE)} gene="ERBB2" onPickGene={() => {}} />);
-    fireEvent.click(screen.getByRole("tab", { name: "Composition" }));
+describe("TissueComposition", () => {
+  it("shows whole-section and per-cluster stacked bars with a neutral tile count", () => {
+    render(<TissueComposition pred={toPrediction(TISSUE_RESPONSE)} />);
+    expect(screen.getByText("4 tiles classified")).toBeTruthy();
+    expect(screen.queryByText(/Cancer-classified/)).toBeNull();
     const bars = screen.getAllByRole("img");
     expect(bars[0].getAttribute("aria-label")).toContain("Cancer 75.0%");
     expect(bars[0].getAttribute("aria-label")).toContain("Adipose tissue 25.0%");

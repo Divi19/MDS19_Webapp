@@ -14,7 +14,8 @@ import HistoryPanel from "./HistoryPanel";
 import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
-import TissueInsights from "./TissueInsights";
+import TissueAnalysisPanel from "./TissueAnalysisPanel";
+import TissueComposition from "./TissueComposition";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
 import { TUTORIAL_LOADING_STEP, TUTORIAL_STEPS } from "@/lib/tutorial";
@@ -920,11 +921,7 @@ export default function GeneXApp() {
               it — is exactly the same height on every tab. */}
           <div className="breakdown-slot">
           {view === "tissue" && ready && pred.tissue && (
-            <TissueInsights
-              pred={pred}
-              gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
-              onPickGene={setGene}
-            />
+            <TissueComposition pred={pred} />
           )}
           <div
             className={`card cluster-card${view === "tissue" && ready && pred.tissue ? " is-covered" : ""}`}
@@ -967,10 +964,20 @@ export default function GeneXApp() {
           </div>
         </div>
 
-        {/* Column 3 — cluster analysis */}
+        {/* Column 3 — tissue analysis on the Tissue tab, cluster analysis
+            everywhere else. Cluster Analysis stays mounted (just hidden) so
+            pathway results already fetched survive a visit to the Tissue tab. */}
+        {view === "tissue" && ready && pred.tissue && (
+          <TissueAnalysisPanel
+            pred={pred}
+            gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
+            onPickGene={setGene}
+          />
+        )}
         <ClusterAnalysisPanel
           pred={pred}
           ready={ready}
+          hidden={view === "tissue" && ready && !!pred.tissue}
           onGeneClick={(name, rect) =>
             setPopoverAnchor({ gene: name, x: rect.left, top: rect.top, bottom: rect.bottom })
           }

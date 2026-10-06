@@ -20,10 +20,13 @@ type PathwayState =
 export default function ClusterAnalysisPanel({
   pred,
   ready,
+  hidden = false,
   onGeneClick,
 }: {
   pred: Prediction;
   ready: boolean;
+  /** Hidden (not unmounted) while the Tissue tab shows its own panel. */
+  hidden?: boolean;
   onGeneClick: (gene: string, rect: DOMRect) => void;
 }) {
   const analysis = useMemo(() => (ready ? analyzeClusters(pred) : []), [pred, ready]);
@@ -55,7 +58,7 @@ export default function ClusterAnalysisPanel({
   }
 
   return (
-    <div className="col col-3" data-tour="cluster-analysis">
+    <div className="col col-3" data-tour="cluster-analysis" hidden={hidden}>
       <div className="cluster-analysis-header">
         <div className="cluster-analysis-title">Cluster Analysis</div>
         <div className="cluster-analysis-sub">
