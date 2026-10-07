@@ -23,3 +23,8 @@ gdown>=6.0.0        # 5.x caps download_folder at 50 files; this folder has 98
 # DAVID pathway enrichment (app/services/david_client.py) — DAVID-WS is a
 # SOAP/WSDL service, not REST+JSON.
 zeep>=4.2.0
+
+# Whole-slide image support (app/services/wsi.py) -- .svs/.ndpi/.mrxs etc.
+# ctypes wrapper around the native OpenSlide library; see backend/Dockerfile
+# for the apt packages this needs on the host.
+openslide-python>=1.3.0
