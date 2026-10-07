@@ -17,6 +17,21 @@ function fmtBytes(b: number) {
 
 const DASH = "—";
 
+// Whole-slide formats (OpenSlide, backend/app/services/wsi.py) get a much
+// higher size ceiling than plain jpeg/png/tiff uploads (500MB vs 50MB,
+// MAX_WSI_UPLOAD_BYTES in routes.py) — scanner output runs far larger than a
+// flat image. .zip is included here because .mrxs ships as an index file
+// plus a sibling data folder; a browser upload can only carry one file, so a
+// .mrxs slide has to be zipped together with its folder first.
+const WSI_EXTENSIONS = [".svs", ".ndpi", ".scn", ".vms", ".vmu", ".svslide", ".bif", ".zip"];
+const WSI_MAX_BYTES = 500 * 1024 * 1024;
+const STANDARD_MAX_BYTES = 50 * 1024 * 1024;
+
+function isWsiFile(f: File): boolean {
+  const name = f.name.toLowerCase();
+  return WSI_EXTENSIONS.some((ext) => name.endsWith(ext));
+}
+
 export default function UploadModal({
   open,
   onClose,
@@ -54,9 +69,11 @@ export default function UploadModal({
 
   function handleFile(f: File | undefined | null) {
     if (!f) return;
-    if (f.size > 50 * 1024 * 1024) {
+    const wsi = isWsiFile(f);
+    const maxBytes = wsi ? WSI_MAX_BYTES : STANDARD_MAX_BYTES;
+    if (f.size > maxBytes) {
       setFile(null);
-      setStatus({ text: "Too large (50 MB max)", color: "#c0392b" });
+      setStatus({ text: `Too large (${maxBytes / (1024 * 1024)} MB max)`, color: "#c0392b" });
       return;
     }
     setFile(f);
@@ -64,6 +81,14 @@ export default function UploadModal({
     setSizeLabel(fmtBytes(f.size));
     setStatus({ text: "Ready", color: "var(--accent)" });
     setDims(DASH);
+
+    // Whole-slide formats (.svs/.ndpi/...) can't be decoded by the browser's
+    // <img>/Image() — they're flattened server-side (wsi.py) during predict.
+    // Skip the preview/dims read entirely rather than show a broken image.
+    if (wsi) {
+      setUrl(null);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       const src = e.target?.result as string;
@@ -122,7 +147,7 @@ export default function UploadModal({
             <input
               ref={inputRef}
               type="file"
-              accept=".tif,.tiff,.png,.jpg,.jpeg"
+              accept=".tif,.tiff,.png,.jpg,.jpeg,.svs,.ndpi,.scn,.vms,.vmu,.svslide,.bif,.zip"
               onChange={(e) => handleFile(e.target.files?.[0])}
             />
             {url ? (
@@ -130,6 +155,17 @@ export default function UploadModal({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={url} alt="uploaded H&E section preview" />
                 <div className="dropzone-sub">{name} · click to choose a different image</div>
+              </div>
+            ) : file ? (
+              <div className="dropzone-preview">
+                <div className="dropzone-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <path d="M21 15l-5-5L5 21" />
+                  </svg>
+                </div>
+                <div className="dropzone-sub">{name} · whole-slide image · click to choose a different file</div>
               </div>
             ) : (
               <>
@@ -141,12 +177,15 @@ export default function UploadModal({
                   </svg>
                 </div>
                 <div className="dropzone-title">Drop a histology image here</div>
-                <div className="dropzone-sub">or click to browse · max 50 MB</div>
+                <div className="dropzone-sub">or click to browse · max 50 MB (whole-slide formats up to 500 MB)</div>
                 <div className="format-pills">
                   <span>.tif</span>
                   <span>.tiff</span>
                   <span>.png</span>
                   <span>.jpg</span>
+                  <span>.svs</span>
+                  <span>.ndpi</span>
+                  <span>.mrxs (.zip)</span>
                 </div>
               </>
             )}
