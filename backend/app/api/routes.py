@@ -1,4 +1,3 @@
-import base64
 import uuid
 from datetime import datetime, timezone
 
@@ -7,6 +6,7 @@ from fastapi.responses import Response
 
 from app.models.schemas import PredictionResponse, HealthResponse, PathwayRequest, PathwayResult
 from app.services.david_client import PathwayLookupError
+from app.services.gradcam import tile_json
 from app.services.wsi import is_wsi_filename, convert_wsi_to_image_bytes
 
 router = APIRouter()
@@ -17,20 +17,6 @@ ALLOWED_TYPES = {"image/jpeg", "image/png", "image/tiff"}
 
 
 async def _read_upload(file: UploadFile) -> bytes:
-    """
-    Shared by all three /predict* endpoints below. Returns plain image
-    bytes, ready for predictor.predict()/.explain()/.explain_batch()
-    exactly as before.
-
-    Whole-slide uploads (.svs/.ndpi/.../.mrxs-as-zip) are converted to PNG
-    bytes right here, at the edge -- predictor.py, and Modal's separately
-    deployed infer.py, never find out a WSI was involved.
-
-    Checked by filename extension, not file.content_type: browsers send
-    inconsistent, often generic content types (frequently
-    application/octet-stream) for these scanner formats, since they are
-    not a type a browser recognises natively the way it does jpeg/png/tiff.
-    """
     if is_wsi_filename(file.filename):
         data = await file.read()
         if len(data) > MAX_WSI_UPLOAD_BYTES:
@@ -68,7 +54,6 @@ async def health(request: Request):
 @router.post("/predict", response_model=PredictionResponse)
 async def predict(request: Request, file: UploadFile = File(...)):
     image_bytes = await _read_upload(file)
-
     predictor = request.app.state.predictor
     try:
         result = predictor.predict(image_bytes)
@@ -93,7 +78,6 @@ async def predict_gradcam(
     gene: str | None = Form(None),
 ):
     image_bytes = await _read_upload(file)
-
     predictor = request.app.state.predictor
     try:
         png_bytes = predictor.explain(image_bytes, spot_index, gene)
@@ -115,7 +99,6 @@ async def predict_gradcam_batch(
     gene: str | None = Form(None),
 ):
     image_bytes = await _read_upload(file)
-
     try:
         indices = [int(x) for x in spot_indices.split(",") if x.strip()]
     except ValueError:
@@ -133,12 +116,7 @@ async def predict_gradcam_batch(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Grad-CAM batch failed: {exc}")
 
-    return {
-        "tiles": [
-            {"spot_index": i, "png_base64": base64.b64encode(png).decode("ascii"), "peak": peak}
-            for i, (png, peak) in zip(indices, results)
-        ]
-    }
+    return {"tiles": [tile_json(i, t) for i, t in zip(indices, results)]}
 
 
 @router.post("/pathways", response_model=list[PathwayResult])
