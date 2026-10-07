@@ -74,6 +74,13 @@ export interface GradcamBatchTile {
   // already scaled to that one spot's own peak, so this is the only way
   // to tell a strong spot from a weak one across the whole slide.
   peak: number;
+  // Raw, pre-normalisation heat grid (row-major, heat_size = [h, w]) and the
+  // soft tissue fraction per cell. With these the panel draws every tile as
+  // ONE continuous map; an older backend omits them and the panel falls back
+  // to the per-tile PNG above.
+  heat?: number[];
+  mask?: number[];
+  heat_size?: [number, number];
 }
 
 /** Real per-tile Grad-CAM for several tiles in one forward/backward pass —

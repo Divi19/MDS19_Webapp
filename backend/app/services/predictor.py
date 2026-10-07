@@ -16,7 +16,7 @@ import torch
 from PIL import Image, ImageOps
 
 from app.services.mclstexp.model import mclSTExp_Attention, ProjectionHead
-from app.services.gradcam import GradCAM, ViTGradCAM, overlay_heatmap, encode_png, tissue_pixel_mask
+from app.services.gradcam import GradCAM, TileResult, ViTGradCAM, overlay_heatmap, encode_png, tile_result, tissue_pixel_mask
 from app.services.encoders import (
     build_encoder, H0MINI_COMBINED_DIM, H0MINI_CONTEXT_MULTIPLIER,
 )
@@ -61,7 +61,7 @@ class BasePredictor(ABC):
             f"{type(self).__name__} does not support Grad-CAM explanations")
 
     def explain_batch(self, image_bytes: bytes, spot_indices: list[int],
-                       gene: str | None = None) -> list[tuple[bytes, float]]:
+                       gene: str | None = None) -> list[TileResult]:
         """Batched form of explain() — see MclSTExpPredictor.explain_batch()."""
         raise NotImplementedError(
             f"{type(self).__name__} does not support batched Grad-CAM explanations")
@@ -707,7 +707,7 @@ class MclSTExpPredictor(BasePredictor):
             raise NotImplementedError(
                 f"Grad-CAM has no target layer for the {self.encoder_backend} encoder")
         if self.encoder_backend == "h0mini":
-            return self.explain_batch(image_bytes, [spot_index], gene)[0][0]
+            return self.explain_batch(image_bytes, [spot_index], gene)[0].png
 
         patches, kept = self._get_tiles(image_bytes)
 
@@ -757,7 +757,7 @@ class MclSTExpPredictor(BasePredictor):
         return encode_png(overlay)
 
     def explain_batch(self, image_bytes: bytes, spot_indices: list[int],
-                       gene: str | None = None) -> list[tuple[bytes, float]]:
+                       gene: str | None = None) -> list[TileResult]:
         """
         Grad-CAM overlays for several tissue patches in one forward/backward
         pass — the whole-slide mosaic needs this once per tissue tile, and
@@ -792,7 +792,9 @@ class MclSTExpPredictor(BasePredictor):
         to expose gene selection as a UI control) rather than rely on the
         fallback.
 
-        Returns a (png_bytes, raw_peak) pair per spot_index. Each overlay's
+        Returns a TileResult per spot_index (png, raw peak, and the raw heat
+        grid plus tissue mask so a client can stitch every tile into one
+        continuous map). Each overlay's
         own heatmap is independently normalised to its own peak (so it
         reads correctly on its own), which means colour intensity can't be
         compared spot-to-spot — raw_peak is the pre-normalisation strength,
@@ -852,15 +854,11 @@ class MclSTExpPredictor(BasePredictor):
 
         heatmaps, peaks = self._gradcam.generate_batch(image_batch, target_batch)  # (N, 7, 7), (N,)
 
-        out = []
-        for i, patch in enumerate(batch_patches):
-            mask = tissue_pixel_mask(patch)
-            overlay = overlay_heatmap(patch, heatmaps[i], tissue_mask=mask)
-            out.append((encode_png(overlay), float(peaks[i])))
-        return out
+        return [tile_result(patch, heatmaps[i], peaks[i])
+                for i, patch in enumerate(batch_patches)]
 
     def _explain_batch_h0mini(self, batch_patches, spot_indices, kept,
-                              gene: str | None) -> list[tuple[bytes, float]]:
+                              gene: str | None) -> list[TileResult]:
         """v7 path of explain_batch(): same targets, same overlay, but the
         embedding being explained is the dual-crop one (native ++ context)
         and the heatmap comes from ViTGradCAM."""
@@ -887,11 +885,8 @@ class MclSTExpPredictor(BasePredictor):
         heatmaps, peaks = self._gradcam.generate_batch(
             batch_patches, context_feats, target_batch.to(self.device))    # (N, 16, 16), (N,)
 
-        out = []
-        for i, patch in enumerate(batch_patches):
-            overlay = overlay_heatmap(patch, heatmaps[i], tissue_mask=tissue_pixel_mask(patch))
-            out.append((encode_png(overlay), float(peaks[i])))
-        return out
+        return [tile_result(patch, heatmaps[i], peaks[i])
+                for i, patch in enumerate(batch_patches)]
 
 def get_predictor(settings) -> BasePredictor:
     # Checked first: a Modal deploy needs no torch/H0-mini/reference-bank on

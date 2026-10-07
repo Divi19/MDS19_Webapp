@@ -27,7 +27,6 @@ batches (see _stage_for_gradcam) instead of being re-uploaded every call.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import logging
 import threading
@@ -40,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 # Only need BasePredictor's contract; importing the whole predictor module
 # would pull in torch/mclstexp for a class that uses neither.
+from app.services.gradcam import TileResult, tile_from_json
 from app.services.predictor import BasePredictor
 
 
@@ -243,7 +243,7 @@ class ModalPredictor(BasePredictor):
         return stage["url"]
 
     def explain_batch(self, image_bytes: bytes, spot_indices: list[int],
-                      gene: str | None = None) -> list[tuple[bytes, float]]:
+                      gene: str | None = None) -> list[TileResult]:
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
         if not self.gradcam_url:
@@ -273,10 +273,9 @@ class ModalPredictor(BasePredictor):
 
         by_index = {t["spot_index"]: t for t in tiles}
         try:
-            return [(base64.b64decode(by_index[i]["png_base64"]), float(by_index[i]["peak"]))
-                    for i in spot_indices]
+            return [tile_from_json(by_index[i]) for i in spot_indices]
         except KeyError as exc:
             raise RuntimeError(f"Modal Grad-CAM response missing spot {exc}") from exc
 
     def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
-        return self.explain_batch(image_bytes, [spot_index], gene)[0][0]
+        return self.explain_batch(image_bytes, [spot_index], gene)[0].png

@@ -7,11 +7,74 @@ embedding and the mean embedding of its retrieved nearest-neighbour spots,
 and overlays the resulting heatmap on the patch.
 """
 import io
+from dataclasses import dataclass
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image, ImageFilter
+
+
+@dataclass
+class TileResult:
+    """One tile's Grad-CAM output.
+
+    png/peak are the server-rendered overlay (normalised to the tile's own
+    peak) and that peak. heat/mask let a client draw all tiles as ONE
+    continuous map instead: heat is the raw, pre-normalisation CAM (h, w),
+    in the same units for every tile because the network and the target
+    embedding are shared; mask is the soft tissue fraction per heat cell.
+    Both are None when the producer cannot supply them (an older remote
+    service).
+    """
+    png: bytes
+    peak: float
+    heat: np.ndarray | None = None
+    mask: np.ndarray | None = None
+
+
+def pooled_mask(patch: Image.Image, shape: tuple[int, int]) -> np.ndarray:
+    """tissue_pixel_mask(patch) averaged down to the heatmap's own grid."""
+    m = torch.from_numpy(tissue_pixel_mask(patch))[None, None].float()
+    return F.adaptive_avg_pool2d(m, shape)[0, 0].numpy()
+
+
+def tile_result(patch: Image.Image, heat_norm: np.ndarray, peak: float) -> TileResult:
+    """Overlay PNG (as before) plus the raw heat and pooled tissue mask."""
+    mask_px = tissue_pixel_mask(patch)
+    overlay = overlay_heatmap(patch, heat_norm, tissue_mask=mask_px)
+    return TileResult(
+        png=encode_png(overlay), peak=float(peak),
+        heat=(heat_norm * float(peak)).astype(np.float32),
+        mask=pooled_mask(patch, heat_norm.shape).astype(np.float32))
+
+
+def tile_json(spot_index: int, t: TileResult) -> dict:
+    """Wire format shared by the Render route and the Modal endpoint. heat and
+    mask are flat row-major lists (rounded to keep the payload small) with
+    heat_size = [h, w]; they are omitted when the tile has none."""
+    import base64
+    out = {"spot_index": spot_index,
+           "png_base64": base64.b64encode(t.png).decode("ascii"),
+           "peak": t.peak}
+    if t.heat is not None and t.mask is not None:
+        out["heat_size"] = [int(t.heat.shape[0]), int(t.heat.shape[1])]
+        out["heat"] = [float(f"{v:.4g}") for v in t.heat.reshape(-1)]
+        out["mask"] = [round(float(v), 2) for v in t.mask.reshape(-1)]
+    return out
+
+
+def tile_from_json(d: dict) -> TileResult:
+    """Inverse of tile_json (used by ModalPredictor); tolerates a remote that
+    does not send heat/mask yet."""
+    import base64
+    heat = mask = None
+    if d.get("heat") and d.get("mask") and d.get("heat_size"):
+        shape = tuple(int(x) for x in d["heat_size"])
+        heat = np.asarray(d["heat"], dtype=np.float32).reshape(shape)
+        mask = np.asarray(d["mask"], dtype=np.float32).reshape(shape)
+    return TileResult(png=base64.b64decode(d["png_base64"]), peak=float(d["peak"]),
+                      heat=heat, mask=mask)
 
 
 class GradCAM:

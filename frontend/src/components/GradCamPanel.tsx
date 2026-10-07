@@ -31,6 +31,157 @@ const ZOOM_STEP = 1.4;
 const PEAK_PERCENTILE = 0.9;
 const MIN_OPACITY = 0.35;
 
+// Continuous-map rendering, used when the server sends each tile's raw heat
+// grid. All tiles' heat cells are placed into ONE slide-wide grid, coloured
+// against ONE shared scale (the SCALE_PERCENTILE-th percentile of the raw
+// heat of all loaded tissue cells, so a single outlier cannot wash out the
+// rest), and drawn as a single smoothly interpolated image. Colour therefore
+// flows across tile borders instead of stopping at them, and the same colour
+// means the same strength everywhere. OVERLAY_ALPHA matches the server's
+// overlay_heatmap().
+const SCALE_PERCENTILE = 0.98;
+const OVERLAY_ALPHA = 0.4;
+// The stitched grid is smoothed with a Gaussian of this width (in heat cells)
+// before colouring. v7's ViT gives one value per 14px patch, which on its own
+// reads as scattered dots; smoothing merges neighbouring cells into larger,
+// closer-together blobs, and the shared scale is then re-fitted to the
+// smoothed values so the strongest blobs still reach the top of the colour
+// range. Chosen by comparing widths on real v7 heat (1.5 to 2.5).
+const SMOOTH_SIGMA = 2;
+// Cells with almost no attention fade out instead of being tinted dark blue
+// (opacity ramps in between FADE_LO and FADE_HI of the shared scale). Tiles
+// along the tissue edge are only partly tissue, and the pink background inside
+// them has almost no attention; at constant opacity it showed as blue
+// stair-step squares along the edge. Only the weakest cells are affected.
+const FADE_LO = 0.03;
+const FADE_HI = 0.22;
+const JET_LUT: [number, number, number][] = Array.from({ length: 256 }, (_, i) => {
+  const x = i / 255;
+  const c = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
+  return [c(1.5 - Math.abs(4 * x - 3)), c(1.5 - Math.abs(4 * x - 2)), c(1.5 - Math.abs(4 * x - 1))];
+});
+
+interface TileHeat {
+  heat: Float32Array;
+  mask: Float32Array;
+  h: number;
+  w: number;
+}
+
+interface HeatGrid {
+  cv: HTMLCanvasElement;
+  cols: number;
+  rows: number;
+  tw: number;
+  th: number;
+  scale: number;
+}
+
+/** Separable Gaussian blur, edges replicated. */
+function smoothstep(lo: number, hi: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
+  return t * t * (3 - 2 * t);
+}
+
+function blurGauss(src: Float32Array, cols: number, rows: number, sigma: number): Float32Array {
+  const r = Math.ceil(3 * sigma);
+  const k = new Float32Array(2 * r + 1);
+  let sum = 0;
+  for (let i = -r; i <= r; i++) {
+    k[i + r] = Math.exp(-0.5 * (i / sigma) ** 2);
+    sum += k[i + r];
+  }
+  for (let i = 0; i < k.length; i++) k[i] /= sum;
+  const tmp = new Float32Array(src.length);
+  const out = new Float32Array(src.length);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let acc = 0;
+      for (let d = -r; d <= r; d++) acc += k[d + r] * src[y * cols + Math.min(cols - 1, Math.max(0, x + d))];
+      tmp[y * cols + x] = acc;
+    }
+  }
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let acc = 0;
+      for (let d = -r; d <= r; d++) acc += k[d + r] * tmp[Math.min(rows - 1, Math.max(0, y + d)) * cols + x];
+      out[y * cols + x] = acc;
+    }
+  }
+  return out;
+}
+
+/** Places every loaded tile's heat cells at its true grid position in one
+ * slide-wide grid, smooths it across tile borders, and colours it against one
+ * shared scale into an RGBA canvas (one pixel per heat cell). Cells outside
+ * tissue, or with almost no attention, stay transparent. Rebuilt after each batch, not on every draw. */
+function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | null {
+  let tw = 0;
+  let th = 0;
+  let maxGX = -1;
+  let maxGY = -1;
+  for (let i = 0; i < spots.length; i++) {
+    const t = tiles[i];
+    const s = spots[i];
+    if (!t || s.gridX == null || s.gridY == null) continue;
+    if (tw === 0) {
+      tw = t.w;
+      th = t.h;
+    }
+    if (t.w !== tw || t.h !== th) continue;
+    maxGX = Math.max(maxGX, s.gridX);
+    maxGY = Math.max(maxGY, s.gridY);
+  }
+  if (maxGX < 0) return null;
+
+  const cols = (maxGX + 1) * tw;
+  const rows = (maxGY + 1) * th;
+  const heatG = new Float32Array(cols * rows);
+  const maskG = new Float32Array(cols * rows);
+  for (let i = 0; i < spots.length; i++) {
+    const t = tiles[i];
+    const s = spots[i];
+    if (!t || s.gridX == null || s.gridY == null || t.w !== tw || t.h !== th) continue;
+    for (let cy = 0; cy < th; cy++) {
+      for (let cx = 0; cx < tw; cx++) {
+        const j = cy * tw + cx;
+        const p = (s.gridY * th + cy) * cols + s.gridX * tw + cx;
+        heatG[p] = t.heat[j] * t.mask[j];
+        maskG[p] = t.mask[j];
+      }
+    }
+  }
+  // Blur heat weighted by the tissue mask, then divide by the blurred mask, so
+  // values near the tissue edge are not pulled down by empty neighbours.
+  const num = blurGauss(heatG, cols, rows, SMOOTH_SIGMA);
+  const den = blurGauss(maskG, cols, rows, SMOOTH_SIGMA);
+  const heat = new Float32Array(heatG.length);
+  const inTissue: number[] = [];
+  for (let p = 0; p < heat.length; p++) {
+    heat[p] = den[p] > 1e-6 ? num[p] / den[p] : 0;
+    if (den[p] >= 0.5) inTissue.push(heat[p]);
+  }
+  const sorted = Float32Array.from(inTissue).sort();
+  const scale = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(SCALE_PERCENTILE * sorted.length))] : 0;
+
+  const cv = document.createElement("canvas");
+  cv.width = cols;
+  cv.height = rows;
+  const ctx = cv.getContext("2d");
+  if (!ctx) return null;
+  const img = ctx.createImageData(cols, rows);
+  for (let p = 0; p < heat.length; p++) {
+    const v = scale > 0 ? Math.min(1, Math.max(0, heat[p] / scale)) : 0;
+    const [r, g, b] = JET_LUT[Math.round(v * 255)];
+    img.data[4 * p] = r;
+    img.data[4 * p + 1] = g;
+    img.data[4 * p + 2] = b;
+    img.data[4 * p + 3] = Math.round(255 * OVERLAY_ALPHA * Math.min(1, den[p]) * smoothstep(FADE_LO, FADE_HI, v));
+  }
+  ctx.putImageData(img, 0, 0);
+  return { cv, cols, rows, tw, th, scale };
+}
+
 interface ImgGeom {
   sx: number;
   sy: number;
@@ -144,6 +295,10 @@ export default function GradCamPanel({
   // each spot's opacity by how strong it really is relative to the rest
   // of the slide, instead of every spot looking equally "hot".
   const peaksRef = useRef<number[]>([]);
+  // Continuous-map path: each spot's raw heat grid, and the stitched
+  // slide-wide grid built from them (see buildHeatGrid).
+  const heatRef = useRef<(TileHeat | null)[]>([]);
+  const gridRef = useRef<HeatGrid | null>(null);
   const viewRef = useRef<ViewState>({ scale: 1, panX: 0, panY: 0 });
   const dragRef = useRef<{ moved: boolean; lastX: number; lastY: number } | null>(null);
 
@@ -156,6 +311,9 @@ export default function GradCamPanel({
   const [error, setError] = useState("");
   const [selectedTile, setSelectedTile] = useState<number | null>(null);
   const [zoomed, setZoomed] = useState(false);
+  // > 0 once the continuous map is active; the value is the colour bar's
+  // top end, in raw heat units.
+  const [scaleShown, setScaleShown] = useState(0);
   const [dragging, setDragging] = useState(false);
 
   const total = pred.spots.length;
@@ -243,6 +401,19 @@ export default function GradCamPanel({
       ctx.drawImage(tileImg, r.x, r.y, r.w, r.h);
     }
     ctx.globalAlpha = 1;
+
+    // The stitched heat map: one image spanning every tile, interpolated
+    // smoothly, so there are no per-tile edges or per-tile brightness steps.
+    const grid = gridRef.current;
+    if (grid) {
+      const gx = ((0 - geom.sx) / geom.sw) * geom.w;
+      const gy = ((0 - geom.sy) / geom.sh) * geom.h;
+      const gw = (((grid.cols / grid.tw) * STRIDE) / geom.sw) * geom.w;
+      const gh = (((grid.rows / grid.th) * STRIDE) / geom.sh) * geom.h;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(grid.cv, gx, gy, gw, gh);
+    }
   }, [pred, width, height]);
 
   useEffect(() => {
@@ -263,8 +434,11 @@ export default function GradCamPanel({
     const controller = new AbortController();
     tileImgsRef.current = new Array(pred.spots.length).fill(null);
     peaksRef.current = new Array(pred.spots.length).fill(0);
+    heatRef.current = new Array(pred.spots.length).fill(null);
+    gridRef.current = null;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting to the loading state on every upload change, guarded by seq against stale runs
     setLoadedCount(0);
+    setScaleShown(0);
     setFailedCount(0);
     setError("");
     setSelectedTile(null);
@@ -304,9 +478,20 @@ export default function GradCamPanel({
           const tiles = await explainGradcamBatch(file, indices, targetGene, controller.signal);
           if (seq !== seqRef.current) return;
           for (const t of tiles) {
-            tileImgsRef.current[t.spot_index] = await loadTileImage(base64ToBlob(t.png_base64));
+            if (t.heat && t.mask && t.heat_size) {
+              heatRef.current[t.spot_index] = {
+                heat: Float32Array.from(t.heat),
+                mask: Float32Array.from(t.mask),
+                h: t.heat_size[0],
+                w: t.heat_size[1],
+              };
+            } else {
+              tileImgsRef.current[t.spot_index] = await loadTileImage(base64ToBlob(t.png_base64));
+            }
             peaksRef.current[t.spot_index] = t.peak;
           }
+          gridRef.current = buildHeatGrid(pred.spots, heatRef.current);
+          setScaleShown(gridRef.current?.scale ?? 0);
         } catch {
           if (controller.signal.aborted || seq !== seqRef.current) return;
           failed += indices.length;
@@ -381,7 +566,7 @@ export default function GradCamPanel({
       const h = height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72);
       const geom = computeGeom(img, width, h);
       for (let i = 0; i < pred.spots.length; i++) {
-        if (!tileImgsRef.current[i]) continue;
+        if (!tileImgsRef.current[i] && !heatRef.current[i]) continue;
         const s = pred.spots[i];
         if (s.gridX == null || s.gridY == null) continue;
         const r = tileRect(s, geom);
@@ -460,7 +645,8 @@ export default function GradCamPanel({
     if (selectedTile === null) return;
     const cv = detailCanvasRef.current;
     const img = tileImgsRef.current[selectedTile];
-    if (!cv || !img) return;
+    const th = heatRef.current[selectedTile];
+    if (!cv || (!img && !th)) return;
     const dpr = window.devicePixelRatio || 1;
     const size = 360;
     cv.width = size * dpr;
@@ -469,8 +655,24 @@ export default function GradCamPanel({
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(img, 0, 0, size, size);
-  }, [selectedTile]);
+    if (th) {
+      // Continuous-map path: the tile's own pixels from the slide, then its
+      // slice of the stitched map, so it matches the mosaic exactly.
+      const s = pred.spots[selectedTile];
+      const base = imgRef.current;
+      const grid = gridRef.current;
+      if (base && s.gridX != null && s.gridY != null) {
+        ctx.drawImage(base, s.gridX * STRIDE, s.gridY * STRIDE, PATCH, PATCH, 0, 0, size, size);
+        if (grid) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(grid.cv, s.gridX * grid.tw, s.gridY * grid.th, grid.tw, grid.th, 0, 0, size, size);
+        }
+      }
+      return;
+    }
+    if (img) ctx.drawImage(img, 0, 0, size, size);
+  }, [selectedTile, pred.spots]);
 
   const statusText = !ready
     ? ""
@@ -538,9 +740,19 @@ export default function GradCamPanel({
             <div className="vbar vbar-jet" />
           </div>
           <div className="vscale">
-            <span>low</span>
-            <span>Grad-CAM attention</span>
-            <span>high</span>
+            {scaleShown > 0 ? (
+              <>
+                <span>0</span>
+                <span>Grad-CAM attention, one scale for the whole slide</span>
+                <span>{scaleShown.toPrecision(2)}+</span>
+              </>
+            ) : (
+              <>
+                <span>low</span>
+                <span>Grad-CAM attention</span>
+                <span>high</span>
+              </>
+            )}
           </div>
         </>
       )}
