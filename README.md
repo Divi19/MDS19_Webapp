@@ -94,6 +94,8 @@ The tissue types are context for the predicted expression, not a diagnosis.
     per type, with a line showing where the middle half of that type's tiles
     fall. A difference smaller than the lines is within normal tile-to-tile
     variation. Types with fewer than 10 tiles are greyed out ("too few").
+    Hover a row to preview that type on the map; **click it to lock** it
+    (outlined, other rows fade; click again to unlock).
   - *Genes higher in [type]*: pick any type with at least 10 tiles (and at
     least 10 other tiles). Lists up to 10 genes, shown as plain means (type vs
     all other tiles), or says none are clearly higher. Click one to select
@@ -114,7 +116,10 @@ The tissue types are context for the predicted expression, not a diagnosis.
   **Composition tab:** the whole section ("Cancer 74% · Connective 23% · …")
   and each expression cluster, with its tissue name, tile count, a stacked
   bar and the counts written out ("107 Cancer · 1 Adipose"). Hover a cluster
-  to see just its tiles on the map.
+  to see just its tiles on the map; **click it to lock** that view (outlined
+  card, other cards fade; click again or leave the tab to unlock). Only one
+  lock at a time: locking a cluster releases a tissue-type lock and vice
+  versa.
 - **Bottom card:** *Tissue breakdown*: one tile per tissue type with its tile
   count and share, built like the Cluster breakdown tiles on the other tabs.
   Types with fewer than 10 tiles say "too few" (why the panel greys them
