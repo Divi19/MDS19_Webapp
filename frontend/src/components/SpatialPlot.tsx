@@ -121,6 +121,8 @@ export default function SpatialPlot({
   tissuePin = null,
   onTissuePin,
   tissueHover = null,
+  clusterPin = null,
+  onClusterPin,
 }: {
   pred: Prediction;
   ready: boolean;
@@ -137,6 +139,11 @@ export default function SpatialPlot({
   onTissuePin?: (cls: TissueClass | null) => void;
   /** Tissue view: a type hovered outside the map (Tissue Analysis rows). */
   tissueHover?: TissueClass | null;
+  /** Clusters view: the pinned cluster index (click a legend item or a
+   * breakdown tile to pin or unpin); everything else fades. Shared with
+   * the Cluster breakdown tiles in GeneXApp. */
+  clusterPin?: number | null;
+  onClusterPin?: (index: number | null) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -334,12 +341,16 @@ export default function SpatialPlot({
       ctx.beginPath();
       ctx.arc(px, py, r, 0, 6.2832);
       const col = genesView ? viridis(s.expr[gk] ?? 0) : CL[s.cluster];
+      // A pin (click) takes priority over a hover preview — clicking a
+      // legend item or breakdown tile locks the fade in place so it
+      // survives the mouse moving away, instead of only showing on hover.
+      const activeCluster = clusterPin ?? (highlight >= 0 ? highlight : null);
       ctx.fillStyle =
-        !genesView && highlight >= 0 && s.cluster !== highlight ? `${col}20` : col;
+        !genesView && activeCluster !== null && s.cluster !== activeCluster ? `${col}20` : col;
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueHover, tissuePin, pinRange, spotOpacity]);
+  }, [pred, ready, view, gene, highlight, clusterPin, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueHover, tissuePin, pinRange, spotOpacity]);
 
   useEffect(() => {
     draw();
@@ -418,9 +429,10 @@ export default function SpatialPlot({
           {CL.map((c, i) => (
             <div
               key={i}
-              className="legend-item"
+              className={`legend-item${clusterPin === i ? " pinned" : ""}`}
               onMouseEnter={() => setHighlight(i)}
               onMouseLeave={() => setHighlight(-1)}
+              onClick={() => onClusterPin?.(clusterPin === i ? null : i)}
             >
               <span className="legend-dot" style={{ background: c }} />
               <span>

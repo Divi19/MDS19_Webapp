@@ -189,6 +189,7 @@ canvas{display:block;width:100%;height:auto}
 .legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;flex-shrink:0}
 .legend-item{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;cursor:pointer;background:var(--surface)}
 .legend-item:hover{border-color:var(--accent)}
+.legend-item.pinned{border-color:var(--text);color:var(--text);font-weight:600;background:var(--surface2)}
 .legend-dot{width:9px;height:9px;border-radius:50%}
 .legend-count{color:var(--muted2)}
 .vbar{flex:1;min-width:120px;height:9px;border-radius:5px;background:linear-gradient(90deg,#440154,#3b528b,#21918c,#5ec962,#fde725)}
@@ -199,7 +200,10 @@ canvas{display:block;width:100%;height:auto}
 
 .cluster-card{flex-shrink:0}
 .cluster-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
-.cluster-tile{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 6px;text-align:center}
+.cluster-tile{display:block;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 6px;text-align:center}
+.cluster-tile.clickable{cursor:pointer}
+.cluster-tile.clickable:hover{border-color:var(--border2)}
+.cluster-tile.pinned{border-color:var(--text);background:var(--surface)}
 .cluster-tile .head{display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:4px}
 .cluster-tile .dot{width:8px;height:8px;border-radius:50%}
 .cluster-tile .name{font-family:var(--mono);font-size:9.5px;color:var(--muted)}

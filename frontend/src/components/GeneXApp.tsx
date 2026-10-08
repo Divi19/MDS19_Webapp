@@ -71,6 +71,10 @@ export default function GeneXApp() {
   // Tissue Analysis picker), and the type hovered in the analysis panel.
   const [tissuePin, setTissuePin] = useState<TissueClass | null>(null);
   const [tissueHover, setTissueHover] = useState<TissueClass | null>(null);
+  // Clusters view: the pinned cluster index (shared by the breakdown tiles
+  // and the map legend) — everything outside it fades, same pattern as
+  // tissuePin above.
+  const [clusterPin, setClusterPin] = useState<number | null>(null);
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
@@ -136,6 +140,7 @@ export default function GeneXApp() {
         if (!converted.tissue) setView((v) => (v === "tissue" ? "clusters" : v));
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setTissuePin(null);
+        setClusterPin(null);
         setGenePage(0);
         setGeneFilter("all");
         setStepIndex(PIPELINE_STEPS.length);
@@ -186,6 +191,7 @@ export default function GeneXApp() {
         if (!converted.tissue) setView((v) => (v === "tissue" ? "clusters" : v));
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setTissuePin(null);
+        setClusterPin(null);
         setGenePage(0);
         setGeneFilter("all");
         setView("clusters");
@@ -922,6 +928,8 @@ export default function GeneXApp() {
                 tissuePin={tissuePin}
                 onTissuePin={setTissuePin}
                 tissueHover={tissueHover}
+                clusterPin={clusterPin}
+                onClusterPin={setClusterPin}
               />
             )}
           </div>
@@ -944,7 +952,12 @@ export default function GeneXApp() {
             <div className="cluster-grid">
               {ready
                 ? CL.map((c, i) => (
-                    <div key={i} className="cluster-tile">
+                    <button
+                      key={i}
+                      type="button"
+                      className={`cluster-tile clickable${clusterPin === i ? " pinned" : ""}`}
+                      onClick={() => setClusterPin((prev) => (prev === i ? null : i))}
+                    >
                       <div className="head">
                         <span className="dot" style={{ background: c }} />
                         <span className="name">{i}</span>
@@ -955,7 +968,7 @@ export default function GeneXApp() {
                       <div className="pct">
                         {((pred.counts[i] / pred.total) * 100).toFixed(1)}%
                       </div>
-                    </div>
+                    </button>
                   ))
                 : CL.map((c, i) => (
                     <div key={i} className="cluster-tile">
