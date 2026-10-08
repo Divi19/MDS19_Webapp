@@ -191,7 +191,6 @@ canvas{display:block;width:100%;height:auto}
 .legend-item:hover{border-color:var(--accent)}
 .legend-item.pinned{border-color:var(--text);color:var(--text);font-weight:600;background:var(--surface2)}
 .legend-dot{width:9px;height:9px;border-radius:50%}
-.legend-count{color:var(--muted2)}
 .vbar{flex:1;min-width:120px;height:9px;border-radius:5px;background:linear-gradient(90deg,#440154,#3b528b,#21918c,#5ec962,#fde725)}
 /* jetRGB()'s exact stops (ExpressionHeatmap.tsx) — kept separate from .vbar
    so the Genes tab's viridis legend is unaffected. */

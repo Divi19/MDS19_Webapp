@@ -438,7 +438,6 @@ export default function SpatialPlot({
               <span>
                 {pred.clusters[i]?.name ?? `cluster ${i}`}
               </span>
-              <span className="legend-count">{pred.counts[i]}</span>
             </div>
           ))}
         </div>
