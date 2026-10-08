@@ -134,8 +134,9 @@ export default function TissueAnalysisPanel({
                 ))}
               </div>
               <p className="cluster-analysis-text">
-                Mean in {TISSUE_SHORT_NAMES[type!]} tiles vs all other tiles. Only genes whose difference is at least the
-                normal tile-to-tile variation are listed. Click a gene to select it.
+                Average in {TISSUE_SHORT_NAMES[type!]} tiles vs all other tiles. Only genes that stay clearly higher after
+                allowing for normal tile-to-tile variation and for each tile&apos;s overall level are listed. Click a gene to
+                select it.
               </p>
               {higher.length ? (
                 higher.map((row) => (
@@ -151,8 +152,7 @@ export default function TissueAnalysisPanel({
                 ))
               ) : (
                 <p className="insight-note">
-                  No genes clearly higher in {TISSUE_SHORT_NAMES[type!]}: no difference is larger than the normal
-                  tile-to-tile variation.
+                  No genes clearly higher in {TISSUE_SHORT_NAMES[type!]}.
                 </p>
               )}
             </>
