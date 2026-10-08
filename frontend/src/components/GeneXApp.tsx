@@ -3,13 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CL, NAMED_GENES, viridis, type Level, type Prediction } from "@/lib/mockPrediction";
 import { predict, toPrediction } from "@/lib/api";
-import { exportGeneExpressionExcel } from "@/lib/exportExcel";
+import { analyzeClusters } from "@/lib/clusterAnalysis";
 import { useAuth } from "@/lib/auth";
 import { downloadPredictionImage, getPredictionResponse, savePrediction } from "@/lib/history";
+import { fetchPathways, type PathwayState } from "@/lib/pathways";
+import { generateReportPdf, reportFileName } from "@/lib/pdfReport";
 import AuthModal from "./AuthModal";
 import ClusterAnalysisPanel from "./ClusterAnalysisPanel";
 import GenePopover, { type PopoverAnchor } from "./GenePopover";
-import GradCamPanel from "./GradCamPanel";
+import GradCamPanel, { type GradCamHandle, type GradCamStatus } from "./GradCamPanel";
 import HistoryPanel from "./HistoryPanel";
 import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
@@ -90,6 +92,18 @@ export default function GeneXApp() {
   // and the map legend) — everything outside it fades, same pattern as
   // tissuePin above.
   const [clusterPin, setClusterPin] = useState<number | null>(null);
+  // Keyed by cluster index. Lives here (not in ClusterAnalysisPanel) so the
+  // PDF report export can read already-fetched results instead of
+  // re-querying DAVID — see the pathways effect below.
+  const [pathways, setPathways] = useState<Record<number, PathwayState>>({});
+  const gradcamRef = useRef<GradCamHandle>(null);
+  const [gradcamStatus, setGradcamStatus] = useState<GradCamStatus>({
+    loading: false,
+    loadedCount: 0,
+    total: 0,
+    ready: false,
+  });
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [gene, setGene] = useState("ERBB2");
   const [modalOpen, setModalOpen] = useState(false);
   const [geneMenuOpen, setGeneMenuOpen] = useState(false);
@@ -114,6 +128,52 @@ export default function GeneXApp() {
   const [historyLoadState, setHistoryLoadState] = useState<"idle" | "loading" | "loaded" | "failed">("idle");
   const tutorialActiveRef = useRef(false);
   const tutorialViewTimer = useRef<number | undefined>(undefined);
+
+  const clusterAnalysis = useMemo(() => (ready ? analyzeClusters(pred) : []), [pred, ready]);
+
+  // Pathway lookups fire automatically as soon as a prediction's clusters
+  // are known — DAVID caps registered accounts at 200 lookups/day (~40 full
+  // runs at k=5), acceptable for a small team tool but worth revisiting if
+  // usage grows. Lives here (not ClusterAnalysisPanel) so the PDF export
+  // can read these same results instead of re-querying DAVID.
+  //
+  // Cluster index alone doesn't identify which prediction a lookup belongs
+  // to — "cluster 2" in one upload has nothing to do with "cluster 2" in
+  // the next — so every new `clusterAnalysis` (keyed off pred+ready)
+  // replaces the whole map rather than merging into it.
+  useEffect(() => {
+    if (!clusterAnalysis.length) {
+      queueMicrotask(() => setPathways({}));
+      return;
+    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setPathways(() => {
+        const next: Record<number, PathwayState> = {};
+        clusterAnalysis.forEach((a) => {
+          next[a.index] = a.markers.length ? { status: "loading" } : { status: "done", results: [] };
+        });
+        return next;
+      });
+      clusterAnalysis.forEach((a) => {
+        if (!a.markers.length) return;
+        fetchPathways(a.markers.map((m) => m.name))
+          .then((results) => {
+            if (cancelled) return;
+            setPathways((prev) => ({ ...prev, [a.index]: { status: "done", results } }));
+          })
+          .catch((e) => {
+            if (cancelled) return;
+            const message = e instanceof Error ? e.message : "Pathway lookup failed";
+            setPathways((prev) => ({ ...prev, [a.index]: { status: "error", message } }));
+          });
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [clusterAnalysis]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -228,6 +288,58 @@ export default function GeneXApp() {
     },
     [showToast],
   );
+
+  // The full PDF report embeds a Grad-CAM snapshot, so export is blocked
+  // until that panel has actually finished for this prediction — visiting
+  // the tab fires the computation (GeneXApp.gradcamMounted), and
+  // gradcamStatus.ready only flips true once it completes.
+  const exportPdfReport = useCallback(async () => {
+    if (!ready || !pred.topGenes.length) {
+      showToast("Run a section first");
+      return;
+    }
+    if (!gradcamMounted) {
+      showToast("Open the Grad-CAM tab first — the report needs it to finish before it can be generated");
+      return;
+    }
+    if (gradcamStatus.loading) {
+      const pct = gradcamStatus.total ? Math.round((gradcamStatus.loadedCount / gradcamStatus.total) * 100) : 0;
+      showToast(`Grad-CAM is still computing (${pct}%) — try again once it finishes`);
+      return;
+    }
+    if (!gradcamStatus.ready) {
+      showToast("Grad-CAM hasn't finished for this section yet — open the Grad-CAM tab and wait for it to complete");
+      return;
+    }
+    const snapshot = gradcamRef.current?.getSnapshot();
+    if (!snapshot) {
+      showToast("Could not capture the Grad-CAM map — try reopening the Grad-CAM tab");
+      return;
+    }
+    setExportingPdf(true);
+    try {
+      const blob = await generateReportPdf({
+        sampleName: uploaded?.name ?? uploaded?.file?.name ?? "section",
+        generatedAt: new Date(),
+        pred,
+        analysis: clusterAnalysis,
+        pathways,
+        gradcamImage: snapshot,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = reportFileName(uploaded?.name ?? uploaded?.file?.name ?? "section");
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("Report exported");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not generate the report";
+      showToast(message);
+    } finally {
+      setExportingPdf(false);
+    }
+  }, [ready, pred, gradcamMounted, gradcamStatus, uploaded, clusterAnalysis, pathways, showToast]);
 
   // Signed-in visitors are taken straight to History; everyone else must
   // sign in first, since History is a core part of the tutorial.
@@ -538,18 +650,8 @@ export default function GeneXApp() {
         </button>
         <div className="header-spacer" />
         <div className="header-actions" data-tour="header-actions">
-          <button
-            className="header-btn"
-            onClick={() => {
-              if (!ready || !pred.topGenes.length) {
-                showToast("Run a section first");
-                return;
-              }
-              exportGeneExpressionExcel(pred, uploaded?.file?.name);
-              showToast(`Exported ${pred.topGenes.length} genes to Excel`);
-            }}
-          >
-            Export
+          <button className="header-btn" onClick={exportPdfReport} disabled={exportingPdf}>
+            {exportingPdf ? "Generating…" : "Export PDF Report"}
           </button>
           {authEnabled && user ? (
             <>
@@ -953,12 +1055,14 @@ export default function GeneXApp() {
             </div>
             {gradcamMounted && (
               <GradCamPanel
+                ref={gradcamRef}
                 pred={pred}
                 ready={ready}
                 file={uploaded?.file ?? null}
                 fileStatus={originalImageStatus}
                 imageUrl={uploaded?.url}
                 hidden={view !== "gradcam"}
+                onStatusChange={setGradcamStatus}
               />
             )}
             {view !== "gradcam" && (
@@ -1059,6 +1163,7 @@ export default function GeneXApp() {
           pred={pred}
           ready={ready}
           hidden={view === "tissue" && ready && !!pred.tissue}
+          pathways={pathways}
           onGeneClick={(name, rect) =>
             setPopoverAnchor({ gene: name, x: rect.left, top: rect.top, bottom: rect.bottom })
           }
