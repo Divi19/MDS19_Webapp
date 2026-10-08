@@ -418,7 +418,6 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .insight-bar span{display:block;height:100%}
 .insight-val,.insight-n{font-family:var(--mono);font-size:10.5px;text-align:right;font-variant-numeric:tabular-nums}
 .insight-n{color:var(--muted2)}
-.insight-gene-btn{border:none;background:none;padding:0;font:inherit;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 /* Main view tabs stay on one line (a wrapped tab grows the header and shrinks the map). */
 .plot-header .seg-tabs{flex-shrink:0}
 .plot-header .seg-tabs button{white-space:nowrap;padding:6px 9px}
@@ -466,10 +465,7 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .ta-row.few .dot{opacity:.35}
 .ta-row.few .insight-name{color:var(--muted2)}
 .ta-row.few .insight-val{font-family:var(--sans);font-style:italic;color:var(--muted2)}
-.ta-gene-row{display:grid;grid-template-columns:1fr auto 48px;align-items:center;gap:8px;font-size:11px;min-height:18px;padding:0 4px;border-radius:4px}
-.ta-gene-row.on{background:var(--accent-soft)}
-.tissue-analysis .insight-val,.tissue-analysis .insight-n,.tissue-analysis .insight-diff{font-size:11px}
-.insight-diff{font-family:var(--mono);text-align:right;color:#D55E00;font-variant-numeric:tabular-nums}
+.tissue-analysis .insight-val,.tissue-analysis .insight-n{font-size:11px}
 .insight-note{font-size:11px;color:var(--muted2)}
 .ta-types{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0}
 .ta-types .legend-item.on{border-color:var(--text);color:var(--text);font-weight:600}
@@ -522,3 +518,18 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .ta-row.dimmed,.composition-row.dimmed{opacity:.45}
 .composition-row.pinned{border-color:var(--text);background:var(--surface);box-shadow:0 0 0 1px var(--text)}
 .ta-row:focus-visible,.composition-row:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* Tissue Analysis gene comparisons: same look as the Predicted Gene
+   Expression table (uppercase mono headers, divider, row lines). */
+.ta-table{display:flex;flex-direction:column;margin-top:2px}
+.ta-table-head,.ta-table-row{display:grid;grid-template-columns:minmax(0,1fr) 70px 78px 50px 64px;gap:8px;align-items:center}
+.ta-table-head{padding:0 4px 6px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted2);font-weight:500;border-bottom:1px solid var(--border)}
+.ta-table-head span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ta-table-head span:nth-child(n+2){text-align:right}
+.ta-table-row{width:100%;min-height:26px;padding:0 4px;border:none;border-bottom:1px solid var(--surface3);background:none;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.ta-table-row:last-child{border-bottom:none}
+.ta-table-row:hover{background:var(--accent-soft)}
+.ta-table-row.on{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.ta-table-row .gene-name{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ta-num{font-family:var(--mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
+.ta-num.ta-diff{font-weight:600}
+.ta-between .cluster-analysis-label{margin:2px 0 4px}

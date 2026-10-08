@@ -192,22 +192,19 @@ export default function TissueAnalysisPanel({
                     ))}
                   </div>
                   <p className="cluster-analysis-text">
-                    Average in {TISSUE_SHORT_NAMES[type!]} tiles vs all other tiles. Only genes that stay clearly higher after
-                    allowing for normal tile-to-tile variation and for each tile&apos;s overall level are listed. Click a gene to
-                    select it.
+                    Average score in {TISSUE_SHORT_NAMES[type!]} tiles and in all other tiles. Only genes that stay clearly
+                    higher after allowing for normal tile-to-tile variation and for each tile&apos;s overall level are listed.
+                    Click a row to select the gene.
                   </p>
                   {higher.length ? (
-                    higher.map((row) => (
-                      <div key={row.gene} className={`ta-gene-row${row.gene === gene ? " on" : ""}`}>
-                        <button type="button" className="insight-gene-btn" onClick={() => onPickGene(row.gene)}>
-                          {row.gene}
-                        </button>
-                        <span className="insight-val">
-                          {row.typeMean.toFixed(2)} vs {row.restMean.toFixed(2)}
-                        </span>
-                        <span className="insight-diff">+{row.diff.toFixed(2)}</span>
-                      </div>
-                    ))
+                    <GeneCompareTable
+                      genes={higher}
+                      aLabel={TISSUE_SHORT_NAMES[type!]}
+                      bLabel="Other tiles"
+                      color={TISSUE_COLORS[type!]}
+                      gene={gene}
+                      onPickGene={onPickGene}
+                    />
                   ) : (
                     <p className="insight-note">
                       No genes clearly higher in {TISSUE_SHORT_NAMES[type!]}.
@@ -239,7 +236,7 @@ export default function TissueAnalysisPanel({
                       <span className="dot" style={{ background: CL[g.cluster] }} />
                       {clusterName(g.cluster)}
                     </span>
-                    <span className="insight-n">n={g.count}</span>
+                    <span className="insight-n">{g.count} tiles</span>
                   </div>
                 ))}
                 {groups.length === 0 && (
@@ -255,18 +252,26 @@ export default function TissueAnalysisPanel({
                 )}
                 {between && (
                   <div className="ta-between">
-                    <GroupGenes
-                      title={`Higher in cluster ${groups[0].cluster} than cluster ${groups[1].cluster}`}
-                      genes={between.higherInA}
-                      gene={gene}
-                      onPickGene={onPickGene}
-                    />
-                    <GroupGenes
-                      title={`Higher in cluster ${groups[1].cluster} than cluster ${groups[0].cluster}`}
-                      genes={between.higherInB}
-                      gene={gene}
-                      onPickGene={onPickGene}
-                    />
+                    {[
+                      { a: groups[0].cluster, b: groups[1].cluster, genes: between.higherInA },
+                      { a: groups[1].cluster, b: groups[0].cluster, genes: between.higherInB },
+                    ].map(({ a, b, genes }) => (
+                      <div key={a}>
+                        <div className="cluster-analysis-label">Higher in cluster {a}</div>
+                        {genes.length ? (
+                          <GeneCompareTable
+                            genes={genes}
+                            aLabel={`Cluster ${a}`}
+                            bLabel={`Cluster ${b}`}
+                            color={CL[a]}
+                            gene={gene}
+                            onPickGene={onPickGene}
+                          />
+                        ) : (
+                          <p className="insight-note">No genes clearly higher in cluster {a}.</p>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </section>
@@ -278,36 +283,63 @@ export default function TissueAnalysisPanel({
   );
 }
 
-/** One side of a two-group comparison: "gene  a vs b  +diff" rows. */
-function GroupGenes({
-  title,
+/**
+ * A two-group gene comparison as a table, styled like the Predicted Gene
+ * Expression table: GENE | <group a> | <group b> | DIFF. | bar. The columns
+ * name the groups, so "1.79 vs 0.22" needs no explaining. The bar shows each
+ * gene's difference relative to the largest in the table, in the group's
+ * colour. Click a row to select the gene.
+ */
+function GeneCompareTable({
   genes,
+  aLabel,
+  bLabel,
+  color,
   gene,
   onPickGene,
 }: {
-  title: string;
   genes: HigherGene[];
+  aLabel: string;
+  bLabel: string;
+  color: string;
   gene: string;
   onPickGene: (gene: string) => void;
 }) {
+  const maxDiff = Math.max(...genes.map((g) => g.diff));
   return (
-    <div>
-      <div className="cluster-analysis-label">{title}</div>
-      {genes.length ? (
-        genes.map((row) => (
-          <div key={row.gene} className={`ta-gene-row${row.gene === gene ? " on" : ""}`}>
-            <button type="button" className="insight-gene-btn" onClick={() => onPickGene(row.gene)}>
-              {row.gene}
-            </button>
-            <span className="insight-val">
-              {row.typeMean.toFixed(2)} vs {row.restMean.toFixed(2)}
-            </span>
-            <span className="insight-diff">+{row.diff.toFixed(2)}</span>
-          </div>
-        ))
-      ) : (
-        <p className="insight-note">No genes clearly higher.</p>
-      )}
+    <div className="ta-table" role="table" aria-label={`Genes higher in ${aLabel} than ${bLabel}`}>
+      <div className="ta-table-head" role="row">
+        <span role="columnheader">Gene</span>
+        <span role="columnheader" title={`Average score in ${aLabel} tiles`}>
+          {aLabel}
+        </span>
+        <span role="columnheader" title={`Average score in ${bLabel.toLowerCase()} tiles`}>
+          {bLabel}
+        </span>
+        <span role="columnheader" title={`${aLabel} minus ${bLabel.toLowerCase()}`}>
+          Diff.
+        </span>
+        <span aria-hidden />
+      </div>
+      {genes.map((row) => (
+        <button
+          key={row.gene}
+          type="button"
+          role="row"
+          aria-label={row.gene}
+          className={`ta-table-row${row.gene === gene ? " on" : ""}`}
+          title={`${row.gene}: ${row.typeMean.toFixed(2)} in ${aLabel} vs ${row.restMean.toFixed(2)} in ${bLabel.toLowerCase()} (+${row.diff.toFixed(2)}). Click to select.`}
+          onClick={() => onPickGene(row.gene)}
+        >
+          <span className="gene-name">{row.gene}</span>
+          <span className="ta-num">{row.typeMean.toFixed(2)}</span>
+          <span className="ta-num">{row.restMean.toFixed(2)}</span>
+          <span className="ta-num ta-diff">+{row.diff.toFixed(2)}</span>
+          <span className="bar-track">
+            <span className="bar-fill" style={{ width: `${(row.diff / maxDiff) * 100}%`, background: color }} />
+          </span>
+        </button>
+      ))}
     </div>
   );
 }

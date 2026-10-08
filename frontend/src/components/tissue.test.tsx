@@ -136,10 +136,19 @@ describe("TissueAnalysisPanel", () => {
     const onPickGene = vi.fn();
     render(<TissueAnalysisPanel pred={toPrediction(LARGE_TISSUE_RESPONSE)} gene="CD74" onPickGene={onPickGene} />);
     expect(screen.getByRole("heading", { level: 4, name: "Genes higher in Cancer" })).toBeTruthy();
-    const row = screen.getByRole("button", { name: "ERBB2" }).closest(".ta-gene-row")!;
-    expect(row.textContent).toContain("2.10 vs");
-    expect(screen.queryByRole("button", { name: "CD74" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "ERBB2" }));
+    // A table: headers name the groups, so no "a vs b" text is needed.
+    const table = screen.getByRole("table", { name: "Genes higher in Cancer than Other tiles" });
+    expect([...table.querySelectorAll('[role="columnheader"]')].map((h) => h.textContent)).toEqual([
+      "Gene",
+      "Cancer",
+      "Other tiles",
+      "Diff.",
+    ]);
+    const cells = [...screen.getByRole("row", { name: "ERBB2" }).querySelectorAll("span")].map((c) => c.textContent);
+    expect(cells[0]).toBe("ERBB2");
+    expect(cells[1]).toBe("2.10");
+    expect(screen.queryByRole("row", { name: "CD74" })).toBeNull();
+    fireEvent.click(screen.getByRole("row", { name: "ERBB2" }));
     expect(onPickGene).toHaveBeenCalledWith("ERBB2");
   });
 
@@ -234,7 +243,7 @@ describe("TissueAnalysisPanel — expression groups within a type", () => {
     );
     expect(screen.getByRole("heading", { level: 4, name: "Expression groups within Cancer" })).toBeTruthy();
     const row = screen.getByTitle("10 Cancer tiles in cluster 0 · Cancer (100%)");
-    expect(row.textContent).toContain("n=10");
+    expect(row.textContent).toContain("10 tiles");
     expect(screen.getByTitle("10 Cancer tiles in cluster 1 · Cancer + Connective")).toBeTruthy();
     fireEvent.mouseEnter(row);
     expect(onHoverGroup).toHaveBeenLastCalledWith({ cls: "Cancer", cluster: 0 });
@@ -245,13 +254,11 @@ describe("TissueAnalysisPanel — expression groups within a type", () => {
   it("lists the genes that differ between the two largest groups", () => {
     const onPickGene = vi.fn();
     render(<TissueAnalysisPanel pred={clusteredLargePrediction()} gene="ERBB2" onPickGene={onPickGene} />);
-    expect(screen.getByText("Higher in cluster 0 than cluster 1").parentElement!.textContent).toContain(
-      "No genes clearly higher.",
-    );
-    const side = screen.getByText("Higher in cluster 1 than cluster 0").parentElement!;
-    expect(side.textContent).toContain("LTF");
-    expect(side.textContent).toContain("+1.00");
-    fireEvent.click(within(side as HTMLElement).getByRole("button", { name: "LTF" }));
+    expect(screen.getByText("No genes clearly higher in cluster 0.")).toBeTruthy();
+    const table = screen.getByRole("table", { name: "Genes higher in Cluster 1 than Cluster 0" });
+    expect(table.textContent).toContain("LTF");
+    expect(table.textContent).toContain("+1.00");
+    fireEvent.click(within(table).getByRole("row", { name: "LTF" }));
     expect(onPickGene).toHaveBeenCalledWith("LTF");
   });
 
@@ -261,6 +268,7 @@ describe("TissueAnalysisPanel — expression groups within a type", () => {
     render(<TissueAnalysisPanel pred={single} gene="ERBB2" onPickGene={() => {}} />);
     expect(screen.getByText(/Only one cluster has 10 or more Cancer tiles/)).toBeTruthy();
     expect(screen.queryByText(/^Higher in cluster/)).toBeNull();
+    expect(screen.queryByRole("table", { name: /Cluster/ })).toBeNull();
   });
 });
 
