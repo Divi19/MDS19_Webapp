@@ -137,7 +137,7 @@ export default function ClusterAnalysisPanel({
                     <span
                       className="info-icon"
                       tabIndex={0}
-                      data-tooltip="Biological pathways this cluster's genes are significantly linked to, from DAVID's KEGG enrichment analysis. No pathways shown just means none reached significance — not that the genes have no known function."
+                      data-tooltip="Biological pathways this cluster's genes are significantly linked to, from DAVID's KEGG enrichment analysis. No pathways shown just means none reached significance. It does not mean the genes have no known function."
                     >
                       i
                     </span>
