@@ -33,7 +33,16 @@ export default function ClusterAnalysisPanel({
   return (
     <div className="col col-3" data-tour="cluster-analysis" hidden={hidden}>
       <div className="cluster-analysis-header">
-        <div className="cluster-analysis-title">Cluster Analysis</div>
+        <div className="cluster-analysis-title">
+          Cluster Analysis
+          <span
+            className="info-icon tooltip-below"
+            tabIndex={0}
+            data-tooltip="Groups tissue spots by how similar their predicted gene expression is, using k-means clustering. Spots with similar expression patterns land in the same cluster, so each cluster represents a distinct region of the tissue with its own gene activity profile."
+          >
+            i
+          </span>
+        </div>
         <div className="cluster-analysis-sub">
           {ready
             ? `k=${analysis.length} · top differential genes per cluster`
