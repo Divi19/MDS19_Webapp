@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CL, NAMED_GENES, viridis, type Level, type Prediction } from "@/lib/mockPrediction";
 import { predict, toPrediction } from "@/lib/api";
 import { analyzeClusters } from "@/lib/clusterAnalysis";
-import { exportGeneExpressionExcel } from "@/lib/exportExcel";
 import { useAuth } from "@/lib/auth";
 import { downloadPredictionImage, getPredictionResponse, savePrediction } from "@/lib/history";
 import { fetchPathways, type PathwayState } from "@/lib/pathways";
@@ -618,19 +617,6 @@ export default function GeneXApp() {
         </button>
         <div className="header-spacer" />
         <div className="header-actions" data-tour="header-actions">
-          <button
-            className="header-btn"
-            onClick={() => {
-              if (!ready || !pred.topGenes.length) {
-                showToast("Run a section first");
-                return;
-              }
-              exportGeneExpressionExcel(pred, uploaded?.file?.name);
-              showToast(`Exported ${pred.topGenes.length} genes to Excel`);
-            }}
-          >
-            Export
-          </button>
           <button className="header-btn" onClick={exportPdfReport} disabled={exportingPdf}>
             {exportingPdf ? "Generating…" : "Export PDF Report"}
           </button>
