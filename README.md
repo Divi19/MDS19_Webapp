@@ -177,6 +177,22 @@ The tissue types are context for the predicted expression, not a diagnosis.
   - Backend: `cd backend && pip install -r requirements-dev.txt && python -m pytest -q`
   - Frontend: `cd frontend && npm test`
 
+## Tile positions (tile_px / stride_px)
+
+Each spot's `x`/`y` in the predict response are **tile grid indices**, not
+pixels. Tile (x, y) covers `[x*stride_px, x*stride_px + tile_px)` in the
+original image, so the frontend needs both numbers to draw spots and Grad-CAM
+tiles in the right place:
+
+- Local `MclSTExpPredictor`: `tile_px = 224`, `stride_px = 224` (no gaps).
+- v7 Modal model: `tile_px = 224`, `stride_px = 290` (200 µm at ~0.69 µm/px).
+
+The predict response carries `tile_px` and `stride_px` (nullable), and the
+frontend reads them via `frontend/src/lib/tiling.ts`. When they are absent it
+uses `TILING_BY_MODEL_VERSION` there, then 224/224. History saves them, which
+needs `supabase/migrations/0005_prediction_tiling.sql`; without it, runs still
+save and reopen with the fallback.
+
 ## Current state
 The API returns **dummy predictions**. The real model is not yet wired in.
 Set `USE_DUMMY_PREDICTOR=false` once `MclSTExpPredictor` is implemented
