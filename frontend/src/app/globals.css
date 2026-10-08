@@ -533,3 +533,6 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .ta-num{font-family:var(--mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
 .ta-num.ta-diff{font-weight:600}
 .ta-between .cluster-analysis-label{margin:2px 0 4px}
+/* Tissue Analysis boxes: white instead of the tan card colour, with a faint
+   shadow so they still stand apart from the white column behind them. */
+.tissue-analysis .cluster-analysis-box{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.04)}
