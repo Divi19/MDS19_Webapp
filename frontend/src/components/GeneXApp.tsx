@@ -1096,7 +1096,7 @@ function GeneTissueNote({
   if (!home) {
     return (
       <span className={`${className} none`} title={`${gene}: not clearly higher in any one tissue type`}>
-        no clear tissue
+        no clear type
       </span>
     );
   }
@@ -1107,7 +1107,7 @@ function GeneTissueNote({
       title={`${gene}: ${home.typeMean.toFixed(2)} on average in ${name} tiles vs ${home.restMean.toFixed(2)} in all other tiles. ${value.toFixed(2)} is its average over all tiles.`}
     >
       <span className="dot" style={{ background: TISSUE_COLORS[name] }} />
-      higher in {TISSUE_SHORT_NAMES[name]}
+      ↑ {TISSUE_SHORT_NAMES[name]}
     </span>
   );
 }

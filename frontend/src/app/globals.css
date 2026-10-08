@@ -444,7 +444,7 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .tissue-composition .card-title{margin-bottom:6px}
 .tissue-composition .card-title .meta{font-family:var(--sans);font-size:11px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .composition{display:flex;flex-direction:column;gap:2px}
-.composition-row{display:grid;grid-template-columns:96px 1fr;align-items:center;gap:8px;height:12px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.composition-row{display:grid;grid-template-columns:112px 1fr;align-items:center;gap:8px;height:12px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
 .composition-row.overall{color:var(--text);font-weight:600}
 .composition-label{display:inline-flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .tissue-stack{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--surface3)}
