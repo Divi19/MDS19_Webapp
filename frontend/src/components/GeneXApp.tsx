@@ -637,6 +637,13 @@ export default function GeneXApp() {
           <div className="card gene-card" data-tour="gene-list">
             <div className="card-title">
               Predicted Gene Expression
+              <span
+                className="info-icon tooltip-below tooltip-end"
+                tabIndex={0}
+                data-tooltip="These numbers are predictions, not direct measurements. The model estimates how active each gene is at every spot from the tissue image. Use them to compare which genes and spots are higher or lower, not as exact lab values."
+              >
+                i
+              </span>
             </div>
             {ready && (
               <div className="seg gene-view-seg">
