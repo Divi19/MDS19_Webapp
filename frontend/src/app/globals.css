@@ -514,3 +514,11 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .ta-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .ta-header .seg{flex-shrink:0}
 .ta-header .seg button{padding:4px 10px;font-size:11.5px}
+/* Click-to-lock rows (gene by tissue type) and cluster cards (Composition):
+   the locked one is outlined, the rest fade. */
+.ta-row.clickable,.composition-row.clickable{cursor:pointer}
+.ta-row.clickable:hover{background:var(--surface3)}
+.ta-row.pinned{background:var(--surface);box-shadow:inset 0 0 0 1px var(--text)}
+.ta-row.dimmed,.composition-row.dimmed{opacity:.45}
+.composition-row.pinned{border-color:var(--text);background:var(--surface);box-shadow:0 0 0 1px var(--text)}
+.ta-row:focus-visible,.composition-row:focus-visible{outline:2px solid var(--accent);outline-offset:1px}

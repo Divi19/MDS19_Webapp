@@ -40,6 +40,8 @@ export default function TissueAnalysisPanel({
   onHoverType,
   onHoverGroup,
   onHoverCluster,
+  pinnedCluster = null,
+  onPinCluster,
 }: {
   pred: Prediction;
   gene: string;
@@ -49,6 +51,9 @@ export default function TissueAnalysisPanel({
   onHoverType?: (cls: TissueClass | null) => void;
   onHoverGroup?: (group: TissueGroup | null) => void;
   onHoverCluster?: (cluster: number | null) => void;
+  /** Composition tab: the cluster locked on the map (click a cluster card). */
+  pinnedCluster?: number | null;
+  onPinCluster?: (cluster: number | null) => void;
 }) {
   const [tab, setTab] = useState<"expression" | "composition">("expression");
   const byClass = useMemo(() => geneByTissue(pred, gene), [pred, gene]);
@@ -92,6 +97,9 @@ export default function TissueAnalysisPanel({
                 onHoverType?.(null);
                 onHoverGroup?.(null);
                 onHoverCluster?.(null);
+                // A cluster lock is only shown (and undone) on the Composition
+                // tab, so leaving the tab releases it.
+                if (t !== "composition") onPinCluster?.(null);
                 setTab(t);
               }}
             >
@@ -102,7 +110,12 @@ export default function TissueAnalysisPanel({
       </div>
       <div className="cluster-analysis-list" role="tabpanel">
         {tab === "composition" ? (
-          <TissueComposition pred={pred} onHoverCluster={onHoverCluster} />
+          <TissueComposition
+            pred={pred}
+            onHoverCluster={onHoverCluster}
+            pinnedCluster={pinnedCluster}
+            onPinCluster={onPinCluster}
+          />
         ) : (
           <>
             <section className="cluster-analysis-box" aria-labelledby="ta-gene">
@@ -112,14 +125,26 @@ export default function TissueAnalysisPanel({
               <p className="cluster-analysis-text">
                 Bar: mean predicted expression per tile. Line: where the middle half of that type&apos;s tiles fall. A
                 difference smaller than the lines is within normal tile-to-tile variation. Types with fewer than{" "}
-                {MIN_TILES} tiles are greyed out.
+                {MIN_TILES} tiles are greyed out. Click a type to lock it on the map.
               </p>
               {byClass.map(({ cls, count, mean, q1, q3, enough }) => (
                 <div
                   key={cls}
-                  className={`ta-row${enough ? "" : " few"}${pinned === cls ? " pinned" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={pinned === cls}
+                  className={`ta-row clickable${enough ? "" : " few"}${pinned === cls ? " pinned" : ""}${
+                    pinned && pinned !== cls ? " dimmed" : ""
+                  }`}
                   onMouseEnter={() => onHoverType?.(cls)}
                   onMouseLeave={() => onHoverType?.(null)}
+                  onClick={() => onPin?.(pinned === cls ? null : cls)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onPin?.(pinned === cls ? null : cls);
+                    }
+                  }}
                   title={
                     enough
                       ? `${cls}: ${count} tiles · mean ${mean!.toFixed(2)} · middle half ${q1!.toFixed(2)}–${q3!.toFixed(2)}`

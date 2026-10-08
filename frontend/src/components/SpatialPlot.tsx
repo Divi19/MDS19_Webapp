@@ -125,6 +125,7 @@ export default function SpatialPlot({
   onClusterPin,
   tissueGroupHover = null,
   tissueClusterHover = null,
+  tissueClusterPin = null,
 }: {
   pred: Prediction;
   ready: boolean;
@@ -152,6 +153,8 @@ export default function SpatialPlot({
   /** Tissue view: an expression cluster hovered in Tissue Analysis'
    * Composition tab; only its tiles stay in focus. */
   tissueClusterHover?: number | null;
+  /** Tissue view: a cluster locked from the Composition tab (hover wins). */
+  tissueClusterPin?: number | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -247,12 +250,12 @@ export default function SpatialPlot({
     const tissueFocus = (s: Spot) =>
       tissueGroupHover
         ? s.tissue?.cls === tissueGroupHover.cls && s.cluster === tissueGroupHover.cluster
-        : tissueClusterHover != null
-          ? s.cluster === tissueClusterHover
+        : (tissueClusterHover ?? tissueClusterPin) != null
+          ? s.cluster === (tissueClusterHover ?? tissueClusterPin)
           : focusType == null || s.tissue?.cls === focusType;
     // Gene-within-type colouring while a type is pinned and nothing is being
     // previewed by hover.
-    const geneInPin = pinRange && pinRange.count && !(tissueHighlight ?? tissueHover ?? tissueGroupHover ?? tissueClusterHover) ? pinRange : null;
+    const geneInPin = pinRange && pinRange.count && !(tissueHighlight ?? tissueHover ?? tissueGroupHover ?? tissueClusterHover ?? tissueClusterPin) ? pinRange : null;
     const drawTissue = (px: number, py: number, r: number, s: Spot) => {
       if (geneInPin && s.tissue?.cls === tissuePin) {
         const span = geneInPin.max - geneInPin.min;
@@ -372,7 +375,7 @@ export default function SpatialPlot({
       ctx.fill();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, clusterPin, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueHover, tissueGroupHover, tissueClusterHover, tissuePin, pinRange, spotOpacity]);
+  }, [pred, ready, view, gene, highlight, clusterPin, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueHover, tissueGroupHover, tissueClusterHover, tissueClusterPin, tissuePin, pinRange, spotOpacity]);
 
   useEffect(() => {
     draw();

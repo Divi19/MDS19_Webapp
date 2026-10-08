@@ -303,3 +303,53 @@ describe("TissueAnalysisPanel tabs", () => {
     expect(screen.getByText("All tiles")).toBeTruthy();
   });
 });
+
+describe("click to lock", () => {
+  it("locks a tissue type from the gene-by-type rows and fades the others", () => {
+    const onPin = vi.fn();
+    const pred = toPrediction(LARGE_TISSUE_RESPONSE);
+    const { rerender } = render(<TissueAnalysisPanel pred={pred} gene="ERBB2" onPickGene={() => {}} onPin={onPin} />);
+    fireEvent.click(screen.getByTitle(/^Connective tissue: 12 tiles/));
+    expect(onPin).toHaveBeenLastCalledWith("Connective tissue");
+
+    rerender(<TissueAnalysisPanel pred={pred} gene="ERBB2" onPickGene={() => {}} pinned="Connective tissue" onPin={onPin} />);
+    const locked = screen.getByTitle(/^Connective tissue: 12 tiles/);
+    expect(locked.className).toContain("pinned");
+    expect(locked.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTitle(/^Cancer: 20 tiles/).className).toContain("dimmed");
+    fireEvent.click(locked);
+    expect(onPin).toHaveBeenLastCalledWith(null);
+  });
+
+  it("locks a cluster from the Composition cards and fades the others", () => {
+    const onPinCluster = vi.fn();
+    const pred = clusteredLargePrediction();
+    const { rerender } = render(<TissueComposition pred={pred} onPinCluster={onPinCluster} />);
+    const card = () => screen.getByText("10 Cancer · 8 Connective").closest("section")!;
+    fireEvent.click(card());
+    expect(onPinCluster).toHaveBeenLastCalledWith(1);
+
+    rerender(<TissueComposition pred={pred} pinnedCluster={1} onPinCluster={onPinCluster} />);
+    expect(card().className).toContain("pinned");
+    expect(screen.getByText("10 Cancer").closest("section")!.className).toContain("dimmed");
+    fireEvent.click(card());
+    expect(onPinCluster).toHaveBeenLastCalledWith(null);
+  });
+
+  it("releases a cluster lock when leaving the Composition tab", () => {
+    const onPinCluster = vi.fn();
+    render(
+      <TissueAnalysisPanel
+        pred={clusteredLargePrediction()}
+        gene="ERBB2"
+        onPickGene={() => {}}
+        pinnedCluster={1}
+        onPinCluster={onPinCluster}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Composition" }));
+    expect(onPinCluster).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", { name: "Expression" }));
+    expect(onPinCluster).toHaveBeenLastCalledWith(null);
+  });
+});

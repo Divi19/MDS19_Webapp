@@ -75,6 +75,17 @@ export default function GeneXApp() {
   const [tissueHover, setTissueHover] = useState<TissueClass | null>(null);
   const [tissueGroupHover, setTissueGroupHover] = useState<TissueGroup | null>(null);
   const [tissueClusterHover, setTissueClusterHover] = useState<number | null>(null);
+  // Tissue tab: a cluster locked from the Composition tab. Only one lock at a
+  // time: locking a cluster releases a tissue-type pin and vice versa.
+  const [tissueClusterPin, setTissueClusterPin] = useState<number | null>(null);
+  const pinTissueType = useCallback((cls: TissueClass | null) => {
+    setTissuePin(cls);
+    if (cls) setTissueClusterPin(null);
+  }, []);
+  const pinTissueCluster = useCallback((cluster: number | null) => {
+    setTissueClusterPin(cluster);
+    if (cluster != null) setTissuePin(null);
+  }, []);
   // Clusters view: the pinned cluster index (shared by the breakdown tiles
   // and the map legend) — everything outside it fades, same pattern as
   // tissuePin above.
@@ -149,6 +160,7 @@ export default function GeneXApp() {
         if (!converted.tissue) setView((v) => (v === "tissue" ? "clusters" : v));
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setTissuePin(null);
+        setTissueClusterPin(null);
         setClusterPin(null);
         setGenePage(0);
         setGeneFilter("all");
@@ -200,6 +212,7 @@ export default function GeneXApp() {
         if (!converted.tissue) setView((v) => (v === "tissue" ? "clusters" : v));
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setTissuePin(null);
+        setTissueClusterPin(null);
         setClusterPin(null);
         setGenePage(0);
         setGeneFilter("all");
@@ -957,10 +970,11 @@ export default function GeneXApp() {
                 imageUrl={uploaded?.url}
                 showImage={showImage}
                 tissuePin={tissuePin}
-                onTissuePin={setTissuePin}
+                onTissuePin={pinTissueType}
                 tissueHover={tissueHover}
                 tissueGroupHover={tissueGroupHover}
                 tissueClusterHover={tissueClusterHover}
+                tissueClusterPin={tissueClusterPin}
                 clusterPin={clusterPin}
                 onClusterPin={setClusterPin}
               />
@@ -972,7 +986,7 @@ export default function GeneXApp() {
               it — is exactly the same height on every tab. */}
           <div className="breakdown-slot">
           {view === "tissue" && ready && pred.tissue && (
-            <TissueBreakdown pred={pred} pinned={tissuePin} onPin={setTissuePin} />
+            <TissueBreakdown pred={pred} pinned={tissuePin} onPin={pinTissueType} />
           )}
           <div
             className={`card cluster-card${view === "tissue" && ready && pred.tissue ? " is-covered" : ""}`}
@@ -1033,10 +1047,12 @@ export default function GeneXApp() {
             gene={pred.geneMeta[gene] ? gene : (pred.genes[0] ?? "")}
             onPickGene={setGene}
             pinned={tissuePin}
-            onPin={setTissuePin}
+            onPin={pinTissueType}
             onHoverType={setTissueHover}
             onHoverGroup={setTissueGroupHover}
             onHoverCluster={setTissueClusterHover}
+            pinnedCluster={tissueClusterPin}
+            onPinCluster={pinTissueCluster}
           />
         )}
         <ClusterAnalysisPanel
