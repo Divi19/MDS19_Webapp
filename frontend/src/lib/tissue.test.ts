@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { toPrediction } from "@/lib/api";
+import type { Prediction } from "@/lib/mockPrediction";
 import {
-  clusterTissueTable, comparableTypes, geneByTissue, genesHigherIn,
+  clusterTissueLabels, clusterTissueTable, comparableTypes, geneByTissue, geneHomeTissue, genesBetweenClusters,
+  genesHigherIn, typeClusterGroups,
   isUncertain, predictionTissueFromApi, spotTissueFromApi, TISSUE_CLASSES,
 } from "@/lib/tissue";
 import { LARGE_TISSUE_RESPONSE, OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
@@ -99,5 +101,66 @@ describe("tissue statistics", () => {
     expect(table).toHaveLength(pred.counts.length);
     expect(table.reduce((sum, row) => sum + row[0], 0)).toBe(3);
     expect(table.flat().reduce((a, b) => a + b, 0)).toBe(4);
+  });
+});
+
+/** LARGE_TISSUE_RESPONSE with fixed clusters instead of k-means:
+ *  - cluster 0: Cancer tiles 0-9;
+ *  - cluster 1: Cancer tiles 10-19 + Connective tiles 20-27;
+ *  - cluster 2: Connective tiles 28-31 + the 3 Adipose tiles (too few to name);
+ *  - clusters 3 and 4: empty.
+ * The cluster-1 Cancer tiles get LTF raised by 1, so the two Cancer groups
+ * differ in exactly one gene. */
+function clustered(): Prediction {
+  const pred = toPrediction(LARGE_TISSUE_RESPONSE);
+  const spots = pred.spots.map((s, i) => {
+    const cluster = i < 10 ? 0 : i < 28 ? 1 : 2;
+    const raw = { ...s.raw! };
+    if (cluster === 1 && s.tissue?.cls === "Cancer") raw.LTF += 1;
+    return { ...s, cluster, raw };
+  });
+  const counts = [0, 1, 2, 3, 4].map((c) => spots.filter((s) => s.cluster === c).length);
+  return { ...pred, spots, counts };
+}
+
+describe("linking tissue types with clusters and genes", () => {
+  it("names each cluster by its tissue makeup", () => {
+    expect(clusterTissueLabels(clustered())).toEqual([
+      { full: "Cancer (100%)", short: "Cancer" },
+      { full: "Cancer + Connective", short: "Mixed" },
+      // Adipose has only 3 tiles on the slide, so it cannot name a cluster.
+      { full: "Connective (57%)", short: "Connective" },
+      null,
+      null,
+    ]);
+  });
+
+  it("gives no cluster names without tissue data", () => {
+    expect(clusterTissueLabels(toPrediction(OLD_RESPONSE)).every((l) => l === null)).toBe(true);
+  });
+
+  it("finds the tissue type each gene is clearly highest in", () => {
+    const home = geneHomeTissue(toPrediction(LARGE_TISSUE_RESPONSE));
+    expect(home.get("ERBB2")).toMatchObject({ cls: "Cancer" });
+    expect(home.get("ERBB2")!.typeMean).toBeCloseTo(2.1);
+    // CD74 is flat and LTF only differs by less than its spread.
+    expect(home.has("CD74")).toBe(false);
+    expect(home.has("LTF")).toBe(false);
+  });
+
+  it("lists the clusters a tissue type falls into, with at least 10 tiles each", () => {
+    expect(typeClusterGroups(clustered(), "Cancer")).toEqual([
+      { cluster: 0, count: 10 },
+      { cluster: 1, count: 10 },
+    ]);
+    // Connective: 8 tiles in cluster 1 and 4 in cluster 2, both under 10.
+    expect(typeClusterGroups(clustered(), "Connective tissue")).toEqual([]);
+  });
+
+  it("finds genes that differ between two clusters within one tissue type", () => {
+    const { higherInA, higherInB } = genesBetweenClusters(clustered(), "Cancer", 0, 1);
+    expect(higherInA).toEqual([]);
+    expect(higherInB.map((g) => g.gene)).toEqual(["LTF"]);
+    expect(higherInB[0].diff).toBeCloseTo(1);
   });
 });
