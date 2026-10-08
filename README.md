@@ -87,7 +87,9 @@ The tissue types are context for the predicted expression, not a diagnosis.
 - **Opacity slider** (and *Show image*) keeps the H&E readable.
 - **Right column (Tissue tab only):** *Tissue Analysis* replaces Cluster
   Analysis, which comes back on every other tab with any pathway results
-  kept.
+  kept. It has two tabs, **Expression** (default) and **Composition**.
+
+  **Expression tab:**
   - *[gene] by tissue type*: the selected gene's mean predicted expression
     per type, with a line showing where the middle half of that type's tiles
     fall. A difference smaller than the lines is within normal tile-to-tile
@@ -108,15 +110,23 @@ The tissue types are context for the predicted expression, not a diagnosis.
     to see just its tiles on the map. With two or more groups, it lists the
     genes higher in each of the two largest (same rule). Example: tumour tiles
     split into two clusters, one higher in immune genes (PTPRC, CD3D).
-- **Bottom card:** *Tissue composition*: stacked bars of tissue types for the
-  whole section and for each expression cluster.
+
+  **Composition tab:** the whole section ("Cancer 74% · Connective 23% · …")
+  and each expression cluster, with its tissue name, tile count, a stacked
+  bar and the counts written out ("107 Cancer · 1 Adipose"). Hover a cluster
+  to see just its tiles on the map.
+- **Bottom card:** *Tissue breakdown*: one tile per tissue type with its tile
+  count and share, built like the Cluster breakdown tiles on the other tabs.
+  Types with fewer than 10 tiles say "too few" (why the panel greys them
+  out). Click a tile to pin that type, shared with the legend and the
+  *Genes higher in* picker.
 - **Linked into the rest of the app** (only when the prediction has tissue
   types):
   - **Cluster names:** each cluster is named by its tiles' tissue types:
     "Cancer (95%)" when one type has 60%+ of its tiles, "Cancer + Connective"
     when two types each have 20%+, otherwise the plain "cluster N". Shown in
-    Cluster Analysis, the breakdown tiles, the composition bars, the map
-    tooltip and the Clusters legend ("0 · Cancer"; the legend falls back to
+    Cluster Analysis, the Cluster breakdown tiles, the Composition tab, the
+    map tooltip and the Clusters legend ("0 · Cancer"; the legend falls back to
     "cluster 0" if the named pills would need more rows).
   - **Gene list:** under each gene, the tissue type it is clearly highest in
     ("↑ Cancer", same rule as *Genes higher in*) or "no clear type". Hover
