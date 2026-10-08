@@ -499,3 +499,8 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .gene-row-tissue .dot,.gene-tile-tissue .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .gene-row-tissue.none,.gene-tile-tissue.none{color:var(--muted2)}
 .gene-tile-tissue{flex-shrink:0}
+/* Tissue Analysis: expression groups within a tissue type. */
+.ta-group-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;min-height:20px;padding:0 4px;margin:0 -4px;border-radius:4px;cursor:default}
+.ta-group-row:hover{background:var(--surface3)}
+.ta-group-row .insight-name{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ta-between{display:flex;flex-direction:column;gap:8px;margin-top:4px}

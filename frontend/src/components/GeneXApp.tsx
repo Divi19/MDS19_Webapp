@@ -14,7 +14,7 @@ import HistoryPanel from "./HistoryPanel";
 import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
-import TissueAnalysisPanel from "./TissueAnalysisPanel";
+import TissueAnalysisPanel, { type TissueGroup } from "./TissueAnalysisPanel";
 import TissueComposition from "./TissueComposition";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
@@ -73,6 +73,7 @@ export default function GeneXApp() {
   // Tissue Analysis picker), and the type hovered in the analysis panel.
   const [tissuePin, setTissuePin] = useState<TissueClass | null>(null);
   const [tissueHover, setTissueHover] = useState<TissueClass | null>(null);
+  const [tissueGroupHover, setTissueGroupHover] = useState<TissueGroup | null>(null);
   // Clusters view: the pinned cluster index (shared by the breakdown tiles
   // and the map legend) — everything outside it fades, same pattern as
   // tissuePin above.
@@ -112,6 +113,10 @@ export default function GeneXApp() {
     (v: View) => {
       if (!ready) return;
       setView(v);
+      // Hover highlights from the Tissue Analysis panel never get their
+      // mouse-leave once the panel unmounts, so clear them on every switch.
+      setTissueHover(null);
+      setTissueGroupHover(null);
       if (v === "gradcam") setGradcamMounted(true);
     },
     [ready],
@@ -952,6 +957,7 @@ export default function GeneXApp() {
                 tissuePin={tissuePin}
                 onTissuePin={setTissuePin}
                 tissueHover={tissueHover}
+                tissueGroupHover={tissueGroupHover}
                 clusterPin={clusterPin}
                 onClusterPin={setClusterPin}
               />
@@ -1026,6 +1032,7 @@ export default function GeneXApp() {
             pinned={tissuePin}
             onPin={setTissuePin}
             onHoverType={setTissueHover}
+            onHoverGroup={setTissueGroupHover}
           />
         )}
         <ClusterAnalysisPanel

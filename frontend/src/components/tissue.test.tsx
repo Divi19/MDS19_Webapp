@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { toPrediction } from "@/lib/api";
 import { clusteredLargePrediction, LARGE_TISSUE_RESPONSE, OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
@@ -216,5 +216,43 @@ describe("cluster tissue names", () => {
     expect(items.slice(0, 3)).toEqual(["0 · Cancer", "1 · Mixed", "2 · Connective"]);
     expect(items[3]).toBe("cluster 3");
     expect(container.querySelector(".legend .legend-item")!.getAttribute("title")).toBe("cluster 0 · Cancer (100%)");
+  });
+});
+
+describe("TissueAnalysisPanel — expression groups within a type", () => {
+  it("lists the clusters a type falls into and highlights a group on hover", () => {
+    const onHoverGroup = vi.fn();
+    render(
+      <TissueAnalysisPanel pred={clusteredLargePrediction()} gene="ERBB2" onPickGene={() => {}} onHoverGroup={onHoverGroup} />,
+    );
+    expect(screen.getByRole("heading", { level: 4, name: "Expression groups within Cancer" })).toBeTruthy();
+    const row = screen.getByTitle("10 Cancer tiles in cluster 0 · Cancer (100%)");
+    expect(row.textContent).toContain("n=10");
+    expect(screen.getByTitle("10 Cancer tiles in cluster 1 · Cancer + Connective")).toBeTruthy();
+    fireEvent.mouseEnter(row);
+    expect(onHoverGroup).toHaveBeenLastCalledWith({ cls: "Cancer", cluster: 0 });
+    fireEvent.mouseLeave(row);
+    expect(onHoverGroup).toHaveBeenLastCalledWith(null);
+  });
+
+  it("lists the genes that differ between the two largest groups", () => {
+    const onPickGene = vi.fn();
+    render(<TissueAnalysisPanel pred={clusteredLargePrediction()} gene="ERBB2" onPickGene={onPickGene} />);
+    expect(screen.getByText("Higher in cluster 0 than cluster 1").parentElement!.textContent).toContain(
+      "No genes clearly higher.",
+    );
+    const side = screen.getByText("Higher in cluster 1 than cluster 0").parentElement!;
+    expect(side.textContent).toContain("LTF");
+    expect(side.textContent).toContain("+1.00");
+    fireEvent.click(within(side as HTMLElement).getByRole("button", { name: "LTF" }));
+    expect(onPickGene).toHaveBeenCalledWith("LTF");
+  });
+
+  it("says so when only one cluster holds 10+ tiles of the type", () => {
+    const pred = clusteredLargePrediction();
+    const single = { ...pred, spots: pred.spots.map((s) => (s.tissue?.cls === "Cancer" ? { ...s, cluster: 0 } : s)) };
+    render(<TissueAnalysisPanel pred={single} gene="ERBB2" onPickGene={() => {}} />);
+    expect(screen.getByText(/Only one cluster has 10 or more Cancer tiles/)).toBeTruthy();
+    expect(screen.queryByText(/^Higher in cluster/)).toBeNull();
   });
 });
