@@ -11,6 +11,15 @@ export interface PathwayResult {
   genes: string[];
 }
 
+/** Per-cluster pathway lookup state, keyed by cluster index. Lives in
+ * GeneXApp (lifted from ClusterAnalysisPanel) so the PDF export can read
+ * already-fetched results instead of re-querying DAVID. */
+export type PathwayState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "done"; results: PathwayResult[] };
+
 /** Pathway enrichment (DAVID, KEGG_PATHWAY by default) for a small gene
  * list — a cluster's marker genes, or a single gene. Throws with a message
  * safe to show directly (the backend's own error text), including the

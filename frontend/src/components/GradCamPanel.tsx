@@ -1,8 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { explainGradcamBatch } from "@/lib/api";
 import type { Prediction, Spot } from "@/lib/mockPrediction";
+
+export interface GradCamStatus {
+  loading: boolean;
+  loadedCount: number;
+  total: number;
+  /** True once loadedCount > 0 and nothing is in flight — a snapshot is
+   * available via the ref at this point. */
+  ready: boolean;
+}
+
+export interface GradCamHandle {
+  /** A PNG data URL of the current mosaic canvas exactly as rendered, or
+   * null if nothing has loaded yet. Used by the PDF report export — it
+   * reuses whatever the panel already computed rather than recomputing
+   * Grad-CAM itself. */
+  getSnapshot: () => string | null;
+}
 
 // Fixed by the model's training config (see predictor.py) — mirrors the same
 // constants SpatialPlot.tsx uses to place a spot at its true pixel position.
@@ -262,14 +279,7 @@ function loadTileImage(blob: Blob): Promise<HTMLImageElement> {
   });
 }
 
-export default function GradCamPanel({
-  pred,
-  ready,
-  file,
-  fileStatus = "idle",
-  imageUrl,
-  hidden,
-}: {
+const GradCamPanel = forwardRef<GradCamHandle, {
   pred: Prediction;
   ready: boolean;
   file: File | null;
@@ -282,7 +292,13 @@ export default function GradCamPanel({
   // keeps running and already-loaded tiles stay in memory while another
   // tab is showing, instead of losing all progress on every tab switch.
   hidden?: boolean;
-}) {
+  /** Reported on every loading-state change, so GeneXApp can gate the PDF
+   * report export on Grad-CAM actually being ready for this prediction. */
+  onStatusChange?: (status: GradCamStatus) => void;
+}>(function GradCamPanel(
+  { pred, ready, file, fileStatus = "idle", imageUrl, hidden, onStatusChange },
+  ref,
+) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detailCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -301,6 +317,17 @@ export default function GradCamPanel({
   const gridRef = useRef<HeatGrid | null>(null);
   const viewRef = useRef<ViewState>({ scale: 1, panX: 0, panY: 0 });
   const dragRef = useRef<{ moved: boolean; lastX: number; lastY: number } | null>(null);
+  // Always the latest onStatusChange, read (not depended on) from inside
+  // the loading effect below — avoids re-running that effect every time
+  // the parent passes a new inline callback.
+  const onStatusChangeRef = useRef(onStatusChange);
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+  });
+
+  useImperativeHandle(ref, () => ({
+    getSnapshot: () => canvasRef.current?.toDataURL("image/png") ?? null,
+  }), []);
 
   const [width, setWidth] = useState(520);
   const [height, setHeight] = useState(0);
@@ -432,11 +459,14 @@ export default function GradCamPanel({
   useEffect(() => {
     const seq = ++seqRef.current;
     const controller = new AbortController();
-    tileImgsRef.current = new Array(pred.spots.length).fill(null);
-    peaksRef.current = new Array(pred.spots.length).fill(0);
-    heatRef.current = new Array(pred.spots.length).fill(null);
+    const total = pred.spots.length;
+    const report = (loadingNow: boolean, loaded: number) =>
+      onStatusChangeRef.current?.({ loading: loadingNow, loadedCount: loaded, total, ready: !loadingNow && loaded > 0 });
+
+    tileImgsRef.current = new Array(total).fill(null);
+    peaksRef.current = new Array(total).fill(0);
+    heatRef.current = new Array(total).fill(null);
     gridRef.current = null;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting to the loading state on every upload change, guarded by seq against stale runs
     setLoadedCount(0);
     setScaleShown(0);
     setFailedCount(0);
@@ -445,8 +475,9 @@ export default function GradCamPanel({
     viewRef.current = { scale: 1, panX: 0, panY: 0 };
     setZoomed(false);
     draw();
+    report(false, 0);
 
-    if (!ready || !pred.spots.length) return;
+    if (!ready || !total) return;
     if (!file) {
       setError(
         fileStatus === "loading"
@@ -466,12 +497,13 @@ export default function GradCamPanel({
     const targetGene = pred.topGenes[0]?.name;
 
     setLoading(true);
+    report(true, 0);
     (async () => {
       let failed = 0;
-      for (let start = 0; start < pred.spots.length; start += REQUEST_BATCH_SIZE) {
+      for (let start = 0; start < total; start += REQUEST_BATCH_SIZE) {
         if (seq !== seqRef.current) return;
         const indices = Array.from(
-          { length: Math.min(REQUEST_BATCH_SIZE, pred.spots.length - start) },
+          { length: Math.min(REQUEST_BATCH_SIZE, total - start) },
           (_, k) => start + k,
         );
         try {
@@ -498,10 +530,15 @@ export default function GradCamPanel({
           setFailedCount(failed);
         }
         if (seq !== seqRef.current) return;
-        setLoadedCount(Math.min(start + REQUEST_BATCH_SIZE, pred.spots.length));
+        const loadedSoFar = Math.min(start + REQUEST_BATCH_SIZE, total);
+        setLoadedCount(loadedSoFar);
         draw();
+        report(true, loadedSoFar);
       }
-      if (seq === seqRef.current) setLoading(false);
+      if (seq === seqRef.current) {
+        setLoading(false);
+        report(false, total);
+      }
     })();
 
     return () => {
@@ -790,4 +827,6 @@ export default function GradCamPanel({
       )}
     </div>
   );
-}
+});
+
+export default GradCamPanel;
