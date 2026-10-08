@@ -93,12 +93,34 @@ The tissue types are context for the predicted expression, not a diagnosis.
     fall. A difference smaller than the lines is within normal tile-to-tile
     variation. Types with fewer than 10 tiles are greyed out ("too few").
   - *Genes higher in [type]*: pick any type with at least 10 tiles (and at
-    least 10 other tiles). Lists up to 10 genes whose mean is higher than in
-    all other tiles by at least the typical tile-to-tile spread (pooled
-    standard deviation), or says none are clearly higher. Click one to select
-    it.
+    least 10 other tiles). Lists up to 10 genes, shown as plain means (type vs
+    all other tiles), or says none are clearly higher. Click one to select
+    it. A gene qualifies on two checks:
+    - **relative:** after subtracting each tile's overall level (its mean
+      over all genes), it is still higher by at least the typical tile-to-tile
+      spread (pooled standard deviation). Dense tumour tiles get higher
+      predictions for almost every gene; without this, nearly the whole panel
+      would read "higher in Cancer";
+    - **plain:** the means shown differ by at least half their own spread,
+      so the numbers on screen agree.
+  - *Expression groups within [type]*: the expression clusters that the
+    picked type's tiles fall into (clusters with 10+ of them). Hover a group
+    to see just its tiles on the map. With two or more groups, it lists the
+    genes higher in each of the two largest (same rule). Example: tumour tiles
+    split into two clusters, one higher in immune genes (PTPRC, CD3D).
 - **Bottom card:** *Tissue composition*: stacked bars of tissue types for the
   whole section and for each expression cluster.
+- **Linked into the rest of the app** (only when the prediction has tissue
+  types):
+  - **Cluster names:** each cluster is named by its tiles' tissue types:
+    "Cancer (95%)" when one type has 60%+ of its tiles, "Cancer + Connective"
+    when two types each have 20%+, otherwise the plain "cluster N". Shown in
+    Cluster Analysis, the breakdown tiles, the composition bars, the map
+    tooltip and the Clusters legend ("0 · Cancer"; the legend falls back to
+    "cluster 0" if the named pills would need more rows).
+  - **Gene list:** under each gene, the tissue type it is clearly highest in
+    ("↑ Cancer", same rule as *Genes higher in*) or "no clear type". Hover
+    for the numbers, including how they relate to the whole-slide value.
 - **Export:** the Excel workbook adds an *Expression by tissue type* sheet
   (every gene's mean per class, plus tile counts) and a *Tiles* sheet (grid
   position, cluster, tissue type, confidence and the five class
