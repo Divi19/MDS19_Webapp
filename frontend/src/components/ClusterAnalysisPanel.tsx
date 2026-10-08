@@ -132,7 +132,16 @@ export default function ClusterAnalysisPanel({
                   <div className="cluster-analysis-label">Analysis</div>
                   <div className="cluster-analysis-text">{a.summary}</div>
 
-                  <div className="cluster-analysis-label">Pathways</div>
+                  <div className="cluster-analysis-label cluster-analysis-label-row">
+                    Pathways
+                    <span
+                      className="info-icon"
+                      tabIndex={0}
+                      data-tooltip="Biological pathways this cluster's genes are significantly linked to, from DAVID's KEGG enrichment analysis. No pathways shown just means none reached significance — not that the genes have no known function."
+                    >
+                      i
+                    </span>
+                  </div>
                   {(pathwayState.status === "idle" || pathwayState.status === "loading") && (
                     <div className="cluster-analysis-text">looking up…</div>
                   )}

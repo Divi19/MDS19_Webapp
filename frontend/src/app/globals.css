@@ -229,6 +229,15 @@ button.legend-item{font:inherit;font-family:var(--mono);font-size:11px}
 .cluster-analysis-head .name{font-size:12.5px;font-weight:600}
 .cluster-analysis-head .count{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--muted)}
 .cluster-analysis-label{font-family:var(--mono);font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted2);margin-top:2px}
+.cluster-analysis-label-row{display:flex;align-items:center;gap:5px}
+
+/* Small "i" info icon with a custom tooltip — NOT the native title attribute,
+   which this project already found unreliable (delayed/suppressed, no touch
+   support). Shown via :hover and :focus-visible so it's keyboard-reachable. */
+.info-icon{position:relative;display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:50%;border:1px solid var(--border2);color:var(--muted2);font-family:var(--sans);font-size:8.5px;font-weight:700;line-height:1;cursor:help;flex-shrink:0}
+.info-icon:hover,.info-icon:focus-visible{border-color:var(--accent);color:var(--accent);outline:none}
+.info-icon::after{content:attr(data-tooltip);position:absolute;bottom:calc(100% + 7px);left:0;width:220px;max-width:60vw;background:var(--text);color:var(--bg);font-family:var(--sans);font-size:10.5px;font-weight:400;text-transform:none;letter-spacing:normal;line-height:1.4;padding:8px 10px;border-radius:8px;box-shadow:var(--shadow-md);opacity:0;visibility:hidden;transition:opacity .12s;z-index:40;pointer-events:none}
+.info-icon:hover::after,.info-icon:focus-visible::after{opacity:1;visibility:visible}
 .cluster-analysis-genes{display:flex;flex-wrap:wrap;gap:4px}
 .cluster-analysis-gene{font-family:var(--mono);font-size:9.5px;font-weight:600;color:var(--accent);background:var(--accent-soft);border:none;padding:2px 6px;border-radius:5px;flex-shrink:0;cursor:pointer}
 .cluster-analysis-gene:hover{background:var(--accent);color:#fff}
