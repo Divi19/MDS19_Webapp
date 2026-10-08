@@ -86,6 +86,22 @@ describe("tissue statistics", () => {
     expect(top[0].diff).toBeGreaterThan(0.9);
   });
 
+  it("ignores a blanket lift of every gene in one tissue type", () => {
+    // Dense tumour tissue gets higher predictions for almost every gene. Lift
+    // every gene by 0.5 in Cancer tiles: only ERBB2 should still count as
+    // higher in Cancer, not the flat background genes or CD74.
+    const pred = toPrediction(LARGE_TISSUE_RESPONSE);
+    const lifted = {
+      ...pred,
+      spots: pred.spots.map((s) =>
+        s.tissue?.cls === "Cancer"
+          ? { ...s, raw: Object.fromEntries(Object.entries(s.raw!).map(([g, v]) => [g, v + 0.5])) }
+          : s,
+      ),
+    };
+    expect(genesHigherIn(lifted, "Cancer").map((g) => g.gene)).toEqual(["ERBB2"]);
+  });
+
   it("leaves out differences smaller than the tile-to-tile spread", () => {
     // LTF is 0.05 higher in Connective, but its tiles vary by about 0.14.
     expect(genesHigherIn(toPrediction(LARGE_TISSUE_RESPONSE), "Connective tissue")).toEqual([]);

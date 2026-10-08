@@ -164,22 +164,54 @@ function sd(values: number[], m: number): number {
   return Math.sqrt(values.reduce((sum, v) => sum + (v - m) ** 2, 0) / values.length);
 }
 
-/** Genes whose mean raw predicted expression is higher in tiles `a` than in
- * tiles `b`, largest difference first. A gene is only kept when the
- * difference is at least the typical tile-to-tile spread (the pooled
- * standard deviation of the two groups), so noise is left out. */
+/** A tile's overall predicted level: its mean raw value over every gene.
+ * Cached per spot (a prediction's spots never change). */
+const tileLevels = new WeakMap<Spot, number>();
+function tileLevel(spot: Spot, genes: string[]): number {
+  let level = tileLevels.get(spot);
+  if (level === undefined) {
+    level = genes.length ? genes.reduce((sum, g) => sum + rawValue(spot, g), 0) / genes.length : 0;
+    tileLevels.set(spot, level);
+  }
+  return level;
+}
+
+/**
+ * Genes clearly higher in tiles `a` than in tiles `b`, largest difference
+ * first, reported as plain mean raw values (a vs b, and their difference).
+ *
+ * A gene qualifies on two checks:
+ *  - relative: after subtracting each tile's overall level (its mean over
+ *    all genes), it is still higher in `a` by at least the typical
+ *    tile-to-tile spread (pooled standard deviation of the two groups).
+ *    Dense tissue such as tumour gets higher predictions for almost every
+ *    gene, so plain means alone would call nearly the whole panel "higher in
+ *    Cancer";
+ *  - plain: the means shown (a vs b) are higher in `a` by at least half
+ *    their own spread, so the numbers on screen visibly agree.
+ */
 function genesHigherInGroup(pred: Prediction, a: Spot[], b: Spot[], limit: number): HigherGene[] {
   if (!a.length || !b.length) return [];
+  const levelsA = a.map((s) => tileLevel(s, pred.genes));
+  const levelsB = b.map((s) => tileLevel(s, pred.genes));
   return pred.genes
     .map((gene) => {
       const va = a.map((s) => rawValue(s, gene));
       const vb = b.map((s) => rawValue(s, gene));
       const typeMean = mean(va)!;
       const restMean = mean(vb)!;
-      const spread = Math.sqrt((sd(va, typeMean) ** 2 + sd(vb, restMean) ** 2) / 2);
-      return { gene, typeMean, restMean, diff: typeMean - restMean, spread };
+      const ra = va.map((v, i) => v - levelsA[i]);
+      const rb = vb.map((v, i) => v - levelsB[i]);
+      const relA = mean(ra)!;
+      const relB = mean(rb)!;
+      const spread = Math.sqrt((sd(ra, relA) ** 2 + sd(rb, relB) ** 2) / 2);
+      const relDiff = relA - relB;
+      const diff = typeMean - restMean;
+      const plainSpread = Math.sqrt((sd(va, typeMean) ** 2 + sd(vb, restMean) ** 2) / 2);
+      const clear = relDiff > 0 && relDiff >= spread && diff > 0 && diff >= plainSpread / 2;
+      return { gene, typeMean, restMean, diff, clear };
     })
-    .filter((g) => g.diff > 0 && g.diff >= g.spread)
+    .filter((g) => g.clear)
     .sort((x, y) => y.diff - x.diff)
     .slice(0, limit)
     .map(({ gene, typeMean, restMean, diff }) => ({ gene, typeMean, restMean, diff }));

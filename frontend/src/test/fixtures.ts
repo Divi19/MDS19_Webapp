@@ -45,11 +45,17 @@ export const TISSUE_RESPONSE: PredictionResponse = {
   ),
 };
 
+/** 20 flat background genes (1.0 in every tile), so each tile's overall
+ * level behaves like a real 785-gene panel rather than being set by the
+ * three test genes. */
+const BACKGROUND = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`BG${String(i).padStart(2, "0")}`, 1.0]));
+
 /** A larger section for the per-type statistics: 20 Cancer and 12
  * Connective tiles (enough to compare) and 3 Adipose tiles (too few).
  *  - ERBB2 is clearly higher in Cancer (2.0-2.2 vs 1.0-1.2).
  *  - CD74 is the same everywhere.
- *  - LTF is slightly higher in Connective, but by less than its spread. */
+ *  - LTF is slightly higher in Connective, but by less than its spread.
+ *  - BG00-BG19 are flat background genes. */
 export const LARGE_TISSUE_RESPONSE: PredictionResponse = (() => {
   const groups: [(typeof TISSUE_CLASSES)[number], number, (i: number) => Record<string, number>][] = [
     ["Cancer", 20, (i) => ({ ERBB2: 2.0 + 0.05 * (i % 5), CD74: 0.5 + 0.02 * (i % 5), LTF: 0.3 + 0.1 * (i % 5) })],
@@ -57,7 +63,7 @@ export const LARGE_TISSUE_RESPONSE: PredictionResponse = (() => {
     ["Adipose tissue", 3, () => ({ ERBB2: 0.5, CD74: 0.5, LTF: 0.5 })],
   ];
   const spots = groups.flatMap(([cls, n, expression]) =>
-    Array.from({ length: n }, (_, i) => ({ cls, expression: expression(i) })),
+    Array.from({ length: n }, (_, i) => ({ cls, expression: { ...expression(i), ...BACKGROUND } })),
   ).map(({ cls, expression }, index) => ({
     spot_index: index,
     x: index % 6,
