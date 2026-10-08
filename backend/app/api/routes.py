@@ -70,6 +70,8 @@ async def predict(request: Request, file: UploadFile = File(...)):
         top_genes=result["top_genes"],
         tissue_model_version=result.get("tissue_model_version"),
         tissue_summary=result.get("tissue_summary"),
+        tile_px=result.get("tile_px"),
+        stride_px=result.get("stride_px"),
     )
 
 

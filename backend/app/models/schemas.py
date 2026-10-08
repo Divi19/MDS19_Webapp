@@ -34,6 +34,11 @@ class PredictionResponse(BaseModel):
     top_genes: list[GeneRanking]
     tissue_model_version: str | None = None
     tissue_summary: dict[str, TissueClassSummary] | None = None
+    # How spot grid indices map to original-image pixels: tile (x, y) covers
+    # [x*stride_px, x*stride_px + tile_px). Null when the predictor does not
+    # report it (the frontend then falls back to 224/224).
+    tile_px: int | None = None
+    stride_px: int | None = None
 
 
 class HealthResponse(BaseModel):

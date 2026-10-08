@@ -43,6 +43,10 @@ class BasePredictor(ABC):
               "top_genes": [{"gene_name": str, "mean_expression": float,
                              "rank": int}],
               "model_version": str,
+              # Optional: how the spots' grid indices map to image pixels.
+              # Tile (x, y) covers [x*stride_px, x*stride_px + tile_px) in
+              # original-image pixels. Absent = the frontend's 224/224.
+              "tile_px": int, "stride_px": int,
             }
         """
         ...
@@ -698,6 +702,10 @@ class MclSTExpPredictor(BasePredictor):
             "spots": spots,
             "top_genes": top_genes,
             "model_version": self.model_version,
+            # Grid index -> original-image pixels, so the frontend places
+            # spots correctly whatever tiling the serving model uses.
+            "tile_px": self.PATCH,
+            "stride_px": self.STRIDE,
         }
 
         # Tissue type, after the expression result is complete. attach_tissue
