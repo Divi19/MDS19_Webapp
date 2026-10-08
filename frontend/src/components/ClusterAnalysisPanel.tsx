@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CL, type Prediction } from "@/lib/mockPrediction";
 import { analyzeClusters } from "@/lib/clusterAnalysis";
+import { clusterTissueLabels } from "@/lib/tissue";
 import { fetchPathways, type PathwayResult } from "@/lib/pathways";
 
 /** KEGG term names come back as "hsa05224:Breast cancer" — the pathway ID
@@ -30,6 +31,8 @@ export default function ClusterAnalysisPanel({
   onGeneClick: (gene: string, rect: DOMRect) => void;
 }) {
   const analysis = useMemo(() => (ready ? analyzeClusters(pred) : []), [pred, ready]);
+  // Tissue name per cluster from the tissue classifier; null without it.
+  const labels = useMemo(() => clusterTissueLabels(pred), [pred]);
 
   // Keyed by cluster index. Lookups fire automatically as soon as a
   // prediction's clusters are known — DAVID caps registered accounts at
@@ -105,6 +108,11 @@ export default function ClusterAnalysisPanel({
                   <div className="cluster-analysis-head">
                     <span className="dot" style={{ background: CL[a.index] }} />
                     <span className="name">Cluster {a.index}</span>
+                    {labels[a.index] && (
+                      <span className="cluster-tissue" title="Tissue types of this cluster's tiles (Tissue tab)">
+                        {labels[a.index]!.full}
+                      </span>
+                    )}
                     {a.lowSample && <span className="cluster-analysis-warn">small sample</span>}
                     <span className="count">
                       {a.count} spots · {(a.fraction * 100).toFixed(1)}%

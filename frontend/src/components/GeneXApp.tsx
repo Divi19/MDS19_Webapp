@@ -18,7 +18,7 @@ import TissueAnalysisPanel from "./TissueAnalysisPanel";
 import TissueComposition from "./TissueComposition";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
-import type { TissueClass } from "@/lib/tissue";
+import { clusterTissueLabels, type TissueClass } from "@/lib/tissue";
 import { TUTORIAL_LOADING_STEP, TUTORIAL_STEPS } from "@/lib/tutorial";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -365,6 +365,10 @@ export default function GeneXApp() {
         .map((g, i) => ({ name: g.name, label: `#${i + 1}`, level: g.level, value: g.value })),
     [pred.topGenes, pred.geneMeta],
   );
+
+  // Tissue name per expression cluster ("Cancer (95%)"), from the tissue
+  // classifier; all null when the prediction has no tissue data.
+  const clusterLabels = useMemo(() => clusterTissueLabels(pred), [pred]);
 
   const maxGeneValue = useMemo(
     () => Math.max(...pred.topGenes.map((g) => g.value)) || 1,
@@ -964,10 +968,14 @@ export default function GeneXApp() {
                       type="button"
                       className={`cluster-tile clickable${clusterPin === i ? " pinned" : ""}`}
                       onClick={() => setClusterPin((prev) => (prev === i ? null : i))}
+                      title={clusterLabels[i] ? `cluster ${i} · ${clusterLabels[i]!.full}` : undefined}
                     >
                       <div className="head">
                         <span className="dot" style={{ background: c }} />
-                        <span className="name">{i}</span>
+                        <span className="name">
+                          {i}
+                          {clusterLabels[i] && ` · ${clusterLabels[i]!.short}`}
+                        </span>
                       </div>
                       <div className="count" style={{ color: c }}>
                         {pred.counts[i]}

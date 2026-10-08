@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { toPrediction } from "@/lib/api";
-import { LARGE_TISSUE_RESPONSE, OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
+import { clusteredLargePrediction, LARGE_TISSUE_RESPONSE, OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
 import SpatialPlot from "./SpatialPlot";
 import TissueAnalysisPanel from "./TissueAnalysisPanel";
 import TissueComposition from "./TissueComposition";
@@ -199,5 +199,22 @@ describe("TissueComposition", () => {
     expect(bars[0].getAttribute("aria-label")).toContain("Adipose tissue 25.0%");
     expect(bars).toHaveLength(1 + toPrediction(TISSUE_RESPONSE).counts.length);
     expect(screen.getByText("All tiles")).toBeTruthy();
+  });
+});
+
+describe("cluster tissue names", () => {
+  it("labels composition rows by tissue makeup, with the full name on hover", () => {
+    render(<TissueComposition pred={clusteredLargePrediction()} />);
+    expect(screen.getByTitle("cluster 0 · Cancer (100%)").textContent).toBe("0 · Cancer");
+    expect(screen.getByTitle("cluster 1 · Cancer + Connective").textContent).toBe("1 · Mixed");
+    expect(screen.getByText("cluster 3")).toBeTruthy();
+  });
+
+  it("shows the short tissue name in the Clusters legend, full name on hover", () => {
+    const { container } = render(<SpatialPlot pred={clusteredLargePrediction()} ready view="clusters" gene="ERBB2" />);
+    const items = [...container.querySelectorAll(".legend .legend-item")].map((e) => e.textContent);
+    expect(items.slice(0, 3)).toEqual(["0 · Cancer", "1 · Mixed", "2 · Connective"]);
+    expect(items[3]).toBe("cluster 3");
+    expect(container.querySelector(".legend .legend-item")!.getAttribute("title")).toBe("cluster 0 · Cancer (100%)");
   });
 });

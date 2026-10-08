@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { CL, type Prediction } from "@/lib/mockPrediction";
-import { clusterTissueTable, formatPercent, TISSUE_CLASSES, TISSUE_COLORS } from "@/lib/tissue";
+import { clusterTissueLabels, clusterTissueTable, formatPercent, TISSUE_CLASSES, TISSUE_COLORS } from "@/lib/tissue";
 
 /** One horizontal stacked bar of tissue-class counts, with the breakdown in
  * its tooltip and accessible name. */
@@ -28,6 +28,7 @@ function CompositionBar({ counts }: { counts: number[] }) {
 export default function TissueComposition({ pred }: { pred: Prediction }) {
   const tissue = pred.tissue!;
   const crossTab = useMemo(() => clusterTissueTable(pred), [pred]);
+  const labels = useMemo(() => clusterTissueLabels(pred), [pred]);
   const overall = TISSUE_CLASSES.map((name) => tissue.summary[name].count);
 
   return (
@@ -43,9 +44,9 @@ export default function TissueComposition({ pred }: { pred: Prediction }) {
         </div>
         {crossTab.map((counts, cluster) => (
           <div key={cluster} className="composition-row">
-            <span className="composition-label">
+            <span className="composition-label" title={labels[cluster] ? `cluster ${cluster} · ${labels[cluster]!.full}` : undefined}>
               <span className="dot" style={{ background: CL[cluster] }} />
-              cluster {cluster}
+              {labels[cluster] ? `${cluster} · ${labels[cluster]!.short}` : `cluster ${cluster}`}
             </span>
             <CompositionBar counts={counts} />
           </div>

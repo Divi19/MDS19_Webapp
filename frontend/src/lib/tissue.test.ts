@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { toPrediction } from "@/lib/api";
-import type { Prediction } from "@/lib/mockPrediction";
 import {
   clusterTissueLabels, clusterTissueTable, comparableTypes, geneByTissue, geneHomeTissue, genesBetweenClusters,
   genesHigherIn, typeClusterGroups,
   isUncertain, predictionTissueFromApi, spotTissueFromApi, TISSUE_CLASSES,
 } from "@/lib/tissue";
-import { LARGE_TISSUE_RESPONSE, OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
+import { clusteredLargePrediction, LARGE_TISSUE_RESPONSE, OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
 
 describe("tissue fields from the API", () => {
   it("leaves an old prediction without any tissue data", () => {
@@ -104,24 +103,7 @@ describe("tissue statistics", () => {
   });
 });
 
-/** LARGE_TISSUE_RESPONSE with fixed clusters instead of k-means:
- *  - cluster 0: Cancer tiles 0-9;
- *  - cluster 1: Cancer tiles 10-19 + Connective tiles 20-27;
- *  - cluster 2: Connective tiles 28-31 + the 3 Adipose tiles (too few to name);
- *  - clusters 3 and 4: empty.
- * The cluster-1 Cancer tiles get LTF raised by 1, so the two Cancer groups
- * differ in exactly one gene. */
-function clustered(): Prediction {
-  const pred = toPrediction(LARGE_TISSUE_RESPONSE);
-  const spots = pred.spots.map((s, i) => {
-    const cluster = i < 10 ? 0 : i < 28 ? 1 : 2;
-    const raw = { ...s.raw! };
-    if (cluster === 1 && s.tissue?.cls === "Cancer") raw.LTF += 1;
-    return { ...s, cluster, raw };
-  });
-  const counts = [0, 1, 2, 3, 4].map((c) => spots.filter((s) => s.cluster === c).length);
-  return { ...pred, spots, counts };
-}
+const clustered = clusteredLargePrediction;
 
 describe("linking tissue types with clusters and genes", () => {
   it("names each cluster by its tissue makeup", () => {
@@ -135,8 +117,10 @@ describe("linking tissue types with clusters and genes", () => {
     ]);
   });
 
-  it("gives no cluster names without tissue data", () => {
+  it("gives no cluster names without tissue data or without a type of 10+ tiles", () => {
     expect(clusterTissueLabels(toPrediction(OLD_RESPONSE)).every((l) => l === null)).toBe(true);
+    // TISSUE_RESPONSE has 3 Cancer and 1 Adipose tile: nothing can name a cluster.
+    expect(clusterTissueLabels(toPrediction(TISSUE_RESPONSE)).every((l) => l === null)).toBe(true);
   });
 
   it("finds the tissue type each gene is clearly highest in", () => {

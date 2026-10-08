@@ -1,4 +1,5 @@
-import type { PredictionResponse } from "@/lib/api";
+import { toPrediction, type PredictionResponse } from "@/lib/api";
+import type { Prediction } from "@/lib/mockPrediction";
 import { TISSUE_CLASSES } from "@/lib/tissue";
 
 /** A prediction exactly as the API returned it before the tissue classifier
@@ -81,3 +82,22 @@ export const LARGE_TISSUE_RESPONSE: PredictionResponse = (() => {
     ),
   };
 })();
+
+/** LARGE_TISSUE_RESPONSE with fixed clusters instead of k-means:
+ *  - cluster 0: Cancer tiles 0-9;
+ *  - cluster 1: Cancer tiles 10-19 + Connective tiles 20-27;
+ *  - cluster 2: Connective tiles 28-31 + the 3 Adipose tiles (too few to name);
+ *  - clusters 3 and 4: empty.
+ * The cluster-1 Cancer tiles get LTF raised by 1, so the two Cancer groups
+ * differ in exactly one gene. */
+export function clusteredLargePrediction(): Prediction {
+  const pred = toPrediction(LARGE_TISSUE_RESPONSE);
+  const spots = pred.spots.map((s, i) => {
+    const cluster = i < 10 ? 0 : i < 28 ? 1 : 2;
+    const raw = { ...s.raw! };
+    if (cluster === 1 && s.tissue?.cls === "Cancer") raw.LTF += 1;
+    return { ...s, cluster, raw };
+  });
+  const counts = [0, 1, 2, 3, 4].map((c) => spots.filter((s) => s.cluster === c).length);
+  return { ...pred, spots, counts };
+}

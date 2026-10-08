@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
 import {
-  formatPercent, isUncertain, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
+  clusterTissueLabels, formatPercent, isUncertain, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
   type TissueClass,
 } from "@/lib/tissue";
 
@@ -160,6 +160,14 @@ export default function SpatialPlot({
   // The Tissue view only draws tissue when the prediction has it; GeneXApp
   // never offers the tab otherwise.
   const tissueLayer = view === "tissue" && !!pred.tissue;
+  // Tissue name per expression cluster ("Cancer (95%)"); all null without
+  // tissue data, which leaves the plain cluster names.
+  const clusterLabels = useMemo(() => clusterTissueLabels(pred), [pred]);
+  // The Clusters legend shows "0 · Cancer" pills unless they would wrap onto
+  // more rows than the plain "cluster 0" pills (tissue name then on hover),
+  // so the tissue names never push the map smaller than before.
+  const clusterLegendRef = useRef<HTMLDivElement>(null);
+  const [legendNamed, setLegendNamed] = useState(true);
   // With a type pinned, its tiles show the selected gene's level within that
   // type; the range sets the colour scale and the legend's min/max.
   const pinRange = useMemo(() => {
@@ -356,6 +364,30 @@ export default function SpatialPlot({
     draw();
   }, [draw]);
 
+  // Named pills unless they would take more rows than the plain ones
+  // (measured on the invisible copies, again on every resize).
+  useLayoutEffect(() => {
+    const wrap = clusterLegendRef.current;
+    if (!wrap) return;
+    const rows = (el: Element) => new Set([...el.children].map((c) => (c as HTMLElement).offsetTop)).size;
+    const ro = new ResizeObserver(() => {
+      const [named, plain] = wrap.querySelectorAll(".legend-sizer");
+      if (named && plain) setLegendNamed(rows(named) <= rows(plain));
+    });
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [clusterLabels, ready, view]);
+
+  const clusterPillText = (i: number, named: boolean) =>
+    named && clusterLabels[i] ? (
+      <span>
+        {i}
+        <span className="legend-tissue"> · {clusterLabels[i]!.short}</span>
+      </span>
+    ) : (
+      <span>{pred.clusters[i]?.name ?? `cluster ${i}`}</span>
+    );
+
   function handleMove(e: React.MouseEvent<HTMLCanvasElement>) {
     const g = geomRef.current;
     const cv = canvasRef.current;
@@ -380,7 +412,9 @@ export default function SpatialPlot({
           : view === "tissue"
           ? // Raw predicted expression, the same scale as the Tissue Analysis panel.
             `${pred.geneMeta[g.gk]?.label ?? g.gk} ${rawExpr(best.s, g.gk).toFixed(2)} · cluster ${best.s.cluster}`
-          : (pred.clusters[best.s.cluster]?.name ?? `cluster ${best.s.cluster}`);
+          : `${pred.clusters[best.s.cluster]?.name ?? `cluster ${best.s.cluster}`}${
+              clusterLabels[best.s.cluster] ? ` · ${clusterLabels[best.s.cluster]!.full}` : ""
+            }`;
       setTip({ x: best.px, y: best.py, text, spot: best.s });
     } else {
       setTip(null);
@@ -425,21 +459,35 @@ export default function SpatialPlot({
       </div>
 
       {ready && view === "clusters" && (
-        <div className="legend">
-          {CL.map((c, i) => (
-            <div
-              key={i}
-              className={`legend-item${clusterPin === i ? " pinned" : ""}`}
-              onMouseEnter={() => setHighlight(i)}
-              onMouseLeave={() => setHighlight(-1)}
-              onClick={() => onClusterPin?.(clusterPin === i ? null : i)}
-            >
-              <span className="legend-dot" style={{ background: c }} />
-              <span>
-                {pred.clusters[i]?.name ?? `cluster ${i}`}
-              </span>
-            </div>
-          ))}
+        <div className="legend-wrap" ref={clusterLegendRef}>
+          <div className="legend">
+            {CL.map((c, i) => (
+              <div
+                key={i}
+                className={`legend-item${legendNamed && clusterLabels[i] ? " legend-item-tissue" : ""}${clusterPin === i ? " pinned" : ""}`}
+                onMouseEnter={() => setHighlight(i)}
+                onMouseLeave={() => setHighlight(-1)}
+                onClick={() => onClusterPin?.(clusterPin === i ? null : i)}
+                title={clusterLabels[i] ? `${pred.clusters[i]?.name ?? `cluster ${i}`} · ${clusterLabels[i]!.full}` : undefined}
+              >
+                <span className="legend-dot" style={{ background: c }} />
+                {clusterPillText(i, legendNamed)}
+              </div>
+            ))}
+          </div>
+          {/* Invisible copies of the legend with and without tissue names, at
+              the same width, to count how many rows each would take. */}
+          {clusterLabels.some((l) => l) &&
+            [true, false].map((named) => (
+              <div key={String(named)} className="legend legend-sizer" aria-hidden>
+                {CL.map((c, i) => (
+                  <div key={i} className={`legend-item${named && clusterLabels[i] ? " legend-item-tissue" : ""}`}>
+                    <span className="legend-dot" />
+                    {clusterPillText(i, named)}
+                  </div>
+                ))}
+              </div>
+            ))}
         </div>
       )}
 

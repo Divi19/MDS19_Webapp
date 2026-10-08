@@ -215,7 +215,7 @@ export function geneHomeTissue(pred: Prediction): Map<string, GeneTissue> {
 }
 
 export interface ClusterTissueLabel {
-  /** e.g. "Cancer (95%)", "Cancer + Connective", "Mixed". */
+  /** e.g. "Cancer (95%)" or "Cancer + Connective". */
   full: string;
   /** One word for small spaces: the type's short name, or "Mixed". */
   short: string;
@@ -231,11 +231,11 @@ const PART_SHARE = 0.2;
  * types of its tiles. Only types with at least MIN_TILES tiles on the whole
  * slide can name a cluster.
  *  - one type with >= 60% of the cluster's tiles: "Cancer (95%)";
- *  - otherwise the types with >= 20%: "Cancer + Connective" (top two), or
- *    "Cancer (50%)" when only one reaches 20%;
- *  - otherwise "Mixed".
- * Null for every cluster when the prediction has no tissue data; null for an
- * empty cluster.
+ *  - otherwise the types with >= 20%: "Cancer + Connective" (top two, short
+ *    name "Mixed"), or "Cancer (50%)" when only one reaches 20%.
+ * Null (the plain "cluster N" stays) for an empty cluster, for one where no
+ * nameable type reaches 20%, and for every cluster when the prediction has
+ * no tissue data.
  */
 export function clusterTissueLabels(pred: Prediction): (ClusterTissueLabel | null)[] {
   if (!pred.tissue) return pred.counts.map(() => null);
@@ -257,7 +257,7 @@ export function clusterTissueLabels(pred: Prediction): (ClusterTissueLabel | nul
         short: "Mixed",
       };
     }
-    return { full: "Mixed", short: "Mixed" };
+    return null;
   });
 }
 
