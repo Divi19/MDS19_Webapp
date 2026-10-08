@@ -154,7 +154,11 @@ export default function ClusterAnalysisPanel({
                         pathwayState.results
                           .slice(0, 3)
                           .map((r) => (
-                            <span key={r.term} className="cluster-analysis-pathway">
+                            <span
+                              key={r.term}
+                              className="cluster-analysis-pathway"
+                              style={{ color: CL[a.index], background: `${CL[a.index]}20` }}
+                            >
                               {formatTerm(r.term)}
                             </span>
                           ))
