@@ -18,7 +18,9 @@ import TissueAnalysisPanel from "./TissueAnalysisPanel";
 import TissueComposition from "./TissueComposition";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
-import { clusterTissueLabels, type TissueClass } from "@/lib/tissue";
+import {
+  clusterTissueLabels, geneHomeTissue, TISSUE_COLORS, TISSUE_SHORT_NAMES, type GeneTissue, type TissueClass,
+} from "@/lib/tissue";
 import { TUTORIAL_LOADING_STEP, TUTORIAL_STEPS } from "@/lib/tutorial";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -369,6 +371,9 @@ export default function GeneXApp() {
   // Tissue name per expression cluster ("Cancer (95%)"), from the tissue
   // classifier; all null when the prediction has no tissue data.
   const clusterLabels = useMemo(() => clusterTissueLabels(pred), [pred]);
+  // For the gene list: the tissue type each gene is clearly highest in (same
+  // rule as "Genes higher in" on the Tissue tab); null without tissue data.
+  const geneHome = useMemo(() => (pred.tissue ? geneHomeTissue(pred) : null), [pred]);
 
   const maxGeneValue = useMemo(
     () => Math.max(...pred.topGenes.map((g) => g.value)) || 1,
@@ -440,7 +445,11 @@ export default function GeneXApp() {
         const padY = parseFloat(tileStyles.paddingTop) + parseFloat(tileStyles.paddingBottom);
         const borderY = parseFloat(tileStyles.borderTopWidth) + parseFloat(tileStyles.borderBottomWidth);
         const innerGap = parseFloat(tileStyles.rowGap) || 0;
-        const naturalHeight = swatchMin + name.offsetHeight + meta.offsetHeight + innerGap * 2 + padY + borderY;
+        // The tissue line is only there when the prediction has tissue types.
+        const tissue = tile.querySelector<HTMLElement>(".gene-tile-tissue");
+        const tissueHeight = tissue ? tissue.offsetHeight + innerGap : 0;
+        const naturalHeight =
+          swatchMin + name.offsetHeight + meta.offsetHeight + tissueHeight + innerGap * 2 + padY + borderY;
         const cols = styles.gridTemplateColumns.split(" ").filter(Boolean).length || 1;
         const rows = Math.max(1, Math.floor((ch + rowGap) / (naturalHeight + rowGap)));
         setCardsPerPage((prev) => {
@@ -461,7 +470,7 @@ export default function GeneXApp() {
     const ro = new ResizeObserver(recompute);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ready, pred.topGenes.length, geneView]);
+  }, [ready, pred.topGenes.length, geneView, geneHome]);
 
   const geneTotalPages = Math.max(1, Math.ceil(pred.topGenes.length / genesPerPage));
   const genePageClamped = Math.min(genePage, geneTotalPages - 1);
@@ -704,6 +713,7 @@ export default function GeneXApp() {
                           style={{ background: viridis(g.value / max) }}
                         />
                         <div className="gene-tile-name">{g.name}</div>
+                        {geneHome && <GeneTissueNote gene={g.name} value={g.value} home={geneHome.get(g.name)} className="gene-tile-tissue" />}
                         <div className="gene-tile-meta">
                           <span className="gene-tile-value">{g.value.toFixed(2)}</span>
                           <span className={`level-tag ${levelClass(g.level)}`}>{g.level}</span>
@@ -726,7 +736,10 @@ export default function GeneXApp() {
                         data-tour={index === 0 ? "gene-first" : undefined}
                         onClick={(e) => pick(g, e)}
                       >
-                        <span className="gene-name">{g.name}</span>
+                        <span className="gene-name-cell">
+                          <span className="gene-name">{g.name}</span>
+                          {geneHome && <GeneTissueNote gene={g.name} value={g.value} home={geneHome.get(g.name)} className="gene-row-tissue" />}
+                        </span>
                         <span className="gene-value">{g.value.toFixed(2)}</span>
                         <span className="bar-track">
                           <span
@@ -1057,5 +1070,37 @@ export default function GeneXApp() {
         );
       })()}
     </div>
+  );
+}
+
+/** Gene list: the tissue type a gene is clearly highest in, with the numbers
+ * on hover so the whole-slide value next to it is never mistaken for it. */
+function GeneTissueNote({
+  gene,
+  value,
+  home,
+  className,
+}: {
+  gene: string;
+  value: number;
+  home: GeneTissue | undefined;
+  className: string;
+}) {
+  if (!home) {
+    return (
+      <span className={`${className} none`} title={`${gene}: not clearly higher in any one tissue type`}>
+        no clear tissue
+      </span>
+    );
+  }
+  const name: TissueClass = home.cls;
+  return (
+    <span
+      className={className}
+      title={`${gene}: ${home.typeMean.toFixed(2)} on average in ${name} tiles vs ${home.restMean.toFixed(2)} in all other tiles. ${value.toFixed(2)} is its average over all tiles.`}
+    >
+      <span className="dot" style={{ background: TISSUE_COLORS[name] }} />
+      higher in {TISSUE_SHORT_NAMES[name]}
+    </span>
   );
 }

@@ -492,3 +492,10 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 /* Clusters legend: invisible same-width copies used to count rows. */
 .legend-wrap{position:relative;flex-shrink:0}
 .legend-sizer{position:absolute;left:0;right:0;top:0;visibility:hidden;pointer-events:none}
+/* Gene list: the tissue type each gene is clearly highest in. */
+.gene-name-cell{display:flex;flex-direction:column;min-width:0;gap:1px}
+.gene-name-cell .gene-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gene-row-tissue,.gene-tile-tissue{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.gene-row-tissue .dot,.gene-tile-tissue .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.gene-row-tissue.none,.gene-tile-tissue.none{color:var(--muted2)}
+.gene-tile-tissue{flex-shrink:0}
