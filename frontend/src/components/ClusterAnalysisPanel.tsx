@@ -28,31 +28,50 @@ export default function ClusterAnalysisPanel({
 }) {
   const analysis = useMemo(() => (ready ? analyzeClusters(pred) : []), [pred, ready]);
 
-  // Keyed by cluster index. Pathway lookups are opt-in (a button, not
-  // automatic) — DAVID caps registered accounts at 200 lookups/day, so
-  // firing one per cluster on every prediction would burn through that
-  // fast across a few users' sessions.
-  const [pathways, setPathways] = useState<Record<number, PathwayState>>({});
-
+  // Keyed by cluster index. Lookups fire automatically as soon as a
+  // prediction's clusters are known — DAVID caps registered accounts at
+  // 200 lookups/day (~40 full runs at k=5), acceptable for a small team
+  // tool but worth revisiting if usage grows.
+  //
   // Cluster index alone doesn't identify which prediction a lookup belongs
   // to — "cluster 2" in one upload has nothing to do with "cluster 2" in
-  // the next. Without this, a stale pathway result from a previous image
-  // stays attached to the same cluster slot after a new one is uploaded,
-  // since this component never unmounts between predictions.
-  useEffect(() => {
-    queueMicrotask(() => setPathways({}));
-  }, [pred]);
+  // the next — so every new `analysis` (keyed off pred+ready) replaces the
+  // whole map rather than merging into it, dropping any stale result.
+  const [pathways, setPathways] = useState<Record<number, PathwayState>>({});
 
-  async function findPathways(clusterIndex: number, genes: string[]) {
-    setPathways((prev) => ({ ...prev, [clusterIndex]: { status: "loading" } }));
-    try {
-      const results = await fetchPathways(genes);
-      setPathways((prev) => ({ ...prev, [clusterIndex]: { status: "done", results } }));
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Pathway lookup failed";
-      setPathways((prev) => ({ ...prev, [clusterIndex]: { status: "error", message } }));
+  useEffect(() => {
+    if (!analysis.length) {
+      queueMicrotask(() => setPathways({}));
+      return;
     }
-  }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setPathways(() => {
+        const next: Record<number, PathwayState> = {};
+        analysis.forEach((a) => {
+          next[a.index] = a.markers.length ? { status: "loading" } : { status: "done", results: [] };
+        });
+        return next;
+      });
+      analysis.forEach((a) => {
+        if (!a.markers.length) return;
+        fetchPathways(a.markers.map((m) => m.name))
+          .then((results) => {
+            if (cancelled) return;
+            setPathways((prev) => ({ ...prev, [a.index]: { status: "done", results } }));
+          })
+          .catch((e) => {
+            if (cancelled) return;
+            const message = e instanceof Error ? e.message : "Pathway lookup failed";
+            setPathways((prev) => ({ ...prev, [a.index]: { status: "error", message } }));
+          });
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [analysis]);
 
   return (
     <div className="col col-3" data-tour="cluster-analysis">
@@ -111,17 +130,7 @@ export default function ClusterAnalysisPanel({
                   <div className="cluster-analysis-text">{a.summary}</div>
 
                   <div className="cluster-analysis-label">Pathways</div>
-                  {pathwayState.status === "idle" && (
-                    <button
-                      type="button"
-                      className="cluster-analysis-pathway-btn"
-                      disabled={!a.markers.length}
-                      onClick={() => findPathways(a.index, a.markers.map((m) => m.name))}
-                    >
-                      Find pathways
-                    </button>
-                  )}
-                  {pathwayState.status === "loading" && (
+                  {(pathwayState.status === "idle" || pathwayState.status === "loading") && (
                     <div className="cluster-analysis-text">looking up…</div>
                   )}
                   {pathwayState.status === "error" && (
