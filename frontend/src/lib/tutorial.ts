@@ -219,7 +219,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     target: "header-actions",
     title: "Export and account",
     body: [
-      "Export downloads the ranked gene list as an Excel workbook (with per-tissue-type means and per-tile tissue types when available). History reopens saved analyses, and the account menu provides access to your profile and to sign out.",
+      "Export PDF Report downloads a report of the current analysis. History reopens saved analyses, and the account menu provides access to your profile and to sign out.",
     ],
   },
   {

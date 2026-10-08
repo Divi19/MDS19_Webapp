@@ -136,11 +136,6 @@ The tissue types are context for the predicted expression, not a diagnosis.
   - **Gene list:** under each gene, the tissue type it is clearly highest in
     ("↑ Cancer", same rule as *Genes higher in*) or "no clear type". Hover
     for the numbers, including how they relate to the whole-slide value.
-- **Export:** the Excel workbook adds an *Expression by tissue type* sheet
-  (every gene's mean per class, plus tile counts) and a *Tiles* sheet (grid
-  position, cluster, tissue type, confidence and the five class
-  probabilities per tile) and a *Genes higher by tissue type* sheet (the
-  panel's lists for every type with enough tiles).
 - **Layout:** the map, header and bottom card are the same size as on the
   Genes tab.
 
