@@ -234,7 +234,7 @@ button.legend-item{font:inherit;font-family:var(--mono);font-size:11px}
 /* Small "i" info icon with a custom tooltip — NOT the native title attribute,
    which this project already found unreliable (delayed/suppressed, no touch
    support). Shown via :hover and :focus-visible so it's keyboard-reachable. */
-.info-icon{position:relative;display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:50%;border:1px solid var(--border2);color:var(--muted2);font-family:var(--sans);font-size:8.5px;font-weight:700;line-height:1;cursor:help;flex-shrink:0}
+.info-icon{position:relative;display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:50%;border:1px solid var(--border2);color:var(--muted2);font-family:var(--sans);font-size:8.5px;font-weight:700;line-height:1;text-transform:none;cursor:help;flex-shrink:0}
 .info-icon:hover,.info-icon:focus-visible{border-color:var(--accent);color:var(--accent);outline:none}
 .info-icon::after{content:attr(data-tooltip);position:absolute;bottom:calc(100% + 7px);left:0;width:220px;max-width:60vw;background:var(--text);color:var(--bg);font-family:var(--sans);font-size:10.5px;font-weight:400;text-transform:none;letter-spacing:normal;line-height:1.4;padding:8px 10px;border-radius:8px;box-shadow:var(--shadow-md);opacity:0;visibility:hidden;transition:opacity .12s;z-index:40;pointer-events:none}
 .info-icon:hover::after,.info-icon:focus-visible::after{opacity:1;visibility:visible}
