@@ -245,7 +245,7 @@ button.legend-item{font:inherit;font-family:var(--mono);font-size:11px}
    overflow:hidden container (e.g. the gene card), where the default
    above+left placement would get clipped by the container's own edges. */
 .info-icon.tooltip-below::after{bottom:auto;top:calc(100% + 7px)}
-.info-icon.tooltip-end::after{left:auto;right:0;width:200px}
+.info-icon.tooltip-center::after{left:50%;right:auto;transform:translateX(-50%);width:180px}
 .cluster-analysis-genes{display:flex;flex-wrap:wrap;gap:4px}
 .cluster-analysis-gene{font-family:var(--mono);font-size:9.5px;font-weight:600;color:var(--accent);background:var(--accent-soft);border:none;padding:2px 6px;border-radius:5px;flex-shrink:0;cursor:pointer}
 .cluster-analysis-gene:hover{background:var(--accent);color:#fff}
