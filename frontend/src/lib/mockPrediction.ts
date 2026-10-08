@@ -11,6 +11,7 @@
  * Nothing else in the UI needs to change.
  */
 
+import type { Tiling } from "./tiling";
 import type { PredictionTissue, SpotTissue } from "./tissue";
 
 /* ---------- palette ---------- */
@@ -82,6 +83,9 @@ export interface Prediction {
   /** Tissue classifier output — null/absent when the prediction has none
    * (classifier off, failed, or a prediction saved before it existed). */
   tissue?: PredictionTissue | null;
+  /** How spot grid indices map to original-image pixels (see lib/tiling.ts).
+   * Absent on synthetic demo data, which has no real tiling. */
+  tiling?: Tiling;
 }
 
 /* ---------- deterministic rng ---------- */

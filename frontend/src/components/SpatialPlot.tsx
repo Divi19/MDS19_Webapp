@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
+import { DEFAULT_TILING, tileCentre, type Tiling } from "@/lib/tiling";
 import {
   clusterTissueLabels, formatPercent, isUncertain, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
   type TissueClass,
@@ -9,11 +10,6 @@ import {
 
 const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 
-// Fixed by the model's training config (see predictor.py) — not tunable
-// here, just mirrored so the overlay can convert a tile's grid index back
-// into a pixel position on the original upload.
-const PATCH = 224;
-const STRIDE = 224;
 
 interface ImgGeom {
   sx: number;
@@ -34,6 +30,8 @@ interface Geom {
    * the cover-fit source rect needed to place a spot at its true pixel
    * position instead of stretching it across the tissue's bounding box. */
   img?: ImgGeom;
+  /** How the prediction's grid indices map to image pixels (lib/tiling.ts). */
+  tiling?: Tiling;
 }
 
 /** A spot's canvas position — pixel-accurate against the real image when
@@ -41,8 +39,7 @@ interface Geom {
  * bounding-box normalisation otherwise (dummy/demo data, or no image). */
 function spotXY(s: Spot, g: Geom): [number, number] {
   if (g.img && s.gridX != null && s.gridY != null) {
-    const ox = s.gridX * STRIDE + PATCH / 2;
-    const oy = s.gridY * STRIDE + PATCH / 2;
+    const [ox, oy] = tileCentre(s.gridX, s.gridY, g.tiling ?? DEFAULT_TILING);
     return [((ox - g.img.sx) / g.img.sw) * g.img.w, ((oy - g.img.sy) / g.img.sh) * g.img.h];
   }
   return [g.mL + s.x * g.pw, g.mT + s.y * g.ph];
@@ -292,7 +289,7 @@ export default function SpatialPlot({
         ctx.fillRect(0, 0, w, h);
       }
 
-      const geom: Geom = { mL: 0, mT: 0, pw: w, ph: h, gk, img: { sx, sy, sw, sh, w, h } };
+      const geom: Geom = { mL: 0, mT: 0, pw: w, ph: h, gk, img: { sx, sy, sw, sh, w, h }, tiling: pred.tiling };
       geomRef.current = geom;
 
       const r = Math.max(2.4, w / 130);

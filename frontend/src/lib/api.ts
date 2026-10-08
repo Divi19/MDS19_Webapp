@@ -1,5 +1,6 @@
 import type { Prediction, Spot, TopGene } from "@/lib/mockPrediction";
 import { predictionTissueFromApi, spotTissueFromApi } from "@/lib/tissue";
+import { tilingFromApi } from "@/lib/tiling";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -35,6 +36,10 @@ export interface PredictionResponse {
   top_genes: GeneRanking[];
   tissue_model_version?: string | null;
   tissue_summary?: Record<string, TissueClassSummary> | null;
+  // How spot grid indices map to original-image pixels (lib/tiling.ts).
+  // Absent from older backends and saved runs; see tilingFromApi.
+  tile_px?: number | null;
+  stride_px?: number | null;
 }
 
 export async function predict(file: File): Promise<PredictionResponse> {
@@ -286,5 +291,6 @@ export function toPrediction(response: PredictionResponse): Prediction {
     counts,
     total: spots.length,
     tissue,
+    tiling: tilingFromApi(response),
   };
 }

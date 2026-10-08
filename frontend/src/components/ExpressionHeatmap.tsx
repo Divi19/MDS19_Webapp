@@ -2,11 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Prediction, Spot } from "@/lib/mockPrediction";
+import { DEFAULT_TILING, tileCentre, type Tiling } from "@/lib/tiling";
 
-// Fixed by the model's training config (see predictor.py) — mirrors the same
-// constants SpatialPlot.tsx uses to place a spot at its true pixel position.
-const PATCH = 224;
-const STRIDE = 224;
 
 // Low-res field the heatmap is computed on, then smoothly upscaled onto the
 // real canvas — cheap (tens of thousands of cells, not one per screen pixel)
@@ -24,9 +21,8 @@ interface ImgGeom {
   h: number;
 }
 
-function spotXY(s: Spot, g: ImgGeom): [number, number] {
-  const ox = (s.gridX ?? 0) * STRIDE + PATCH / 2;
-  const oy = (s.gridY ?? 0) * STRIDE + PATCH / 2;
+function spotXY(s: Spot, g: ImgGeom, tiling: Tiling): [number, number] {
+  const [ox, oy] = tileCentre(s.gridX ?? 0, s.gridY ?? 0, tiling);
   return [((ox - g.sx) / g.sw) * g.w, ((oy - g.sy) / g.sh) * g.h];
 }
 
@@ -130,7 +126,7 @@ export default function ExpressionHeatmap({
     if (!spots.length || !pred.geneMeta[gene]) return;
 
     const points = spots.map((s) => {
-      const [x, y] = spotXY(s, geom);
+      const [x, y] = spotXY(s, geom, tiling);
       return { x, y, v: s.expr[gene] ?? 0 };
     });
 
@@ -142,7 +138,8 @@ export default function ExpressionHeatmap({
     // a binary on/off coverage test upscaled from a low-res grid produces a
     // faceted, low-poly-looking edge; a gradual ramp upscales into a smooth
     // curve that actually follows the tissue's real (irregular) boundary.
-    const spacing = STRIDE * (geom.w / geom.sw);
+    const tiling = pred.tiling ?? DEFAULT_TILING;
+    const spacing = tiling.stride * (geom.w / geom.sw);
     const innerD2 = (spacing * 0.9) ** 2;
     const outerD2 = (spacing * 1.7) ** 2;
     // Half a spot-spacing — big enough that adjacent spots blend smoothly

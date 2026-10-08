@@ -3,6 +3,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { explainGradcamBatch } from "@/lib/api";
 import type { Prediction, Spot } from "@/lib/mockPrediction";
+import { DEFAULT_TILING, tileOrigin, type Tiling } from "@/lib/tiling";
 
 export interface GradCamStatus {
   loading: boolean;
@@ -21,10 +22,6 @@ export interface GradCamHandle {
   getSnapshot: () => string | null;
 }
 
-// Fixed by the model's training config (see predictor.py) — mirrors the same
-// constants SpatialPlot.tsx uses to place a spot at its true pixel position.
-const PATCH = 224;
-const STRIDE = 224;
 
 // How many tiles go in one /gradcam/batch request — one forward/backward
 // pass covers the whole group, instead of paying the encoder's per-call
@@ -236,16 +233,15 @@ function computeGeom(img: HTMLImageElement, w: number, h: number): ImgGeom {
 
 /** A tile's bounding box on the canvas, from its true grid position on the
  * real image — same cover-fit transform SpatialPlot.tsx uses. Position
- * steps by STRIDE (tile spacing); size is the patch's own footprint
- * (PATCH) — equal by the model's config (non-overlapping tiles), but
- * kept as separate constants for what each one actually means. */
-function tileRect(s: Spot, g: ImgGeom) {
-  const ox = (s.gridX ?? 0) * STRIDE;
-  const oy = (s.gridY ?? 0) * STRIDE;
+ * steps by the tiling's stride (tile spacing); size is the tile's own
+ * footprint. The two differ when the model leaves gaps between tiles
+ * (e.g. 224 px tiles every 290 px). */
+function tileRect(s: Spot, g: ImgGeom, tiling: Tiling) {
+  const [ox, oy] = tileOrigin(s.gridX ?? 0, s.gridY ?? 0, tiling);
   const x = ((ox - g.sx) / g.sw) * g.w;
   const y = ((oy - g.sy) / g.sh) * g.h;
-  const w = (PATCH / g.sw) * g.w;
-  const h = (PATCH / g.sh) * g.h;
+  const w = (tiling.tile / g.sw) * g.w;
+  const h = (tiling.tile / g.sh) * g.h;
   return { x, y, w, h };
 }
 
@@ -416,7 +412,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       if (!tileImg) continue;
       const s = pred.spots[i];
       if (s.gridX == null || s.gridY == null) continue;
-      const r = tileRect(s, geom);
+      const r = tileRect(s, geom, pred.tiling ?? DEFAULT_TILING);
       // Scale this spot's opacity by how strong it really is relative to
       // the slide overall — without this every spot's overlay reads as
       // equally "hot" regardless of true signal strength, since each one
@@ -435,8 +431,11 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     if (grid) {
       const gx = ((0 - geom.sx) / geom.sw) * geom.w;
       const gy = ((0 - geom.sy) / geom.sh) * geom.h;
-      const gw = (((grid.cols / grid.tw) * STRIDE) / geom.sw) * geom.w;
-      const gh = (((grid.rows / grid.th) * STRIDE) / geom.sh) * geom.h;
+      // One grid block per tile spacing, so each tile's heat sits at its
+      // own tile's position (spread over the gap to the next tile).
+      const stride = (pred.tiling ?? DEFAULT_TILING).stride;
+      const gw = (((grid.cols / grid.tw) * stride) / geom.sw) * geom.w;
+      const gh = (((grid.rows / grid.th) * stride) / geom.sh) * geom.h;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(grid.cv, gx, gy, gw, gh);
@@ -606,7 +605,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         if (!tileImgsRef.current[i] && !heatRef.current[i]) continue;
         const s = pred.spots[i];
         if (s.gridX == null || s.gridY == null) continue;
-        const r = tileRect(s, geom);
+        const r = tileRect(s, geom, pred.tiling ?? DEFAULT_TILING);
         if (worldX >= r.x && worldX <= r.x + r.w && worldY >= r.y && worldY <= r.y + r.h) {
           setSelectedTile(i);
           return;
@@ -699,7 +698,9 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       const base = imgRef.current;
       const grid = gridRef.current;
       if (base && s.gridX != null && s.gridY != null) {
-        ctx.drawImage(base, s.gridX * STRIDE, s.gridY * STRIDE, PATCH, PATCH, 0, 0, size, size);
+        const tiling = pred.tiling ?? DEFAULT_TILING;
+        const [ox, oy] = tileOrigin(s.gridX, s.gridY, tiling);
+        ctx.drawImage(base, ox, oy, tiling.tile, tiling.tile, 0, 0, size, size);
         if (grid) {
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
@@ -709,7 +710,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       return;
     }
     if (img) ctx.drawImage(img, 0, 0, size, size);
-  }, [selectedTile, pred.spots]);
+  }, [selectedTile, pred.spots, pred.tiling]);
 
   const statusText = !ready
     ? ""
