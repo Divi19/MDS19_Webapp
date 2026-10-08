@@ -11,31 +11,50 @@ export interface HistoryEntry {
   imagePath: string | null;
 }
 
-// Tissue columns come from supabase/migrations/0004_tissue_classifier.sql.
+// Optional columns added by later migrations. A database without them still
+// saves the prediction, just without those fields:
+//  - tissue: supabase/migrations/0004_tissue_classifier.sql;
+//  - tiling: supabase/migrations/0005_prediction_tiling.sql.
 const PREDICTION_TISSUE_COLUMNS = ["tissue_model_version", "tissue_summary"] as const;
+const PREDICTION_TILING_COLUMNS = ["tile_px", "stride_px"] as const;
 const SPOT_TISSUE_COLUMNS = ["tissue_class", "tissue_confidence", "tissue_probs"] as const;
 
-/** PostgREST's "column not in schema" errors — what an insert with tissue
- * columns gets from a database that hasn't had migration 0004 applied. */
+/** PostgREST's "column not in schema" errors — what an insert with a newer
+ * optional column gets from a database that hasn't had its migration. */
 function isMissingColumnError(error: { code?: string } | null): boolean {
   return !!error && (error.code === "PGRST204" || error.code === "42703");
+}
+
+/** The column a missing-column error names, e.g. "Could not find the
+ * 'tile_px' column of 'predictions' in the schema cache". */
+function missingColumn(error: { message?: string } | null): string | null {
+  return error?.message?.match(/'([a-z_]+)' column/)?.[1] ?? null;
 }
 
 function withoutColumns<T extends Record<string, unknown>>(row: T, columns: readonly string[]) {
   return Object.fromEntries(Object.entries(row).filter(([key]) => !columns.includes(key)));
 }
 
-/** Inserts rows; if the database predates the tissue columns, retries once
- * without them so the prediction itself is still saved (tissue isn't). */
-async function insertWithTissueFallback(
+/** Inserts rows. If the database is missing one of `optionalColumns`, drops
+ * just that column and retries (once per optional column), so the
+ * prediction itself is still saved. A missing column the error does not
+ * name drops every optional column at once. */
+async function insertWithOptionalColumns(
   table: "predictions" | "prediction_spots",
   rows: Record<string, unknown>[],
-  tissueColumns: readonly string[],
+  optionalColumns: readonly string[],
 ) {
-  const { error } = await supabase.from(table).insert(rows);
-  if (!isMissingColumnError(error)) return { error };
-  console.warn(`${table}: tissue columns missing (apply migration 0004) — saving without them`);
-  return supabase.from(table).insert(rows.map((row) => withoutColumns(row, tissueColumns)));
+  let dropped: string[] = [];
+  for (let attempt = 0; attempt <= optionalColumns.length; attempt++) {
+    const { error } = await supabase.from(table).insert(rows.map((row) => withoutColumns(row, dropped)));
+    if (!isMissingColumnError(error)) return { error };
+    const column = missingColumn(error);
+    const next = column && optionalColumns.includes(column) ? [column] : [...optionalColumns];
+    if (next.every((c) => dropped.includes(c))) return { error };
+    console.warn(`${table}: column(s) ${next.join(", ")} missing (apply the latest migrations) — saving without them`);
+    dropped = [...new Set([...dropped, ...next])];
+  }
+  return { error: null };
 }
 
 /** Uploads the original image and persists a completed prediction under the
@@ -57,7 +76,8 @@ export async function savePrediction(
   // Tissue columns are only sent when the prediction has tissue data, so a
   // prediction without it saves exactly as it did before migration 0004.
   const hasTissue = !!response.tissue_model_version && !!response.tissue_summary;
-  const { error: predictionError } = await insertWithTissueFallback(
+  const hasTiling = response.tile_px != null && response.stride_px != null;
+  const { error: predictionError } = await insertWithOptionalColumns(
     "predictions",
     [{
       id: response.prediction_id,
@@ -71,8 +91,11 @@ export async function savePrediction(
         tissue_model_version: response.tissue_model_version,
         tissue_summary: response.tissue_summary,
       }),
+      // How the spots' grid indices map to image pixels; only sent when the
+      // model reported it, so older databases save exactly as before.
+      ...(hasTiling && { tile_px: response.tile_px, stride_px: response.stride_px }),
     }],
-    PREDICTION_TISSUE_COLUMNS,
+    [...PREDICTION_TISSUE_COLUMNS, ...PREDICTION_TILING_COLUMNS],
   );
   if (predictionError) throw new Error(`Saving prediction failed: ${predictionError.message}`);
 
@@ -99,7 +122,7 @@ export async function savePrediction(
   // very large spot counts.
   const BATCH = 500;
   for (let i = 0; i < spotRows.length; i += BATCH) {
-    const { error } = await insertWithTissueFallback(
+    const { error } = await insertWithOptionalColumns(
       "prediction_spots", spotRows.slice(i, i + BATCH), SPOT_TISSUE_COLUMNS);
     if (error) throw new Error(`Saving spots failed: ${error.message}`);
   }
@@ -242,6 +265,8 @@ export async function getPredictionResponse(
       top_genes: genes ?? [],
       tissue_model_version: pred.tissue_model_version ?? null,
       tissue_summary: pred.tissue_summary ?? null,
+      tile_px: pred.tile_px ?? null,
+      stride_px: pred.stride_px ?? null,
     },
     imageUrl,
     imagePath: pred.image_path ?? null,
