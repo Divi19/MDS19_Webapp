@@ -2,7 +2,9 @@
 
 import { useMemo } from "react";
 import { CL, type Prediction } from "@/lib/mockPrediction";
-import { clusterTissueLabels, clusterTissueTable, formatPercent, TISSUE_CLASSES, TISSUE_COLORS } from "@/lib/tissue";
+import {
+  clusterTissueLabels, clusterTissueTable, formatPercent, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
+} from "@/lib/tissue";
 
 /** One horizontal stacked bar of tissue-class counts, with the breakdown in
  * its tooltip and accessible name. */
@@ -18,40 +20,75 @@ function CompositionBar({ counts }: { counts: number[] }) {
   );
 }
 
+/** The non-zero types of a row as text, largest first, e.g.
+ * "107 Cancer · 1 Connective" (counts) or "Cancer 74% · Connective 23%". */
+function breakdownText(counts: number[], asShare: boolean): string {
+  const total = counts.reduce((a, b) => a + b, 0);
+  return TISSUE_CLASSES.map((cls, i) => ({ cls, n: counts[i] }))
+    .filter((p) => p.n > 0)
+    .sort((a, b) => b.n - a.n)
+    .map((p) =>
+      asShare
+        ? `${TISSUE_SHORT_NAMES[p.cls]} ${p.n / total < 0.005 ? "<1" : Math.round((p.n / total) * 100)}%`
+        : `${p.n} ${TISSUE_SHORT_NAMES[p.cls]}`,
+    )
+    .join(" · ");
+}
+
 /**
- * The Tissue tab's bottom card: share of tiles per tissue type for the whole
- * section and for each expression cluster (Clusters tab). The expression
- * analysis lives in column 3 (TissueAnalysisPanel).
- * GeneXApp lays this over the cluster breakdown card, so it always has that
- * card's exact height.
+ * The Composition tab of Tissue Analysis (right pane, Tissue tab): which
+ * tissue types make up the whole section and each expression cluster
+ * (Clusters tab), with the counts written out. Hovering a cluster highlights
+ * its tiles on the Tissue map.
  */
-export default function TissueComposition({ pred }: { pred: Prediction }) {
-  const tissue = pred.tissue!;
+export default function TissueComposition({
+  pred,
+  onHoverCluster,
+}: {
+  pred: Prediction;
+  onHoverCluster?: (cluster: number | null) => void;
+}) {
   const crossTab = useMemo(() => clusterTissueTable(pred), [pred]);
   const labels = useMemo(() => clusterTissueLabels(pred), [pred]);
-  const overall = TISSUE_CLASSES.map((name) => tissue.summary[name].count);
+  const overall = TISSUE_CLASSES.map((name) => pred.tissue!.summary[name].count);
 
   return (
-    <div className="card tissue-composition">
-      <div className="card-title">
-        Tissue composition
-        <span className="meta">{pred.total} tiles classified</span>
-      </div>
-      <div className="composition">
-        <div className="composition-row overall">
+    <div className="composition">
+      <section className="cluster-analysis-box composition-row overall">
+        <div className="composition-head">
           <span className="composition-label">All tiles</span>
-          <CompositionBar counts={overall} />
+          <span className="insight-n">{pred.total} tiles</span>
         </div>
-        {crossTab.map((counts, cluster) => (
-          <div key={cluster} className="composition-row">
-            <span className="composition-label" title={labels[cluster] ? `cluster ${cluster} · ${labels[cluster]!.full}` : undefined}>
-              <span className="dot" style={{ background: CL[cluster] }} />
-              {labels[cluster] ? `${cluster} · ${labels[cluster]!.short}` : `cluster ${cluster}`}
-            </span>
+        <CompositionBar counts={overall} />
+        <p className="cluster-analysis-text">{breakdownText(overall, true)}</p>
+      </section>
+      <p className="cluster-analysis-text composition-intro">
+        Each expression cluster (Clusters tab) by the tissue types of its tiles. Hover a cluster to see its tiles on the
+        map.
+      </p>
+      {crossTab.map((counts, cluster) => {
+        const total = counts.reduce((a, b) => a + b, 0);
+        if (!total) return null;
+        return (
+          <section
+            key={cluster}
+            className="cluster-analysis-box composition-row"
+            onMouseEnter={() => onHoverCluster?.(cluster)}
+            onMouseLeave={() => onHoverCluster?.(null)}
+          >
+            <div className="composition-head">
+              <span className="composition-label">
+                <span className="dot" style={{ background: CL[cluster] }} />
+                cluster {cluster}
+                {labels[cluster] && <span className="cluster-tissue">{labels[cluster]!.full}</span>}
+              </span>
+              <span className="insight-n">{total} tiles</span>
+            </div>
             <CompositionBar counts={counts} />
-          </div>
-        ))}
-      </div>
+            <p className="cluster-analysis-text">{breakdownText(counts, false)}</p>
+          </section>
+        );
+      })}
     </div>
   );
 }

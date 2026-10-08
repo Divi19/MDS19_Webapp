@@ -413,7 +413,6 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 @media (max-width:980px){.grid{grid-template-columns:1fr;overflow-y:auto}.col{overflow:visible}.col-1,.col-2{border-right:none;border-bottom:1px solid var(--border)}.col-3{min-height:520px}.col-1 .gene-card{flex:none}.gene-grid{overflow:visible}}
 .insight-gene{font-family:var(--mono);color:var(--accent)}
 .insight-name{display:inline-flex;align-items:center;gap:5px;color:var(--muted);white-space:nowrap}
-.tissue-composition .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;flex-shrink:0}
 .insight-name .dot{margin-right:0}
 .insight-bar{height:6px;border-radius:3px;background:var(--surface3);overflow:hidden}
 .insight-bar span{display:block;height:100%}
@@ -440,14 +439,16 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .opacity-control input{accent-color:var(--accent);width:80px}
 .breakdown-slot{position:relative;flex-shrink:0}
 .breakdown-slot .is-covered{visibility:hidden}
-.tissue-composition{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column}
-.tissue-composition .card-title{margin-bottom:6px}
-.tissue-composition .card-title .meta{font-family:var(--sans);font-size:11px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.composition{display:flex;flex-direction:column;gap:2px}
-.composition-row{display:grid;grid-template-columns:112px 1fr;align-items:center;gap:8px;height:12px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
-.composition-row.overall{color:var(--text);font-weight:600}
-.composition-label{display:inline-flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.tissue-stack{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--surface3)}
+.tissue-breakdown .card-title .meta{font-family:var(--sans);font-size:11px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* Composition tab (Tissue Analysis): one box per cluster, counts written out. */
+.composition{display:flex;flex-direction:column;gap:8px}
+.composition-row{display:flex;flex-direction:column;gap:6px}
+.composition-row:not(.overall):hover{border-color:var(--border2)}
+.composition-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.composition-label{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-size:12.5px;font-weight:600}
+.composition .dot{display:inline-block;width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.composition-intro{margin:4px 2px 0}
+.tissue-stack{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--surface3)}
 .tissue-stack span{height:100%}
 /* Column 3 on the Tissue tab. Cluster Analysis is kept mounted but hidden there. */
 .col-3[hidden]{display:none}
@@ -509,3 +510,7 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .cluster-tile.few .count{color:var(--muted2)}
 .cluster-tile.few .dot{opacity:.4}
 .cluster-tile .pct{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Tissue Analysis header tabs: Expression / Composition. */
+.ta-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.ta-header .seg{flex-shrink:0}
+.ta-header .seg button{padding:4px 10px;font-size:11.5px}

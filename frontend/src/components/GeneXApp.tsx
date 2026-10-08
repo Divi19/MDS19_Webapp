@@ -74,6 +74,7 @@ export default function GeneXApp() {
   const [tissuePin, setTissuePin] = useState<TissueClass | null>(null);
   const [tissueHover, setTissueHover] = useState<TissueClass | null>(null);
   const [tissueGroupHover, setTissueGroupHover] = useState<TissueGroup | null>(null);
+  const [tissueClusterHover, setTissueClusterHover] = useState<number | null>(null);
   // Clusters view: the pinned cluster index (shared by the breakdown tiles
   // and the map legend) — everything outside it fades, same pattern as
   // tissuePin above.
@@ -117,6 +118,7 @@ export default function GeneXApp() {
       // mouse-leave once the panel unmounts, so clear them on every switch.
       setTissueHover(null);
       setTissueGroupHover(null);
+      setTissueClusterHover(null);
       if (v === "gradcam") setGradcamMounted(true);
     },
     [ready],
@@ -958,6 +960,7 @@ export default function GeneXApp() {
                 onTissuePin={setTissuePin}
                 tissueHover={tissueHover}
                 tissueGroupHover={tissueGroupHover}
+                tissueClusterHover={tissueClusterHover}
                 clusterPin={clusterPin}
                 onClusterPin={setClusterPin}
               />
@@ -1033,6 +1036,7 @@ export default function GeneXApp() {
             onPin={setTissuePin}
             onHoverType={setTissueHover}
             onHoverGroup={setTissueGroupHover}
+            onHoverCluster={setTissueClusterHover}
           />
         )}
         <ClusterAnalysisPanel

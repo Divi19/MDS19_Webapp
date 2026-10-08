@@ -190,27 +190,33 @@ describe("TissueAnalysisPanel", () => {
   });
 });
 
-describe("TissueComposition", () => {
-  it("shows whole-section and per-cluster stacked bars with a neutral tile count", () => {
+describe("TissueComposition (Composition tab)", () => {
+  it("shows the whole section and each cluster with its tissue types written out", () => {
     render(<TissueComposition pred={toPrediction(TISSUE_RESPONSE)} />);
-    expect(screen.getByText("4 tiles classified")).toBeTruthy();
-    expect(screen.queryByText(/Cancer-classified/)).toBeNull();
     const bars = screen.getAllByRole("img");
     expect(bars[0].getAttribute("aria-label")).toContain("Cancer 75.0%");
     expect(bars[0].getAttribute("aria-label")).toContain("Adipose tissue 25.0%");
-    expect(bars).toHaveLength(1 + toPrediction(TISSUE_RESPONSE).counts.length);
     expect(screen.getByText("All tiles")).toBeTruthy();
+    expect(screen.getByText("Cancer 75% · Adipose 25%")).toBeTruthy();
+    expect(screen.queryByText(/Cancer-classified/)).toBeNull();
+  });
+
+  it("names each cluster, counts its tile types and highlights it on hover", () => {
+    const onHoverCluster = vi.fn();
+    const { container } = render(<TissueComposition pred={clusteredLargePrediction()} onHoverCluster={onHoverCluster} />);
+    expect(screen.getByText("Cancer (100%)")).toBeTruthy();
+    expect(screen.getByText("10 Cancer · 8 Connective")).toBeTruthy();
+    // Empty clusters 3 and 4 are left out.
+    expect(container.querySelectorAll(".composition-row:not(.overall)")).toHaveLength(3);
+    const row = screen.getByText("10 Cancer · 8 Connective").closest("section")!;
+    fireEvent.mouseEnter(row);
+    expect(onHoverCluster).toHaveBeenLastCalledWith(1);
+    fireEvent.mouseLeave(row);
+    expect(onHoverCluster).toHaveBeenLastCalledWith(null);
   });
 });
 
 describe("cluster tissue names", () => {
-  it("labels composition rows by tissue makeup, with the full name on hover", () => {
-    render(<TissueComposition pred={clusteredLargePrediction()} />);
-    expect(screen.getByTitle("cluster 0 · Cancer (100%)").textContent).toBe("0 · Cancer");
-    expect(screen.getByTitle("cluster 1 · Cancer + Connective").textContent).toBe("1 · Mixed");
-    expect(screen.getByText("cluster 3")).toBeTruthy();
-  });
-
   it("shows the short tissue name in the Clusters legend, full name on hover", () => {
     const { container } = render(<SpatialPlot pred={clusteredLargePrediction()} ready view="clusters" gene="ERBB2" />);
     const items = [...container.querySelectorAll(".legend .legend-item")].map((e) => e.textContent);
@@ -280,5 +286,20 @@ describe("TissueBreakdown (Tissue tab bottom card)", () => {
     expect(tile.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(tile);
     expect(onPin).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe("TissueAnalysisPanel tabs", () => {
+  it("switches between Expression and Composition, clearing hover highlights", () => {
+    const onHoverType = vi.fn();
+    render(
+      <TissueAnalysisPanel pred={clusteredLargePrediction()} gene="ERBB2" onPickGene={() => {}} onHoverType={onHoverType} />,
+    );
+    expect(screen.getByRole("tab", { name: "Expression" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("heading", { level: 4, name: "ERBB2 by tissue type" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Composition" }));
+    expect(onHoverType).toHaveBeenLastCalledWith(null);
+    expect(screen.queryByRole("heading", { level: 4, name: "ERBB2 by tissue type" })).toBeNull();
+    expect(screen.getByText("All tiles")).toBeTruthy();
   });
 });

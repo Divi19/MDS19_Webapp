@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import TissueComposition from "./TissueComposition";
 import type { Prediction } from "@/lib/mockPrediction";
 import { CL } from "@/lib/mockPrediction";
 import {
@@ -15,8 +16,10 @@ export interface TissueGroup {
 }
 
 /**
- * Column 3 on the Tissue tab (Cluster Analysis everywhere else): how the
- * predicted expression differs between tissue types.
+ * Column 3 on the Tissue tab (Cluster Analysis everywhere else), in two
+ * tabs. Expression (default): how the predicted expression differs between
+ * tissue types. Composition: the tissue types of each expression cluster
+ * (TissueComposition).
  *  - The selected gene's mean predicted expression in each tissue type, with
  *    the spread of its tiles; types with too few tiles are greyed out.
  *  - Genes clearly higher in a chosen tissue type than in all other tiles,
@@ -36,6 +39,7 @@ export default function TissueAnalysisPanel({
   onPin,
   onHoverType,
   onHoverGroup,
+  onHoverCluster,
 }: {
   pred: Prediction;
   gene: string;
@@ -44,7 +48,9 @@ export default function TissueAnalysisPanel({
   onPin?: (cls: TissueClass | null) => void;
   onHoverType?: (cls: TissueClass | null) => void;
   onHoverGroup?: (group: TissueGroup | null) => void;
+  onHoverCluster?: (cluster: number | null) => void;
 }) {
+  const [tab, setTab] = useState<"expression" | "composition">("expression");
   const byClass = useMemo(() => geneByTissue(pred, gene), [pred, gene]);
   const types = useMemo(() => comparableTypes(pred), [pred]);
   const [picked, setPicked] = useState<TissueClass>("Cancer");
@@ -65,153 +71,182 @@ export default function TissueAnalysisPanel({
 
   return (
     <div className="col col-3 tissue-analysis">
-      <div className="cluster-analysis-header">
-        <div className="cluster-analysis-title">Tissue Analysis</div>
-        <div className="cluster-analysis-sub">
-          {pred.tissue?.version} · {pred.total} tiles · predicted expression by tissue type
+      <div className="cluster-analysis-header ta-header">
+        <div>
+          <div className="cluster-analysis-title">Tissue Analysis</div>
+          <div className="cluster-analysis-sub">
+            {pred.total} tiles · {tab === "expression" ? "expression by tissue type" : "tissue types per cluster"}
+          </div>
+        </div>
+        <div className="seg" role="tablist" aria-label="Tissue Analysis view">
+          {(["expression", "composition"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              className={tab === t ? "on" : ""}
+              onClick={() => {
+                // The rows that set these unmount with the tab, so their
+                // mouse-leave never fires.
+                onHoverType?.(null);
+                onHoverGroup?.(null);
+                onHoverCluster?.(null);
+                setTab(t);
+              }}
+            >
+              {t === "expression" ? "Expression" : "Composition"}
+            </button>
+          ))}
         </div>
       </div>
-      <div className="cluster-analysis-list">
-        <section className="cluster-analysis-box" aria-labelledby="ta-gene">
-          <h4 id="ta-gene" className="ta-title">
-            <span className="insight-gene">{gene}</span> by tissue type
-          </h4>
-          <p className="cluster-analysis-text">
-            Bar: mean predicted expression per tile. Line: where the middle half of that type&apos;s tiles fall. A
-            difference smaller than the lines is within normal tile-to-tile variation. Types with fewer than{" "}
-            {MIN_TILES} tiles are greyed out.
-          </p>
-          {byClass.map(({ cls, count, mean, q1, q3, enough }) => (
-            <div
-              key={cls}
-              className={`ta-row${enough ? "" : " few"}${pinned === cls ? " pinned" : ""}`}
-              onMouseEnter={() => onHoverType?.(cls)}
-              onMouseLeave={() => onHoverType?.(null)}
-              title={
-                enough
-                  ? `${cls}: ${count} tiles · mean ${mean!.toFixed(2)} · middle half ${q1!.toFixed(2)}–${q3!.toFixed(2)}`
-                  : `${cls}: ${count} tiles · too few to compare`
-              }
-            >
-              <span className="insight-name">
-                <span className="dot" style={{ background: TISSUE_COLORS[cls] }} />
-                {TISSUE_SHORT_NAMES[cls]}
-              </span>
-              <span className="ta-bar">
-                {enough && scale > 0 && (
-                  <>
-                    <span className="ta-fill" style={{ width: pct(mean!), background: TISSUE_COLORS[cls] }} />
-                    <span className="ta-range" style={{ left: pct(q1!), width: `calc(${pct(q3!)} - ${pct(q1!)})` }} />
-                  </>
-                )}
-              </span>
-              <span className="insight-val">{enough ? mean!.toFixed(2) : "too few"}</span>
-              <span className="insight-n">n={count}</span>
-            </div>
-          ))}
-        </section>
-
-        <section className="cluster-analysis-box" aria-labelledby="ta-markers">
-          <h4 id="ta-markers" className="ta-title">Genes higher in {type ? TISSUE_SHORT_NAMES[type] : "a tissue type"}</h4>
-          {types.length ? (
-            <>
-              <div className="ta-types" role="group" aria-label="Tissue type">
-                {types.map((cls) => (
-                  <button
-                    key={cls}
-                    type="button"
-                    className={`legend-item legend-compact${cls === type ? " on" : ""}`}
-                    aria-pressed={cls === type}
-                    title={pinned === cls ? "Pinned on the map · click to unpin" : "Show and pin on the map"}
-                    onClick={() => {
-                      setPicked(cls);
-                      onPin?.(pinned === cls ? null : cls);
-                    }}
-                  >
-                    <span className="legend-dot" style={{ background: TISSUE_COLORS[cls] }} />
-                    {TISSUE_SHORT_NAMES[cls]}
-                  </button>
-                ))}
-              </div>
+      <div className="cluster-analysis-list" role="tabpanel">
+        {tab === "composition" ? (
+          <TissueComposition pred={pred} onHoverCluster={onHoverCluster} />
+        ) : (
+          <>
+            <section className="cluster-analysis-box" aria-labelledby="ta-gene">
+              <h4 id="ta-gene" className="ta-title">
+                <span className="insight-gene">{gene}</span> by tissue type
+              </h4>
               <p className="cluster-analysis-text">
-                Average in {TISSUE_SHORT_NAMES[type!]} tiles vs all other tiles. Only genes that stay clearly higher after
-                allowing for normal tile-to-tile variation and for each tile&apos;s overall level are listed. Click a gene to
-                select it.
+                Bar: mean predicted expression per tile. Line: where the middle half of that type&apos;s tiles fall. A
+                difference smaller than the lines is within normal tile-to-tile variation. Types with fewer than{" "}
+                {MIN_TILES} tiles are greyed out.
               </p>
-              {higher.length ? (
-                higher.map((row) => (
-                  <div key={row.gene} className={`ta-gene-row${row.gene === gene ? " on" : ""}`}>
-                    <button type="button" className="insight-gene-btn" onClick={() => onPickGene(row.gene)}>
-                      {row.gene}
-                    </button>
-                    <span className="insight-val">
-                      {row.typeMean.toFixed(2)} vs {row.restMean.toFixed(2)}
-                    </span>
-                    <span className="insight-diff">+{row.diff.toFixed(2)}</span>
+              {byClass.map(({ cls, count, mean, q1, q3, enough }) => (
+                <div
+                  key={cls}
+                  className={`ta-row${enough ? "" : " few"}${pinned === cls ? " pinned" : ""}`}
+                  onMouseEnter={() => onHoverType?.(cls)}
+                  onMouseLeave={() => onHoverType?.(null)}
+                  title={
+                    enough
+                      ? `${cls}: ${count} tiles · mean ${mean!.toFixed(2)} · middle half ${q1!.toFixed(2)}–${q3!.toFixed(2)}`
+                      : `${cls}: ${count} tiles · too few to compare`
+                  }
+                >
+                  <span className="insight-name">
+                    <span className="dot" style={{ background: TISSUE_COLORS[cls] }} />
+                    {TISSUE_SHORT_NAMES[cls]}
+                  </span>
+                  <span className="ta-bar">
+                    {enough && scale > 0 && (
+                      <>
+                        <span className="ta-fill" style={{ width: pct(mean!), background: TISSUE_COLORS[cls] }} />
+                        <span className="ta-range" style={{ left: pct(q1!), width: `calc(${pct(q3!)} - ${pct(q1!)})` }} />
+                      </>
+                    )}
+                  </span>
+                  <span className="insight-val">{enough ? mean!.toFixed(2) : "too few"}</span>
+                  <span className="insight-n">n={count}</span>
+                </div>
+              ))}
+            </section>
+
+            <section className="cluster-analysis-box" aria-labelledby="ta-markers">
+              <h4 id="ta-markers" className="ta-title">Genes higher in {type ? TISSUE_SHORT_NAMES[type] : "a tissue type"}</h4>
+              {types.length ? (
+                <>
+                  <div className="ta-types" role="group" aria-label="Tissue type">
+                    {types.map((cls) => (
+                      <button
+                        key={cls}
+                        type="button"
+                        className={`legend-item legend-compact${cls === type ? " on" : ""}`}
+                        aria-pressed={cls === type}
+                        title={pinned === cls ? "Pinned on the map · click to unpin" : "Show and pin on the map"}
+                        onClick={() => {
+                          setPicked(cls);
+                          onPin?.(pinned === cls ? null : cls);
+                        }}
+                      >
+                        <span className="legend-dot" style={{ background: TISSUE_COLORS[cls] }} />
+                        {TISSUE_SHORT_NAMES[cls]}
+                      </button>
+                    ))}
                   </div>
-                ))
+                  <p className="cluster-analysis-text">
+                    Average in {TISSUE_SHORT_NAMES[type!]} tiles vs all other tiles. Only genes that stay clearly higher after
+                    allowing for normal tile-to-tile variation and for each tile&apos;s overall level are listed. Click a gene to
+                    select it.
+                  </p>
+                  {higher.length ? (
+                    higher.map((row) => (
+                      <div key={row.gene} className={`ta-gene-row${row.gene === gene ? " on" : ""}`}>
+                        <button type="button" className="insight-gene-btn" onClick={() => onPickGene(row.gene)}>
+                          {row.gene}
+                        </button>
+                        <span className="insight-val">
+                          {row.typeMean.toFixed(2)} vs {row.restMean.toFixed(2)}
+                        </span>
+                        <span className="insight-diff">+{row.diff.toFixed(2)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="insight-note">
+                      No genes clearly higher in {TISSUE_SHORT_NAMES[type!]}.
+                    </p>
+                  )}
+                </>
               ) : (
                 <p className="insight-note">
-                  No genes clearly higher in {TISSUE_SHORT_NAMES[type!]}.
+                  Needs a tissue type with at least {MIN_TILES} tiles and at least {MIN_TILES} other tiles to compare.
                 </p>
               )}
-            </>
-          ) : (
-            <p className="insight-note">
-              Needs a tissue type with at least {MIN_TILES} tiles and at least {MIN_TILES} other tiles to compare.
-            </p>
-          )}
-        </section>
-        {type && (
-          <section className="cluster-analysis-box" aria-labelledby="ta-groups">
-            <h4 id="ta-groups" className="ta-title">Expression groups within {TISSUE_SHORT_NAMES[type]}</h4>
-            <p className="cluster-analysis-text">
-              The expression clusters (Clusters tab) that {TISSUE_SHORT_NAMES[type]} tiles fall into. Same tissue type,
-              different gene pattern. Hover a group to see its tiles on the map.
-            </p>
-            {groups.map((g) => (
-              <div
-                key={g.cluster}
-                className="ta-group-row"
-                onMouseEnter={() => onHoverGroup?.({ cls: type, cluster: g.cluster })}
-                onMouseLeave={() => onHoverGroup?.(null)}
-                title={`${g.count} ${type} tiles in ${clusterName(g.cluster)}`}
-              >
-                <span className="insight-name">
-                  <span className="dot" style={{ background: CL[g.cluster] }} />
-                  {clusterName(g.cluster)}
-                </span>
-                <span className="insight-n">n={g.count}</span>
-              </div>
-            ))}
-            {groups.length === 0 && (
-              <p className="insight-note">
-                {TISSUE_SHORT_NAMES[type]} tiles are spread over clusters with fewer than {MIN_TILES} tiles each.
-              </p>
+            </section>
+            {type && (
+              <section className="cluster-analysis-box" aria-labelledby="ta-groups">
+                <h4 id="ta-groups" className="ta-title">Expression groups within {TISSUE_SHORT_NAMES[type]}</h4>
+                <p className="cluster-analysis-text">
+                  The expression clusters (Clusters tab) that {TISSUE_SHORT_NAMES[type]} tiles fall into. Same tissue type,
+                  different gene pattern. Hover a group to see its tiles on the map.
+                </p>
+                {groups.map((g) => (
+                  <div
+                    key={g.cluster}
+                    className="ta-group-row"
+                    onMouseEnter={() => onHoverGroup?.({ cls: type, cluster: g.cluster })}
+                    onMouseLeave={() => onHoverGroup?.(null)}
+                    title={`${g.count} ${type} tiles in ${clusterName(g.cluster)}`}
+                  >
+                    <span className="insight-name">
+                      <span className="dot" style={{ background: CL[g.cluster] }} />
+                      {clusterName(g.cluster)}
+                    </span>
+                    <span className="insight-n">n={g.count}</span>
+                  </div>
+                ))}
+                {groups.length === 0 && (
+                  <p className="insight-note">
+                    {TISSUE_SHORT_NAMES[type]} tiles are spread over clusters with fewer than {MIN_TILES} tiles each.
+                  </p>
+                )}
+                {groups.length === 1 && (
+                  <p className="insight-note">
+                    Only one cluster has {MIN_TILES} or more {TISSUE_SHORT_NAMES[type]} tiles, so there is no second group to
+                    compare.
+                  </p>
+                )}
+                {between && (
+                  <div className="ta-between">
+                    <GroupGenes
+                      title={`Higher in cluster ${groups[0].cluster} than cluster ${groups[1].cluster}`}
+                      genes={between.higherInA}
+                      gene={gene}
+                      onPickGene={onPickGene}
+                    />
+                    <GroupGenes
+                      title={`Higher in cluster ${groups[1].cluster} than cluster ${groups[0].cluster}`}
+                      genes={between.higherInB}
+                      gene={gene}
+                      onPickGene={onPickGene}
+                    />
+                  </div>
+                )}
+              </section>
             )}
-            {groups.length === 1 && (
-              <p className="insight-note">
-                Only one cluster has {MIN_TILES} or more {TISSUE_SHORT_NAMES[type]} tiles, so there is no second group to
-                compare.
-              </p>
-            )}
-            {between && (
-              <div className="ta-between">
-                <GroupGenes
-                  title={`Higher in cluster ${groups[0].cluster} than cluster ${groups[1].cluster}`}
-                  genes={between.higherInA}
-                  gene={gene}
-                  onPickGene={onPickGene}
-                />
-                <GroupGenes
-                  title={`Higher in cluster ${groups[1].cluster} than cluster ${groups[0].cluster}`}
-                  genes={between.higherInB}
-                  gene={gene}
-                  onPickGene={onPickGene}
-                />
-              </div>
-            )}
-          </section>
+          </>
         )}
       </div>
     </div>
