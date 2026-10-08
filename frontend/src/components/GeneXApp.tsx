@@ -15,7 +15,7 @@ import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
 import TissueAnalysisPanel, { type TissueGroup } from "./TissueAnalysisPanel";
-import TissueComposition from "./TissueComposition";
+import TissueBreakdown from "./TissueBreakdown";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
 import {
@@ -969,7 +969,7 @@ export default function GeneXApp() {
               it — is exactly the same height on every tab. */}
           <div className="breakdown-slot">
           {view === "tissue" && ready && pred.tissue && (
-            <TissueComposition pred={pred} />
+            <TissueBreakdown pred={pred} pinned={tissuePin} onPin={setTissuePin} />
           )}
           <div
             className={`card cluster-card${view === "tissue" && ready && pred.tissue ? " is-covered" : ""}`}

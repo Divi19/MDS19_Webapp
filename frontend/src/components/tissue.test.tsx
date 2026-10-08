@@ -4,6 +4,7 @@ import { toPrediction } from "@/lib/api";
 import { clusteredLargePrediction, LARGE_TISSUE_RESPONSE, OLD_RESPONSE, TISSUE_RESPONSE } from "@/test/fixtures";
 import SpatialPlot from "./SpatialPlot";
 import TissueAnalysisPanel from "./TissueAnalysisPanel";
+import TissueBreakdown from "./TissueBreakdown";
 import TissueComposition from "./TissueComposition";
 
 beforeAll(() => {
@@ -254,5 +255,30 @@ describe("TissueAnalysisPanel — expression groups within a type", () => {
     render(<TissueAnalysisPanel pred={single} gene="ERBB2" onPickGene={() => {}} />);
     expect(screen.getByText(/Only one cluster has 10 or more Cancer tiles/)).toBeTruthy();
     expect(screen.queryByText(/^Higher in cluster/)).toBeNull();
+  });
+});
+
+describe("TissueBreakdown (Tissue tab bottom card)", () => {
+  it("shows one tile per tissue type with count and share, flagging types with too few tiles", () => {
+    render(<TissueBreakdown pred={toPrediction(LARGE_TISSUE_RESPONSE)} />);
+    const cancer = screen.getByRole("button", { name: /Cancer/ });
+    expect(cancer.textContent).toBe("Cancer2057.1%");
+    const adipose = screen.getByRole("button", { name: /Adipose/ });
+    expect(adipose.textContent).toBe("Adipose38.6% · too few");
+    expect(adipose.className).toContain("few");
+    expect(screen.getAllByRole("button")).toHaveLength(5);
+  });
+
+  it("pins and unpins a type on click", () => {
+    const onPin = vi.fn();
+    const pred = toPrediction(LARGE_TISSUE_RESPONSE);
+    const { rerender } = render(<TissueBreakdown pred={pred} onPin={onPin} />);
+    fireEvent.click(screen.getByRole("button", { name: /Connective/ }));
+    expect(onPin).toHaveBeenLastCalledWith("Connective tissue");
+    rerender(<TissueBreakdown pred={pred} pinned="Connective tissue" onPin={onPin} />);
+    const tile = screen.getByRole("button", { name: /Connective/ });
+    expect(tile.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(tile);
+    expect(onPin).toHaveBeenLastCalledWith(null);
   });
 });

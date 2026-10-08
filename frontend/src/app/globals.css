@@ -504,3 +504,8 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .ta-group-row:hover{background:var(--surface3)}
 .ta-group-row .insight-name{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .ta-between{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+/* Tissue tab bottom card: tissue-type tiles over the (hidden) cluster card. */
+.tissue-breakdown{position:absolute;inset:0;overflow:hidden}
+.cluster-tile.few .count{color:var(--muted2)}
+.cluster-tile.few .dot{opacity:.4}
+.cluster-tile .pct{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
