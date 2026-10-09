@@ -1,6 +1,13 @@
 """
-Pathway enrichment via DAVID (davidbioinformatics.nih.gov), restricted to
-KEGG_PATHWAY by default — "where is this gene commonly found."
+Pathway enrichment via DAVID (davidbioinformatics.nih.gov), querying KEGG,
+Reactome, and GO Biological Process by default — "where is this gene
+commonly found." KEGG alone was the original default, but a 5-gene cluster
+marker set often has nothing in KEGG specifically even when it has a real,
+well-annotated signal elsewhere (confirmed live: the same 5-gene HER2+ set
+went from 1 KEGG hit to 18 hits across all three categories, all passing
+DAVID's own significance filter) — DAVID is a hub over many annotation
+databases, not just KEGG, so querying more of them is a wider question to
+the same service, not a new integration.
 
 Two things about DAVID's web service are easy to get wrong silently, both
 confirmed by hand against the live service before writing this:
@@ -41,6 +48,13 @@ MYGENE_URL = "https://mygene.info/v3/query"
 # hits. count=1 surfaces those; threshold stays at DAVID's own default.
 DEFAULT_EASE = 0.1
 DEFAULT_MIN_COUNT = 1
+
+# setCategories() takes a comma-separated list — DAVID treats it as "any of
+# these", not "all of these", so this just widens which of its own
+# annotation databases get searched. KEGG alone frequently returns nothing
+# for a 5-gene cluster marker set; REACTOME_PATHWAY and GOTERM_BP_FAT (GO
+# Biological Process) cover a lot of real biology KEGG doesn't curate.
+DEFAULT_CATEGORIES = "KEGG_PATHWAY,REACTOME_PATHWAY,GOTERM_BP_FAT"
 
 
 class PathwayLookupError(Exception):
@@ -94,7 +108,7 @@ class DavidClient:
     def get_pathways(
         self,
         gene_symbols: list[str],
-        category: str = "KEGG_PATHWAY",
+        category: str = DEFAULT_CATEGORIES,
         ease: float = DEFAULT_EASE,
         min_count: int = DEFAULT_MIN_COUNT,
     ) -> list[dict]:

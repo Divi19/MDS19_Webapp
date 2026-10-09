@@ -6,9 +6,15 @@ import { analyzeClusters } from "@/lib/clusterAnalysis";
 import type { PathwayState } from "@/lib/pathways";
 import { clusterTissueLabels } from "@/lib/tissue";
 
-/** KEGG term names come back as "hsa05224:Breast cancer" — the pathway ID
- * prefix is noise for display, stripped here and not shown anywhere. */
+/** Strips each category's own ID prefix — noise for display, never shown.
+ * KEGG: "hsa05224:Breast cancer". Reactome and GO both use a tilde instead
+ * of a bare colon: "R-HSA-1306955~GRB7 events in ERBB2 signaling",
+ * "GO:0007173~epidermal growth factor receptor signaling pathway" (GO's own
+ * "GO:0007173" would survive a colon-only strip, so tilde is checked
+ * first). */
 function formatTerm(term: string): string {
+  const afterTilde = term.split("~");
+  if (afterTilde.length > 1) return afterTilde.slice(1).join("~");
   return term.replace(/^[a-zA-Z]+\d+:/, "");
 }
 
@@ -108,7 +114,7 @@ export default function ClusterAnalysisPanel({
                     <span
                       className="info-icon"
                       tabIndex={0}
-                      data-tooltip="Biological pathways this cluster's genes are significantly linked to, from DAVID's KEGG enrichment analysis. No pathways shown just means none reached significance. It does not mean the genes have no known function."
+                      data-tooltip="Biological pathways and processes this cluster's genes are significantly linked to, found by searching KEGG, Reactome, and GO Biological Process together through DAVID. No pathways shown just means none reached significance. It does not mean the genes have no known function."
                     >
                       i
                     </span>
@@ -134,7 +140,7 @@ export default function ClusterAnalysisPanel({
                             </span>
                           ))
                       ) : (
-                        <span className="cluster-analysis-text">no significant KEGG pathways found</span>
+                        <span className="cluster-analysis-text">no significant pathways found</span>
                       )}
                     </div>
                   )}
