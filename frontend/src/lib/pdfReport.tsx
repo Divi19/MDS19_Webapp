@@ -468,10 +468,10 @@ function PathwayEnrichment({ data }: { data: ReportData }) {
       <Text style={styles.h1}>Pathway Enrichment</Text>
       <Text style={styles.body}>
         Each cluster&apos;s top genes are tested against DAVID&apos;s KEGG, Reactome, and GO Biological Process
-        databases together. Because a cluster&apos;s gene list is short relative to the hundreds of pathway terms
-        tested, results are screened on the Benjamini-Hochberg FDR-corrected p-value, not the raw p-value. A cluster
-        with no listed pathway below does not have genes of no known function — it simply found no match that
-        survived correction.
+        databases together. DAVID only returns a term once its enrichment p-value clears its own significance
+        threshold, loosened here from DAVID&apos;s stricter default since a cluster&apos;s gene list is short (five
+        genes) relative to the hundreds of pathway terms tested. A cluster with no listed pathway below does not
+        have genes of no known function — it simply found no match that cleared that threshold.
       </Text>
 
       {analysis.map((a) => {
