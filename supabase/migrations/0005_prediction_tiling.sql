@@ -6,11 +6,12 @@
 --
 -- Context: each spot's x/y are tile grid indices. Tile (x, y) covers
 -- [x*stride_px, x*stride_px + tile_px) in original-image pixels. The local
--- MclSTExp backend tiles at 224/224; the v7 Modal model at 224/290. History
--- needs the values to redraw a reopened run in the right place. Both columns
--- are nullable: rows saved before this migration (or from a model that does
--- not report them) read back as null and the frontend falls back to 224/224
--- (frontend/src/lib/tiling.ts).
+-- MclSTExp backend and the old v7 Modal model both tile at 224/224;
+-- v16-core tiles at 224/290. History needs the values to redraw a reopened
+-- run in the right place. Both columns are nullable: rows saved before this
+-- migration (or from a model that does not report them) read back as null
+-- and the frontend falls back to 224/224, or to a known model_version's own
+-- tiling (frontend/src/lib/tiling.ts).
 
 alter table predictions
   add column if not exists tile_px   integer,  -- tile size, original-image pixels

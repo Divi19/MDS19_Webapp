@@ -184,8 +184,10 @@ pixels. Tile (x, y) covers `[x*stride_px, x*stride_px + tile_px)` in the
 original image, so the frontend needs both numbers to draw spots and Grad-CAM
 tiles in the right place:
 
-- Local `MclSTExpPredictor`: `tile_px = 224`, `stride_px = 224` (no gaps).
-- v7 Modal model: `tile_px = 224`, `stride_px = 290` (200 µm at ~0.69 µm/px).
+- Local `MclSTExpPredictor` and the old v7 Modal model: `tile_px = 224`,
+  `stride_px = 224` (no gaps).
+- v16-core Modal model: `tile_px = 224`, `stride_px = 290` (200 µm at
+  ~0.69 µm/px).
 
 The predict response carries `tile_px` and `stride_px` (nullable), and the
 frontend reads them via `frontend/src/lib/tiling.ts`. When they are absent it
