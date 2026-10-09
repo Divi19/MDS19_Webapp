@@ -20,7 +20,7 @@ from app.services.gradcam import GradCAM, TileResult, ViTGradCAM, overlay_heatma
 from app.services.encoders import (
     build_encoder, H0MINI_COMBINED_DIM, H0MINI_CONTEXT_MULTIPLIER,
 )
-from app.services.tissue import H0MiniFeatureExtractor, attach_tissue, load_tissue_classifier
+from app.services.tissue import DISPLAY_CLASSES, H0MiniFeatureExtractor, attach_tissue, load_tissue_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,10 @@ class DummyPredictor(BasePredictor):
     def is_loaded(self) -> bool:
         return self._loaded
 
+    # Matches predict()'s own synthetic tissue data below — reported by
+    # /api/health the same way the real predictors report theirs.
+    tissue_model_version = "dummy-tissue-v1"
+
     def predict(self, image_bytes: bytes) -> dict:
         if not self._loaded:
             raise RuntimeError("Predictor not loaded")
@@ -126,11 +130,35 @@ class DummyPredictor(BasePredictor):
                     for i, gene in enumerate(self.GENES)
                 }
 
+                # Synthetic tissue classification (same shape attach_tissue()
+                # produces), purely so local dev can exercise tissue-dependent
+                # UI (the Tissue tab, the Cancer-type gene filter) without
+                # Modal/Supabase credentials. Blocky by grid position, not
+                # per-spot random, so every class clears comparableTypes()'
+                # >=10-tile minimum instead of being scattered too thin.
+                cls_idx = (row // 4 + col // 4) % len(DISPLAY_CLASSES)
+                raw_probs = self._rng.dirichlet(np.full(len(DISPLAY_CLASSES), 0.3))
+                raw_probs[cls_idx] += 0.5  # bias the assigned class to actually be the argmax
+                raw_probs /= raw_probs.sum()
+                tissue_probs = {c: float(p) for c, p in zip(DISPLAY_CLASSES, raw_probs)}
+                tissue_class = max(tissue_probs, key=tissue_probs.get)
+
+                # Two genes genuinely elevated on Cancer tiles, so geneHomeTissue()
+                # has a real signal to find — everything else stays tissue-
+                # agnostic ("no clear type"), a realistic mixed outcome rather
+                # than every gene (or none) getting tagged.
+                if tissue_class == "Cancer":
+                    expression["ERBB2"] += 1.2
+                    expression["GRB7"] += 1.0
+
                 spots.append({
                     "spot_index": idx,
                     "x": float(x),
                     "y": float(y),
                     "expression": expression,
+                    "tissue_class": tissue_class,
+                    "tissue_confidence": tissue_probs[tissue_class],
+                    "tissue_probs": tissue_probs,
                 })
                 idx += 1
 
@@ -144,10 +172,21 @@ class DummyPredictor(BasePredictor):
             for i, (g, v) in enumerate(ranked)
         ]
 
+        total = len(spots)
+        counts = {c: 0 for c in DISPLAY_CLASSES}
+        for s in spots:
+            counts[s["tissue_class"]] += 1
+        tissue_summary = {
+            c: {"count": counts[c], "fraction": counts[c] / total if total else 0.0}
+            for c in DISPLAY_CLASSES
+        }
+
         return {
             "spots": spots,
             "top_genes": top_genes,
             "model_version": "dummy-v1",
+            "tissue_model_version": "dummy-tissue-v1",
+            "tissue_summary": tissue_summary,
         }
 
 

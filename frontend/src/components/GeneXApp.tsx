@@ -542,6 +542,11 @@ export default function GeneXApp() {
 
   // Cards or table — user's choice of how the gene panel is presented.
   const [geneView, setGeneView] = useState<"cards" | "table">("table");
+  // Predicted Gene Expression table/cards: ticked narrows the list to only
+  // genes whose home tissue (geneHome, below) is Cancer, still ranked high
+  // to low; unticked (the default) is the full unfiltered table. Only
+  // meaningful (and only shown) when the prediction has tissue data at all.
+  const [showOnlyCancerGenes, setShowOnlyCancerGenes] = useState(false);
 
   // 8 cards per page normally — but measured and capped, never just assumed.
   // A hardcoded 8 let the fixed-size name/value text outgrow a short screen's
@@ -604,9 +609,16 @@ export default function GeneXApp() {
     return () => ro.disconnect();
   }, [ready, pred.topGenes.length, geneView, geneHome]);
 
-  const geneTotalPages = Math.max(1, Math.ceil(pred.topGenes.length / genesPerPage));
+  const filteredTopGenes = useMemo(
+    () =>
+      showOnlyCancerGenes && geneHome
+        ? pred.topGenes.filter((g) => geneHome.get(g.name)?.cls === "Cancer")
+        : pred.topGenes,
+    [pred.topGenes, showOnlyCancerGenes, geneHome],
+  );
+  const geneTotalPages = Math.max(1, Math.ceil(filteredTopGenes.length / genesPerPage));
   const genePageClamped = Math.min(genePage, geneTotalPages - 1);
-  const genePageRows = pred.topGenes.slice(
+  const genePageRows = filteredTopGenes.slice(
     genePageClamped * genesPerPage,
     genePageClamped * genesPerPage + genesPerPage,
   );
@@ -801,6 +813,19 @@ export default function GeneXApp() {
                   Cards
                 </button>
               </div>
+            )}
+            {ready && geneHome && (
+              <label className="gene-filter-toggle">
+                <input
+                  type="checkbox"
+                  checked={showOnlyCancerGenes}
+                  onChange={(e) => {
+                    setShowOnlyCancerGenes(e.target.checked);
+                    setGenePage(0);
+                  }}
+                />
+                Show Cancer-type genes
+              </label>
             )}
             {!ready ? (
               <div className="empty-row">no predictions yet — upload a section</div>
