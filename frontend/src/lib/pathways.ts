@@ -20,13 +20,16 @@ export type PathwayState =
   | { status: "error"; message: string }
   | { status: "done"; results: PathwayResult[] };
 
-/** Pathway enrichment (DAVID, KEGG_PATHWAY by default) for a small gene
- * list — a cluster's marker genes, or a single gene. Throws with a message
- * safe to show directly (the backend's own error text), including the
- * clean "not configured" case (DAVID_EMAIL unset) as a 501. */
+/** Pathway enrichment (DAVID) for a small gene list — a cluster's marker
+ * genes, or a single gene. Queries KEGG, Reactome, and GO Biological
+ * Process by default (the backend's DEFAULT_CATEGORIES, the single source
+ * of truth — omitted here so `category` left unset means exactly that, not
+ * a second copy of the list). Throws with a message safe to show directly
+ * (the backend's own error text), including the clean "not configured"
+ * case (DAVID_EMAIL unset) as a 501. */
 export async function fetchPathways(
   genes: string[],
-  category = "KEGG_PATHWAY",
+  category?: string,
 ): Promise<PathwayResult[]> {
   const res = await fetch(`${API_URL}/api/pathways`, {
     method: "POST",

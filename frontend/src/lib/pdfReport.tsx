@@ -17,9 +17,12 @@ export interface ReportData {
   gradcamImage: string;
 }
 
-/** KEGG term names come back as "hsa05224:Breast cancer" — strip the
- * pathway ID prefix, same as the live Cluster Analysis panel. */
+/** Strips each category's own ID prefix, same as the live Cluster Analysis
+ * panel — KEGG uses a bare colon ("hsa05224:Breast cancer"), Reactome and
+ * GO use a tilde ("R-HSA-1306955~GRB7 events in ERBB2 signaling"). */
 function formatTerm(term: string): string {
+  const afterTilde = term.split("~");
+  if (afterTilde.length > 1) return afterTilde.slice(1).join("~");
   return term.replace(/^[a-zA-Z]+\d+:/, "");
 }
 
@@ -220,7 +223,7 @@ function Cover({ data }: { data: ReportData }) {
         </View>
         <View style={styles.coverMetaItem}>
           <Text style={styles.coverMetaLabel}>Pathway source</Text>
-          <Text style={styles.coverMetaValue}>DAVID · KEGG</Text>
+          <Text style={styles.coverMetaValue}>DAVID (KEGG, Reactome, GO:BP)</Text>
         </View>
         <View style={styles.coverMetaItem}>
           <Text style={styles.coverMetaLabel}>Prepared with</Text>
@@ -289,8 +292,8 @@ function ExecutiveSummary({ data }: { data: ReportData }) {
         This report summarises the spatial gene expression prediction for sample{" "}
         <Text style={{ fontFamily: "Courier-Bold" }}>{data.sampleName}</Text>. GeneX predicted expression across{" "}
         {pred.genes.length} genes for each of {pred.total} tissue spots, grouped into {pred.clusters.length}{" "}
-        expression clusters. Pathway enrichment against the DAVID KEGG database returned significant matches for{" "}
-        {significantClusters.length} of {analysis.length} clusters.
+        expression clusters. Pathway enrichment against DAVID (KEGG, Reactome, and GO Biological Process) returned
+        significant matches for {significantClusters.length} of {analysis.length} clusters.
       </Text>
 
       <View style={styles.statRow}>
@@ -325,7 +328,7 @@ function ExecutiveSummary({ data }: { data: ReportData }) {
             p?.status === "done"
               ? p.results.length
                 ? `matched ${p.results.slice(0, 2).map((r) => formatTerm(r.term)).join(", ")}`
-                : "no significant KEGG pathway matched"
+                : "no significant pathway matched"
               : "pathway lookup not yet complete";
           return (
             <View key={a.index} style={styles.findingItem}>
@@ -351,7 +354,7 @@ function SampleOverview({ data }: { data: ReportData }) {
     ["Spots analysed", String(pred.total)],
     ["Genes predicted per spot", String(pred.genes.length)],
     ["Expression clusters identified", String(pred.clusters.length)],
-    ["Pathway database", "DAVID · KEGG_PATHWAY"],
+    ["Pathway database", "DAVID (KEGG_PATHWAY, REACTOME_PATHWAY, GOTERM_BP_FAT)"],
   ];
   return (
     <Page size="A4" style={styles.page}>
@@ -464,10 +467,11 @@ function PathwayEnrichment({ data }: { data: ReportData }) {
       <Text style={styles.eyebrow}>Section 04</Text>
       <Text style={styles.h1}>Pathway Enrichment</Text>
       <Text style={styles.body}>
-        Each cluster&apos;s top genes are tested against DAVID&apos;s KEGG pathway database. Because a cluster&apos;s
-        gene list is short relative to the hundreds of pathway terms tested, results are screened on the
-        Benjamini-Hochberg FDR-corrected p-value, not the raw p-value. A cluster with no listed pathway below does
-        not have genes of no known function — it simply found no match that survived correction.
+        Each cluster&apos;s top genes are tested against DAVID&apos;s KEGG, Reactome, and GO Biological Process
+        databases together. DAVID only returns a term once its enrichment p-value clears its own significance
+        threshold, loosened here from DAVID&apos;s stricter default since a cluster&apos;s gene list is short (five
+        genes) relative to the hundreds of pathway terms tested. A cluster with no listed pathway below does not
+        have genes of no known function — it simply found no match that cleared that threshold.
       </Text>
 
       {analysis.map((a) => {
@@ -488,7 +492,7 @@ function PathwayEnrichment({ data }: { data: ReportData }) {
                   ))}
                 </View>
               ) : (
-                <Text style={[styles.cardText]}>No significant KEGG pathways found.</Text>
+                <Text style={[styles.cardText]}>No significant pathways found.</Text>
               )
             ) : p?.status === "error" ? (
               <Text style={styles.cardText}>{p.message}</Text>

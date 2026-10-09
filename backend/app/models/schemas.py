@@ -1,6 +1,8 @@
 from pydantic import BaseModel
 from datetime import datetime
 
+from app.services.david_client import DEFAULT_CATEGORIES
+
 
 class SpotPrediction(BaseModel):
     spot_index: int
@@ -50,7 +52,7 @@ class HealthResponse(BaseModel):
 
 class PathwayRequest(BaseModel):
     genes: list[str]
-    category: str = "KEGG_PATHWAY"
+    category: str = DEFAULT_CATEGORIES
 
 
 class PathwayResult(BaseModel):
