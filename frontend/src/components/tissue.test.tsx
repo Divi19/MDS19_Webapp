@@ -228,7 +228,7 @@ describe("TissueComposition (Composition tab)", () => {
 describe("cluster tissue names", () => {
   it("shows the short tissue name in the Clusters legend, full name on hover", () => {
     const { container } = render(<SpatialPlot pred={clusteredLargePrediction()} ready view="clusters" gene="ERBB2" />);
-    const items = [...container.querySelectorAll(".legend .legend-item")].map((e) => e.textContent);
+    const items = [...container.querySelectorAll(".legend .legend-item .legend-name")].map((e) => e.textContent);
     expect(items.slice(0, 3)).toEqual(["0 · Cancer", "1 · Mixed", "2 · Connective"]);
     expect(items[3]).toBe("cluster 3");
     expect(container.querySelector(".legend .legend-item")!.getAttribute("title")).toBe("cluster 0 · Cancer (100%)");

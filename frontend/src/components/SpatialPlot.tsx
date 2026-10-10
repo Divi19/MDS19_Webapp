@@ -4,11 +4,25 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
 import { DEFAULT_TILING, tileCentre, type Tiling } from "@/lib/tiling";
 import {
-  clusterTissueLabels, formatPercent, isUncertain, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
+  clusterTissueLabels, formatPercent, isUncertain, MIN_TILES, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
   type TissueClass,
 } from "@/lib/tissue";
 
-const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
+const MONO = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+// Results pop in rippling out from the tissue centre, once per prediction.
+const POP_MS = 700;
+const POP_DELAY_PER_PX = 2.4;
+const poppedPredictions = new WeakSet<object>();
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+/** Overshoot ease, the canvas twin of cubic-bezier(.34,1.35,.64,1). */
+const popEase = (t: number) => {
+  const c = 1.70158 * 0.9;
+  const x = Math.min(1, Math.max(0, t)) - 1;
+  return 1 + (c + 1) * x * x * x + c * x * x;
+};
+const RING = "rgba(255,255,255,.95)";
 
 
 interface ImgGeom {
@@ -74,6 +88,12 @@ function drawTissueSpot(
   ctx.globalAlpha = (low ? 0.35 : 1) * opacity * fade;
   ctx.fillStyle = col;
   ctx.fill();
+  if (!low) {
+    ctx.globalAlpha = fade;
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = RING;
+    ctx.stroke();
+  }
   if (low) {
     ctx.globalAlpha = fade;
     ctx.setLineDash([2, 2]);
@@ -105,6 +125,9 @@ function drawGeneSpot(
   ctx.globalAlpha = opacity;
   ctx.fillStyle = viridis(t);
   ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = RING;
+  ctx.stroke();
   ctx.globalAlpha = 1;
 }
 
@@ -156,6 +179,8 @@ export default function SpatialPlot({
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const geomRef = useRef<Geom | null>(null);
+  // When this prediction's pop-in started; null once it has played (or is skipped).
+  const popStartRef = useRef<number | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [highlight, setHighlight] = useState(-1);
   const [width, setWidth] = useState(520);
@@ -240,6 +265,17 @@ export default function SpatialPlot({
     }
 
     const genesView = view === "genes";
+    const popStart = popStartRef.current;
+    const elapsed = popStart == null ? Infinity : performance.now() - popStart;
+    let pcx = w / 2;
+    let pcy = h / 2;
+    const centreOn = (pts: [number, number][]) => {
+      if (elapsed === Infinity || !pts.length) return;
+      pcx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+      pcy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+    };
+    const popOf = (px: number, py: number) =>
+      elapsed === Infinity ? 1 : popEase((elapsed - Math.hypot(px - pcx, py - pcy) * POP_DELAY_PER_PX) / POP_MS);
     // Whether a spot passes the current legend highlight.
     // Hovering (legend or analysis panel) previews a type; otherwise the pin holds.
     const focusType = tissueHighlight ?? tissueHover ?? tissuePin;
@@ -293,20 +329,27 @@ export default function SpatialPlot({
       geomRef.current = geom;
 
       const r = Math.max(2.4, w / 130);
+      centreOn(pred.spots.map((s) => spotXY(s, geom)));
       if (tissueLayer) {
         for (const s of pred.spots) {
           const [px, py] = spotXY(s, geom);
-          drawTissue(px, py, r, s);
+          const k = popOf(px, py);
+          if (k > 0.02) drawTissue(px, py, r * k, s);
         }
         return;
       }
       ctx.globalAlpha = 0.72;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = RING;
       for (const s of pred.spots) {
         const [px, py] = spotXY(s, geom);
+        const k = popOf(px, py);
+        if (k <= 0.02) continue;
         ctx.beginPath();
-        ctx.arc(px, py, r, 0, 6.2832);
+        ctx.arc(px, py, r * k, 0, 6.2832);
         ctx.fillStyle = viridis(s.expr[gk] ?? 0);
         ctx.fill();
+        ctx.stroke();
       }
       ctx.globalAlpha = 1;
       return;
@@ -353,15 +396,18 @@ export default function SpatialPlot({
     ctx.restore();
 
     const r = Math.max(2.6, pw / 160);
+    centreOn(pred.spots.map((s) => [mL + s.x * pw, mT + s.y * ph]));
     for (const s of pred.spots) {
       const px = mL + s.x * pw;
       const py = mT + s.y * ph;
+      const k = popOf(px, py);
+      if (k <= 0.02) continue;
       if (tissueLayer) {
-        drawTissue(px, py, r, s);
+        drawTissue(px, py, r * k, s);
         continue;
       }
       ctx.beginPath();
-      ctx.arc(px, py, r, 0, 6.2832);
+      ctx.arc(px, py, r * k, 0, 6.2832);
       const col = genesView ? viridis(s.expr[gk] ?? 0) : CL[s.cluster];
       // A pin (click) takes priority over a hover preview — clicking a
       // legend item or breakdown tile locks the fade in place so it
@@ -370,6 +416,9 @@ export default function SpatialPlot({
       ctx.fillStyle =
         !genesView && activeCluster !== null && s.cluster !== activeCluster ? `${col}20` : col;
       ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = RING;
+      ctx.stroke();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
   }, [pred, ready, view, gene, highlight, clusterPin, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueHover, tissueGroupHover, tissueClusterHover, tissueClusterPin, tissuePin, pinRange, spotOpacity]);
@@ -377,6 +426,38 @@ export default function SpatialPlot({
   useEffect(() => {
     draw();
   }, [draw]);
+
+  // Pop-in: replay the draw each frame for a couple of seconds the first time
+  // this prediction is shown. The latest draw is read through a ref so a hover
+  // or resize mid-animation doesn't restart it.
+  const drawRef = useRef(draw);
+  useEffect(() => {
+    drawRef.current = draw;
+  }, [draw]);
+  useEffect(() => {
+    if (!ready || !pred.spots.length || poppedPredictions.has(pred) || prefersReducedMotion()) {
+      popStartRef.current = null;
+      return;
+    }
+    const start = performance.now();
+    popStartRef.current = start;
+    let raf = 0;
+    const tick = () => {
+      drawRef.current();
+      if (performance.now() - start < 2400) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        poppedPredictions.add(pred);
+        popStartRef.current = null;
+        drawRef.current();
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      popStartRef.current = null;
+    };
+  }, [ready, pred]);
 
   // Named pills unless they would take more rows than the plain ones
   // (measured on the invisible copies, again on every resize).
@@ -394,12 +475,12 @@ export default function SpatialPlot({
 
   const clusterPillText = (i: number, named: boolean) =>
     named && clusterLabels[i] ? (
-      <span>
+      <span className="legend-name">
         {i}
         <span className="legend-tissue"> · {clusterLabels[i]!.short}</span>
       </span>
     ) : (
-      <span>{pred.clusters[i]?.name ?? `cluster ${i}`}</span>
+      <span className="legend-name">{pred.clusters[i]?.name ?? `cluster ${i}`}</span>
     );
 
   function handleMove(e: React.MouseEvent<HTMLCanvasElement>) {
@@ -447,7 +528,7 @@ export default function SpatialPlot({
         />
         {!ready && <div className="canvas-empty">spatial map renders after prediction</div>}
         <div
-          className={`plot-tip${tissueLayer && tip?.spot.tissue ? " plot-tip-tissue" : ""}`}
+          className={`plot-tip glass-lite${tissueLayer && tip?.spot.tissue ? " plot-tip-tissue" : ""}${tip && tip.x > width / 2 ? " flip" : ""}`}
           style={{ opacity: tip ? 1 : 0, left: tip?.x ?? 0, top: tip?.y ?? 0 }}
         >
           {tip?.text}
@@ -472,134 +553,152 @@ export default function SpatialPlot({
         </div>
       </div>
 
-      {ready && view === "clusters" && (
-        <div className="legend-wrap" ref={clusterLegendRef}>
-          <div className="legend">
-            {CL.map((c, i) => (
-              <div
-                key={i}
-                className={`legend-item${legendNamed && clusterLabels[i] ? " legend-item-tissue" : ""}${clusterPin === i ? " pinned" : ""}`}
-                onMouseEnter={() => setHighlight(i)}
-                onMouseLeave={() => setHighlight(-1)}
-                onClick={() => onClusterPin?.(clusterPin === i ? null : i)}
-                title={clusterLabels[i] ? `${pred.clusters[i]?.name ?? `cluster ${i}`} · ${clusterLabels[i]!.full}` : undefined}
-              >
-                <span className="legend-dot" style={{ background: c }} />
-                {clusterPillText(i, legendNamed)}
-              </div>
-            ))}
-          </div>
-          {/* Invisible copies of the legend with and without tissue names, at
-              the same width, to count how many rows each would take. */}
-          {clusterLabels.some((l) => l) &&
-            [true, false].map((named) => (
-              <div key={String(named)} className="legend legend-sizer" aria-hidden>
-                {CL.map((c, i) => (
-                  <div key={i} className={`legend-item${named && clusterLabels[i] ? " legend-item-tissue" : ""}`}>
-                    <span className="legend-dot" />
-                    {clusterPillText(i, named)}
-                  </div>
+      <div className="dock glass" data-tour={view === "clusters" ? "cluster-breakdown" : undefined}>
+        {ready && (view === "clusters" || tissueLayer) && (
+          <div className="dock-bar" aria-hidden>
+            {view === "clusters"
+              ? CL.map((c, i) => <span key={i} style={{ flexGrow: pred.counts[i], background: c }} />)
+              : TISSUE_CLASSES.map((name) => (
+                  <span key={name} style={{ flexGrow: pred.tissue!.summary[name].count, background: TISSUE_COLORS[name] }} />
                 ))}
-              </div>
-            ))}
-        </div>
-      )}
-
-      {ready && tissueLayer && pred.tissue && (
-        // Built from the same .legend/.vbar/.vscale elements as the Genes
-        // colour bar (kept invisible), so this slot, and therefore the map
-        // above it, is exactly the same height as on the Genes tab. The class
-        // legend and opacity slider sit on top of it.
-        <div className="tissue-legend-slot">
-          <div className="legend" aria-hidden>
-            <div className="vbar is-hidden" />
           </div>
-          <div className="vscale is-hidden" aria-hidden>
-            <span>&nbsp;</span>
-          </div>
-          <div className="tissue-legend-row">
-            {tissuePin && pinRange ? (
-              <div className="tissue-gene-scale">
-                <button
-                  type="button"
-                  className="legend-item legend-compact pinned"
-                  aria-pressed
-                  aria-label={`Unpin ${tissuePin}`}
-                  title={`${tissuePin} pinned · click to unpin`}
-                  onClick={() => onTissuePin?.(null)}
+        )}
+        {ready && view === "clusters" && (
+          <div className="legend-wrap" ref={clusterLegendRef}>
+            <div className="legend">
+              {CL.map((c, i) => (
+                <div
+                  key={i}
+                  className={`legend-item${legendNamed && clusterLabels[i] ? " legend-item-tissue" : ""}${clusterPin === i ? " pinned" : ""}`}
+                  onMouseEnter={() => setHighlight(i)}
+                  onMouseLeave={() => setHighlight(-1)}
+                  onClick={() => onClusterPin?.(clusterPin === i ? null : i)}
+                  title={clusterLabels[i] ? `${pred.clusters[i]?.name ?? `cluster ${i}`} · ${clusterLabels[i]!.full}` : undefined}
                 >
-                  <span className="legend-dot" style={{ background: TISSUE_COLORS[tissuePin] }} />
-                  {TISSUE_SHORT_NAMES[tissuePin]}
-                  <span aria-hidden className="unpin">×</span>
-                </button>
-                {pinRange.count ? (
-                  <span
-                    className="tgs"
-                    title={`${gene} in ${tissuePin} tiles, scaled from the lowest to the highest of those tiles`}
-                  >
-                    <span className="tgs-gene">{gene}</span>
-                    <span className="tgs-val">{pinRange.min.toFixed(2)}</span>
-                    <span className="vbar tgs-bar" />
-                    <span className="tgs-val">{pinRange.max.toFixed(2)}</span>
+                  <span className="legend-dot" style={{ background: c }} />
+                  {clusterPillText(i, legendNamed)}
+                  <span className="legend-stat">
+                    {pred.counts[i]} · {pred.total ? ((pred.counts[i] / pred.total) * 100).toFixed(1) : "0.0"}%
                   </span>
-                ) : (
-                  <span className="tgs tgs-empty">no {TISSUE_SHORT_NAMES[tissuePin]} tiles</span>
-                )}
-              </div>
-            ) : (
-              <div className="tissue-legend" aria-label="Tissue type legend">
-                {TISSUE_CLASSES.map((name) => {
-                  const { count, fraction } = pred.tissue!.summary[name];
-                  const label = `${name} ${count} · ${formatPercent(fraction)}`;
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      aria-label={label}
-                      title={`${label} · click to ${tissuePin === name ? "unpin" : "pin"}`}
-                      className={`legend-item legend-compact${tissuePin === name ? " pinned" : ""}`}
-                      aria-pressed={tissuePin === name}
-                      onClick={() => onTissuePin?.(tissuePin === name ? null : name)}
-                      onMouseEnter={() => setTissueHighlight(name)}
-                      onMouseLeave={() => setTissueHighlight(null)}
-                      onFocus={() => setTissueHighlight(name)}
-                      onBlur={() => setTissueHighlight(null)}
-                    >
-                      <span className="legend-dot" style={{ background: TISSUE_COLORS[name] }} />
-                      {TISSUE_SHORT_NAMES[name]}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            <label className="opacity-control">
-              Opacity
-              <input
-                type="range"
-                min={0.15}
-                max={1}
-                step={0.05}
-                value={spotOpacity}
-                onChange={(e) => setSpotOpacity(Number(e.target.value))}
-                aria-label="Spot opacity"
-              />
-            </label>
+                </div>
+              ))}
+            </div>
+            {/* Invisible copies of the legend with and without tissue names, at
+                the same width, to count how many rows each would take. */}
+            {clusterLabels.some((l) => l) &&
+              [true, false].map((named) => (
+                <div key={String(named)} className="legend legend-sizer" aria-hidden>
+                  {CL.map((c, i) => (
+                    <div key={i} className={`legend-item${named && clusterLabels[i] ? " legend-item-tissue" : ""}`}>
+                      <span className="legend-dot" />
+                      {clusterPillText(i, named)}
+                    </div>
+                  ))}
+                </div>
+              ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {ready && view === "genes" && (
-        <>
-          <div className="legend">
-            <div className="vbar" />
+        {ready && tissueLayer && pred.tissue && (
+          // Built from the same .legend/.vbar/.vscale elements as the Genes
+          // colour bar (kept invisible), so this slot, and therefore the map
+          // above it, is exactly the same height as on the Genes tab. The class
+          // legend and opacity slider sit on top of it.
+          <div className="tissue-legend-slot">
+            <div className="legend" aria-hidden>
+              <div className="vbar is-hidden" />
+            </div>
+            <div className="vscale is-hidden" aria-hidden>
+              <span>&nbsp;</span>
+            </div>
+            <div className="tissue-legend-row">
+              {tissuePin && pinRange ? (
+                <div className="tissue-gene-scale">
+                  <button
+                    type="button"
+                    className="legend-item legend-compact pinned"
+                    aria-pressed
+                    aria-label={`Unpin ${tissuePin}`}
+                    title={`${tissuePin} pinned · click to unpin`}
+                    onClick={() => onTissuePin?.(null)}
+                  >
+                    <span className="legend-dot" style={{ background: TISSUE_COLORS[tissuePin] }} />
+                    {TISSUE_SHORT_NAMES[tissuePin]}
+                    <span aria-hidden className="unpin">×</span>
+                  </button>
+                  {pinRange.count ? (
+                    <span
+                      className="tgs"
+                      title={`${gene} in ${tissuePin} tiles, scaled from the lowest to the highest of those tiles`}
+                    >
+                      <span className="tgs-gene">{gene}</span>
+                      <span className="tgs-val">{pinRange.min.toFixed(2)}</span>
+                      <span className="vbar tgs-bar" />
+                      <span className="tgs-val">{pinRange.max.toFixed(2)}</span>
+                    </span>
+                  ) : (
+                    <span className="tgs tgs-empty">no {TISSUE_SHORT_NAMES[tissuePin]} tiles</span>
+                  )}
+                </div>
+              ) : (
+                <div className="tissue-legend" aria-label="Tissue type legend">
+                  {TISSUE_CLASSES.map((name) => {
+                    const { count, fraction } = pred.tissue!.summary[name];
+                    const label = `${name} ${count} · ${formatPercent(fraction)}`;
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        aria-label={label}
+                        title={`${label} · click to ${tissuePin === name ? "unpin" : "pin"}`}
+                        className={`legend-item legend-compact${tissuePin === name ? " pinned" : ""}${count < MIN_TILES ? " few" : ""}`}
+                        aria-pressed={tissuePin === name}
+                        onClick={() => onTissuePin?.(tissuePin === name ? null : name)}
+                        onMouseEnter={() => setTissueHighlight(name)}
+                        onMouseLeave={() => setTissueHighlight(null)}
+                        onFocus={() => setTissueHighlight(name)}
+                        onBlur={() => setTissueHighlight(null)}
+                      >
+                        <span className="legend-dot" style={{ background: TISSUE_COLORS[name] }} />
+                        {TISSUE_SHORT_NAMES[name]}
+                        <span className="legend-stat">
+                          {count} · {formatPercent(fraction)}
+                          {count < MIN_TILES && " · too few"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <label className="opacity-control">
+                Opacity
+                <input
+                  type="range"
+                  min={0.15}
+                  max={1}
+                  step={0.05}
+                  value={spotOpacity}
+                  onChange={(e) => setSpotOpacity(Number(e.target.value))}
+                  aria-label="Spot opacity"
+                />
+              </label>
+            </div>
           </div>
-          <div className="vscale">
-            <span>low</span>
-            <span>predicted expression</span>
-            <span>high</span>
-          </div>
-        </>
-      )}
+        )}
+
+        {ready && view === "genes" && (
+          <>
+            <div className="legend">
+              <div className="vbar" />
+            </div>
+            <div className="vscale">
+              <span>low</span>
+              <span>predicted expression</span>
+              <span>high</span>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

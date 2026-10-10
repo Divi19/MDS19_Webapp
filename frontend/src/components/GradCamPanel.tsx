@@ -69,10 +69,19 @@ const SMOOTH_SIGMA = 2;
 // stair-step squares along the edge. Only the weakest cells are affected.
 const FADE_LO = 0.03;
 const FADE_HI = 0.22;
-const JET_LUT: [number, number, number][] = Array.from({ length: 256 }, (_, i) => {
-  const x = i / 255;
-  const c = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
-  return [c(1.5 - Math.abs(4 * x - 3)), c(1.5 - Math.abs(4 * x - 2)), c(1.5 - Math.abs(4 * x - 1))];
+// Warm ramp (low -> high): #DE4968 -> #FE9F6D -> #FCFDBF. Low attention is
+// already faded to transparent by FADE_LO/FADE_HI above.
+const RAMP_STOPS: [number, number, number][] = [
+  [0xde, 0x49, 0x68],
+  [0xfe, 0x9f, 0x6d],
+  [0xfc, 0xfd, 0xbf],
+];
+const WARM_LUT: [number, number, number][] = Array.from({ length: 256 }, (_, i) => {
+  const x = (i / 255) * (RAMP_STOPS.length - 1);
+  const k = Math.min(RAMP_STOPS.length - 2, Math.floor(x));
+  const f = x - k;
+  const [a, b] = [RAMP_STOPS[k], RAMP_STOPS[k + 1]];
+  return [0, 1, 2].map((c) => Math.round(a[c] + (b[c] - a[c]) * f)) as [number, number, number];
 });
 
 interface TileHeat {
@@ -186,7 +195,7 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | nu
   const img = ctx.createImageData(cols, rows);
   for (let p = 0; p < heat.length; p++) {
     const v = scale > 0 ? Math.min(1, Math.max(0, heat[p] / scale)) : 0;
-    const [r, g, b] = JET_LUT[Math.round(v * 255)];
+    const [r, g, b] = WARM_LUT[Math.round(v * 255)];
     img.data[4 * p] = r;
     img.data[4 * p + 1] = g;
     img.data[4 * p + 2] = b;
@@ -446,6 +455,14 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     draw();
   }, [draw, imgTick]);
 
+  // The tile-loading effect below deliberately doesn't re-run when the canvas
+  // is resized, so it calls draw through this ref to always paint at the
+  // current size instead of the one it started with.
+  const drawRef = useRef(draw);
+  useEffect(() => {
+    drawRef.current = draw;
+  }, [draw]);
+
   // Real per-tile Grad-CAM (one backward pass per tile — see predictor.py's
   // explain_batch()), fetched in batches of REQUEST_BATCH_SIZE across every
   // tissue tile and painted into the mosaic as each batch arrives. No gene
@@ -473,7 +490,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     setSelectedTile(null);
     viewRef.current = { scale: 1, panX: 0, panY: 0 };
     setZoomed(false);
-    draw();
+    drawRef.current();
     report(false, 0);
 
     if (!ready || !total) return;
@@ -531,7 +548,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         if (seq !== seqRef.current) return;
         const loadedSoFar = Math.min(start + REQUEST_BATCH_SIZE, total);
         setLoadedCount(loadedSoFar);
-        draw();
+        drawRef.current();
         report(true, loadedSoFar);
       }
       if (seq === seqRef.current) {
@@ -732,32 +749,6 @@ const GradCamPanel = forwardRef<GradCamHandle, {
 
   return (
     <div className="plot-body" style={{ display: hidden ? "none" : undefined }}>
-      <div className="gradcam-controls">
-        <span className="page-label">{statusText}</span>
-        {loading && (
-          <div className="gradcam-progress-track">
-            <div className="gradcam-progress-fill" style={{ width: `${pct}%` }} />
-          </div>
-        )}
-        {!loading && loadedCount > 0 && (
-          <span className="gradcam-hint">drag to pan · click a spot for detail</span>
-        )}
-        {imgTick > 0 && (
-          <div className="gradcam-zoom-controls">
-            <button type="button" className="gradcam-reset-btn" onClick={() => zoomBy(1 / ZOOM_STEP)} aria-label="Zoom out">
-              −
-            </button>
-            <button type="button" className="gradcam-reset-btn" onClick={() => zoomBy(ZOOM_STEP)} aria-label="Zoom in">
-              +
-            </button>
-          </div>
-        )}
-        {zoomed && (
-          <button type="button" className="gradcam-reset-btn" onClick={resetView}>
-            Reset view
-          </button>
-        )}
-      </div>
       <div className="canvas-wrap" ref={wrapRef}>
         <canvas
           ref={canvasRef}
@@ -772,28 +763,56 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         />
         {error && <div className="canvas-empty">{error}</div>}
       </div>
-      {!error && (
-        <>
-          <div className="legend">
-            <div className="vbar vbar-jet" />
-          </div>
-          <div className="vscale">
-            {scaleShown > 0 ? (
-              <>
-                <span>0</span>
-                <span>Grad-CAM attention, one scale for the whole slide</span>
-                <span>{scaleShown.toPrecision(2)}+</span>
-              </>
-            ) : (
-              <>
-                <span>low</span>
-                <span>Grad-CAM attention</span>
-                <span>high</span>
-              </>
-            )}
-          </div>
-        </>
-      )}
+      <div className="dock glass">
+        <div className="gradcam-controls">
+          <span className="page-label">{statusText}</span>
+          {loading && (
+            <div className="gradcam-progress-track">
+              <div className="gradcam-progress-fill" style={{ width: `${pct}%` }} />
+            </div>
+          )}
+          {!loading && loadedCount > 0 && (
+            <span className="gradcam-hint">drag to pan · click a spot for detail</span>
+          )}
+          {imgTick > 0 && (
+            <div className="gradcam-zoom-controls">
+              <button type="button" className="gradcam-reset-btn" onClick={() => zoomBy(1 / ZOOM_STEP)} aria-label="Zoom out">
+                −
+              </button>
+              <button type="button" className="gradcam-reset-btn" onClick={() => zoomBy(ZOOM_STEP)} aria-label="Zoom in">
+                +
+              </button>
+            </div>
+          )}
+          {zoomed && (
+            <button type="button" className="gradcam-reset-btn" onClick={resetView}>
+              Reset view
+            </button>
+          )}
+        </div>
+        {!error && (
+          <>
+            <div className="legend">
+              <div className="vbar vbar-warm" />
+            </div>
+            <div className="vscale">
+              {scaleShown > 0 ? (
+                <>
+                  <span>0</span>
+                  <span>Grad-CAM attention, one scale for the whole slide</span>
+                  <span>{scaleShown.toPrecision(2)}+</span>
+                </>
+              ) : (
+                <>
+                  <span>low</span>
+                  <span>Grad-CAM attention</span>
+                  <span>high</span>
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       {selectedTile !== null && (
         <div
