@@ -36,10 +36,14 @@ export default function UploadModal({
   open,
   onClose,
   onRun,
+  inline = false,
 }: {
   open: boolean;
   onClose: () => void;
   onRun: (payload: RunPayload) => void;
+  /** Render the landing page's capture frame instead of the modal. Same
+   * upload state and handlers either way. */
+  inline?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -102,6 +106,104 @@ export default function UploadModal({
 
   const canRun = status.text !== "No file";
 
+  const dropProps = {
+    onDragEnter: (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(true);
+    },
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(true);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+      handleFile(e.dataTransfer.files?.[0]);
+    },
+  };
+  const fileInput = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept=".tif,.tiff,.png,.jpg,.jpeg,.svs,.ndpi,.scn,.vms,.vmu,.svslide,.bif,.zip"
+      onChange={(e) => handleFile(e.target.files?.[0])}
+    />
+  );
+
+  if (inline) {
+    return (
+      <div className="capture">
+        <label className={`capture-frame${dragging ? " dragging" : ""}${file ? " filled" : ""}`} {...dropProps}>
+          <span className="corner tl" />
+          <span className="corner tr" />
+          <span className="corner bl" />
+          <span className="corner br" />
+          {fileInput}
+          {url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt="uploaded H&E section preview" />
+          ) : file ? (
+            <div className="capture-hint">
+              <div className="capture-title">Whole-slide image</div>
+              <div className="capture-sub">No preview for this format</div>
+            </div>
+          ) : (
+            <div className="capture-hint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <div className="capture-title">Drop a histology image here</div>
+              <div className="capture-sub">or click to browse</div>
+            </div>
+          )}
+        </label>
+
+        {file ? (
+          <div className="capture-sheet glass">
+            <div className="sheet-top">
+              <div className="sheet-name">{name}</div>
+              <span className="sheet-status" style={{ color: status.color }}>
+                {status.text}
+              </span>
+            </div>
+            <div className="sheet-meta">
+              {dims !== DASH && <span>{dims}</span>}
+              <span>{sizeLabel}</span>
+              <span>TIFF, PNG, JPEG, SVS, NDPI</span>
+            </div>
+            <div className="sheet-actions">
+              <button type="button" className="btn-secondary" onClick={() => inputRef.current?.click()}>
+                Choose another
+              </button>
+              <button
+                type="button"
+                className="run-btn"
+                disabled={!canRun}
+                onClick={() => onRun({ name, sizeLabel, url, file })}
+              >
+                Run prediction
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="capture-foot">
+            <span>Up to 50 MB, whole-slide formats up to 500 MB</span>
+            <button type="button" className="sample-link" onClick={loadSample} disabled={loadingSample}>
+              {loadingSample ? "Loading sample…" : "Try a sample section"}
+            </button>
+            {status.text !== "No file" && <span style={{ color: status.color }}>{status.text}</span>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className={`modal-backdrop${open ? " visible" : ""}`}
@@ -112,7 +214,7 @@ export default function UploadModal({
       <div className="modal" role="dialog" aria-modal="true">
         <div className="modal-header">
           <div>
-            <div className="pretitle">Step 1 · Input</div>
+            <div className="pretitle">Input</div>
             <h2>Upload an H&amp;E section</h2>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="Close">
@@ -123,33 +225,9 @@ export default function UploadModal({
           </button>
         </div>
 
-        <div className="modal-body" data-tour={open ? "upload-body" : undefined}>
-          <label
-            className={`dropzone${dragging ? " dragging" : ""}`}
-            onDragEnter={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              setDragging(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              handleFile(e.dataTransfer.files?.[0]);
-            }}
-          >
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".tif,.tiff,.png,.jpg,.jpeg,.svs,.ndpi,.scn,.vms,.vmu,.svslide,.bif,.zip"
-              onChange={(e) => handleFile(e.target.files?.[0])}
-            />
+        <div className="modal-body" data-tour={open && !inline ? "upload-body" : undefined}>
+          <label className={`dropzone${dragging ? " dragging" : ""}`} {...dropProps}>
+            {fileInput}
             {url ? (
               <div className="dropzone-preview">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -225,7 +303,7 @@ export default function UploadModal({
           </button>
           <button
             className="run-btn"
-            data-tour={open ? "upload-run" : undefined}
+            data-tour={open && !inline ? "upload-run" : undefined}
             disabled={!canRun}
             onClick={() => onRun({ name, sizeLabel, url, file })}
           >
