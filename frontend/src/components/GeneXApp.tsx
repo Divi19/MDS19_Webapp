@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { NAMED_GENES, viridis, type Level, type Prediction } from "@/lib/mockPrediction";
+import { CL, NAMED_GENES, viridis, type Level, type Prediction } from "@/lib/mockPrediction";
 import { predict, toPrediction } from "@/lib/api";
 import { analyzeClusters } from "@/lib/clusterAnalysis";
 import { useAuth } from "@/lib/auth";
@@ -17,10 +17,11 @@ import ProfilePanel from "./ProfilePanel";
 import ProgressOverlay, { PIPELINE_STEPS } from "./ProgressOverlay";
 import SpatialPlot from "./SpatialPlot";
 import TissueAnalysisPanel, { type TissueGroup } from "./TissueAnalysisPanel";
+import TissueBreakdown from "./TissueBreakdown";
 import TutorialOverlay from "./TutorialOverlay";
 import UploadModal, { type RunPayload } from "./UploadModal";
 import {
-  geneHomeTissue, TISSUE_COLORS, TISSUE_SHORT_NAMES, type GeneTissue, type TissueClass,
+  clusterTissueLabels, geneHomeTissue, TISSUE_COLORS, TISSUE_SHORT_NAMES, type GeneTissue, type TissueClass,
 } from "@/lib/tissue";
 import { TUTORIAL_LOADING_STEP, TUTORIAL_STEPS } from "@/lib/tutorial";
 
@@ -62,6 +63,9 @@ export default function GeneXApp() {
   });
 
   const [ready, setReady] = useState(false);
+  // Home: shows the landing page again on top of the current results.
+  const [landingOpen, setLandingOpen] = useState(false);
+  const showLanding = !ready || landingOpen;
   const [view, setView] = useState<View>("clusters");
   // Once true, GradCamPanel stays mounted (just visually hidden) even when
   // the user switches to another tab — it loads real per-tile Grad-CAM in
@@ -183,6 +187,7 @@ export default function GeneXApp() {
   const changeView = useCallback(
     (v: View) => {
       if (!ready) return;
+      setLandingOpen(false);
       setView(v);
       // Hover highlights from the Tissue Analysis panel never get their
       // mouse-leave once the panel unmounts, so clear them on every switch.
@@ -201,6 +206,7 @@ export default function GeneXApp() {
         return;
       }
       setModalOpen(false);
+      setLandingOpen(false);
       setPopoverAnchor(null);
       setTutorialStepId(null);
       loadSeqRef.current++;
@@ -248,6 +254,7 @@ export default function GeneXApp() {
   const loadFromHistory = useCallback(
     async (predictionId: string) => {
       const seq = ++loadSeqRef.current;
+      setLandingOpen(false);
       setHistoryLoadState("loading");
       try {
         const { response, imageUrl, imagePath, filename } = await getPredictionResponse(predictionId);
@@ -499,6 +506,9 @@ export default function GeneXApp() {
     [pred.topGenes, pred.geneMeta],
   );
 
+  // Tissue name per expression cluster ("Cancer (95%)"), from the tissue
+  // classifier; all null when the prediction has no tissue data.
+  const clusterLabels = useMemo(() => clusterTissueLabels(pred), [pred]);
   // For the gene list: the tissue type each gene is clearly highest in (same
   // rule as "Genes higher in" on the Tissue tab); null without tissue data.
   const geneHome = useMemo(() => (pred.tissue ? geneHomeTissue(pred) : null), [pred]);
@@ -619,61 +629,45 @@ export default function GeneXApp() {
     genePageClamped * genesPerPage + genesPerPage,
   );
 
-  const datasetLabel = !ready
-    ? ""
-    : view === "genes"
-      ? (pred.geneMeta[gene]?.label ?? "ERBB2")
-      : view === "tissue" && pred.tissue
-        ? pred.tissue.version
-        : `k=5 · ${pred.total} spots`;
-
   return (
-    <div className={`app app-bg${ready ? "" : " is-landing"}`}>
+    <div className={`app app-bg${showLanding ? " is-landing" : ""}`}>
       <header className="topbar">
         <div className="capsule glass cap-brand">
-          <div className="logo">
-            <svg viewBox="0 0 24 24" fill="none">
-              <circle cx="6" cy="6" r="2.4" fill="#fff" />
-              <circle cx="12" cy="6" r="2.4" fill="#fff" opacity=".6" />
-              <circle cx="18" cy="6" r="2.4" fill="#fff" opacity=".85" />
-              <circle cx="6" cy="12" r="2.4" fill="#fff" opacity=".6" />
-              <circle cx="12" cy="12" r="2.4" fill="#fff" />
-              <circle cx="18" cy="12" r="2.4" fill="#fff" opacity=".7" />
-              <circle cx="6" cy="18" r="2.4" fill="#fff" opacity=".85" />
-              <circle cx="12" cy="18" r="2.4" fill="#fff" opacity=".6" />
-              <circle cx="18" cy="18" r="2.4" fill="#fff" />
-            </svg>
-          </div>
-          <div className="app-title">GeneX</div>
-          {ready && <span className="brand-file">{fileName}</span>}
+          <button type="button" className="home-btn" onClick={() => setLandingOpen(true)} title="Home" aria-label="Home">
+            <div className="logo">
+              <svg viewBox="0 0 24 24" fill="none">
+                <circle cx="6" cy="6" r="2.4" fill="#fff" />
+                <circle cx="12" cy="6" r="2.4" fill="#fff" opacity=".6" />
+                <circle cx="18" cy="6" r="2.4" fill="#fff" opacity=".85" />
+                <circle cx="6" cy="12" r="2.4" fill="#fff" opacity=".6" />
+                <circle cx="12" cy="12" r="2.4" fill="#fff" />
+                <circle cx="18" cy="12" r="2.4" fill="#fff" opacity=".7" />
+                <circle cx="6" cy="18" r="2.4" fill="#fff" opacity=".85" />
+                <circle cx="12" cy="18" r="2.4" fill="#fff" opacity=".6" />
+                <circle cx="18" cy="18" r="2.4" fill="#fff" />
+              </svg>
+            </div>
+            <div className="app-title">GeneX</div>
+          </button>
         </div>
 
-        <nav className="capsule glass cap-tabs" aria-label="Map view">
-          <button className={view === "clusters" ? "on" : ""} disabled={!ready} onClick={() => changeView("clusters")}>
-            Clusters
-          </button>
-          <button className={view === "genes" ? "on" : ""} disabled={!ready} onClick={() => changeView("genes")}>
-            Genes
-          </button>
-          {ready && pred.tissue && (
-            <button className={view === "tissue" ? "on" : ""} onClick={() => changeView("tissue")}>
-              Tissue
-            </button>
-          )}
-          <button className={view === "gradcam" ? "on" : ""} disabled={!ready} onClick={() => changeView("gradcam")}>
-            Grad-CAM
-          </button>
-        </nav>
+
+        <div className="cap-middle">
+        <button
+          className="tutorial-launch"
+          onClick={() => goToTutorialStep("welcome")}
+          disabled={running}
+          title="Start a guided tutorial of the workspace"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+          </svg>
+          Take the Tutorial
+        </button>
+        </div>
 
         <div className="capsule glass cap-actions" data-tour="header-actions">
-          <button
-            className="text-btn tutorial-launch"
-            onClick={() => goToTutorialStep("welcome")}
-            disabled={running}
-            title="Start a guided tutorial of the workspace"
-          >
-            Tutorial
-          </button>
           {authEnabled && user ? (
             <>
               <button className="text-btn" data-tour="history" onClick={() => setHistoryOpen(true)}>
@@ -735,72 +729,59 @@ export default function GeneXApp() {
       <main className="grid">
         {/* Column 1 — input + prediction */}
         <div className="col col-1 glass">
-          <div className="file-row" data-tour="input-card">
+          <div className="upload-action" data-tour="upload-action">
+            <button className="upload-btn" onClick={() => setModalOpen(true)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <span>Upload H&amp;E section</span>
+              <span className="kbd">U</span>
+            </button>
+            <button className="replace-btn" title="Reset session" onClick={() => window.location.reload()}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1 4 1 10 7 10" />
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              </svg>
+              reset
+            </button>
+          </div>
+
+          <div className="card input-card" data-tour="input-card">
+            <div className="card-title">
+              Input section
+              <span className="meta">{ready ? fileName : "no file loaded"}</span>
+            </div>
             <div className="input-image">
               {ready && uploaded?.url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={uploaded.url} alt="uploaded H&E section" />
               ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <polyline points="21 15 16 10 5 21" />
-                </svg>
+                <div className="empty-hint">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                  <div className="h">No section uploaded</div>
+                  <div className="s">click &quot;Upload H&amp;E section&quot; to begin</div>
+                </div>
               )}
             </div>
-            <div className="file-meta">
-              <div className="file-name">{ready ? fileName : "No section loaded"}</div>
-              <div className="file-sub">{ready ? "Input section" : "Upload a section to begin"}</div>
-            </div>
-            <div className="upload-action" data-tour="upload-action">
-              <button
-                className="icon-btn upload-btn"
-                onClick={() => setModalOpen(true)}
-                title="Upload H&E section (U)"
-                aria-label="Upload H&E section"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-              </button>
-              <button
-                className="icon-btn replace-btn"
-                title="Reset session"
-                aria-label="Reset session"
-                onClick={() => window.location.reload()}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="1 4 1 10 7 10" />
-                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div className="feature">
             {ready ? (
-              <>
-                <div className="feature-label">
-                  {gene === pred.topGenes[0]?.name ? "Top predicted gene" : "Selected gene"}
-                </div>
-                <div className="feature-gene">{gene || "unavailable"}</div>
-                {(() => {
-                  const sel = pred.topGenes.find((g) => g.name === gene);
-                  return sel ? (
-                    <div className="feature-value">
-                      {sel.value.toFixed(2)}
-                      <span className={`level-tag ${levelClass(sel.level)}`}>{sel.level}</span>
-                    </div>
-                  ) : null;
-                })()}
-              </>
+              <div className="alert">
+                <span className="pulse" />
+                <div className="alert-text">Top predicted gene: {pred.topGenes[0]?.name ?? "unavailable"}</div>
+              </div>
             ) : (
-              <>
-                <div className="feature-label">Prediction pending</div>
-                <div className="feature-empty">Upload a section to run the model</div>
-              </>
+              <div className="alert placeholder">
+                <span className="pulse" />
+                <div className="alert-text">
+                  Prediction pending
+                  <small>upload a section to run the model</small>
+                </div>
+              </div>
             )}
           </div>
 
@@ -916,7 +897,7 @@ export default function GeneXApp() {
                         <span className="bar-track">
                           <span
                             className="bar-fill"
-                            style={{ width: `${((g.value / max) * 100).toFixed(0)}%` }}
+                            style={{ width: `${((g.value / max) * 100).toFixed(0)}%`, background: viridis(g.value / max) }}
                           />
                         </span>
                         <span className={`level-tag ${levelClass(g.level)}`}>{g.level}</span>
@@ -984,6 +965,22 @@ export default function GeneXApp() {
         <div className="col col-2 stage">
           <div className="plot-card" data-tour="plot-card">
             <div className="plot-header">
+              <nav className="map-tabs" aria-label="Map view">
+                <button className={view === "clusters" ? "on" : ""} disabled={!ready} onClick={() => changeView("clusters")}>
+                  Clusters
+                </button>
+                <button className={view === "genes" ? "on" : ""} disabled={!ready} onClick={() => changeView("genes")}>
+                  Genes
+                </button>
+                {ready && pred.tissue && (
+                  <button className={view === "tissue" ? "on" : ""} onClick={() => changeView("tissue")}>
+                    Tissue
+                  </button>
+                )}
+                <button className={view === "gradcam" ? "on" : ""} disabled={!ready} onClick={() => changeView("gradcam")}>
+                  Grad-CAM
+                </button>
+              </nav>
               {(view === "genes" || view === "tissue") && (
                 <div className="gene-combo">
                   <input
@@ -1073,7 +1070,6 @@ export default function GeneXApp() {
                   Show image
                 </label>
               )}
-              {datasetLabel && <span className="dataset-label">{datasetLabel}</span>}
             </div>
             {gradcamMounted && (
               <GradCamPanel
@@ -1106,6 +1102,60 @@ export default function GeneXApp() {
               />
             )}
           </div>
+
+          {/* The Tissue tab's card is laid over the cluster breakdown (kept in
+              place, invisible) so the bottom box — and therefore the map above
+              it — is exactly the same height on every tab. */}
+          <div className="breakdown-slot">
+            {view === "tissue" && ready && pred.tissue && (
+              <TissueBreakdown pred={pred} pinned={tissuePin} onPin={pinTissueType} />
+            )}
+            <div
+              className={`card cluster-card${view === "tissue" && ready && pred.tissue ? " is-covered" : ""}`}
+              data-tour="cluster-breakdown"
+            >
+              <div className="card-title">
+                Cluster breakdown
+                <span className="meta">click a gene row or legend to explore</span>
+              </div>
+              <div className="cluster-grid">
+                {ready
+                  ? CL.map((c, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        className={`cluster-tile clickable${clusterPin === i ? " pinned" : ""}`}
+                        onClick={() => setClusterPin((prev) => (prev === i ? null : i))}
+                        title={clusterLabels[i] ? `cluster ${i} · ${clusterLabels[i]!.full}` : undefined}
+                      >
+                        <div className="head">
+                          <span className="dot" style={{ background: c }} />
+                          <span className="name">
+                            {i}
+                            {clusterLabels[i] && ` · ${clusterLabels[i]!.short}`}
+                          </span>
+                        </div>
+                        <div className="count" style={{ color: c }}>
+                          {pred.counts[i]}
+                        </div>
+                        <div className="pct">{((pred.counts[i] / pred.total) * 100).toFixed(1)}%</div>
+                      </button>
+                    ))
+                  : CL.map((c, i) => (
+                      <div key={i} className="cluster-tile">
+                        <div className="head">
+                          <span className="dot" style={{ background: c }} />
+                          <span className="name">{i}</span>
+                        </div>
+                        <div className="count" style={{ color: "var(--muted2)" }}>
+                          —
+                        </div>
+                        <div className="pct">cluster {i}</div>
+                      </div>
+                    ))}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Column 3 — tissue analysis on the Tissue tab, cluster analysis
@@ -1136,9 +1186,10 @@ export default function GeneXApp() {
         />
       </main>
 
-      {!ready && (
+      {showLanding && (
         <section className="landing" aria-label="Start a prediction">
           <div className="landing-copy">
+            <div className="landing-eyebrow">Welcome to GeneX</div>
             <h1>Read the genes in a stained slide.</h1>
             <p>
               GeneX predicts spatial gene expression for HER2-positive breast cancer from an H&amp;E image. Add a

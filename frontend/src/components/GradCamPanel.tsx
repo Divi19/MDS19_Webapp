@@ -388,7 +388,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     if (!cv) return;
     const dpr = window.devicePixelRatio || 1;
     const w = width;
-    const h = height > 0 ? Math.min(Math.round(w * 0.72), height) : Math.round(w * 0.72);
+    const h = height > 0 ? height : Math.round(w * 0.72);
     cv.width = w * dpr;
     cv.height = h * dpr;
     cv.style.height = `${h}px`;
@@ -598,7 +598,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       view.panX = mx - worldX * newScale;
       view.panY = my - worldY * newScale;
       view.scale = newScale;
-      clampPan(view, width, height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72));
+      clampPan(view, width, height > 0 ? height : Math.round(width * 0.72));
       setZoomed(view.scale > 1.001);
       draw();
     },
@@ -616,7 +616,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       const view = viewRef.current;
       const worldX = (mx - view.panX) / view.scale;
       const worldY = (my - view.panY) / view.scale;
-      const h = height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72);
+      const h = height > 0 ? height : Math.round(width * 0.72);
       const geom = computeGeom(img, width, h);
       for (let i = 0; i < pred.spots.length; i++) {
         if (!tileImgsRef.current[i] && !heatRef.current[i]) continue;
@@ -649,7 +649,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       const view = viewRef.current;
       view.panX += dx;
       view.panY += dy;
-      const h = height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72);
+      const h = height > 0 ? height : Math.round(width * 0.72);
       clampPan(view, width, h);
       draw();
     },
@@ -677,7 +677,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
   // of the mouse position, for the explicit +/- buttons.
   const zoomBy = useCallback(
     (factor: number) => {
-      const h = height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72);
+      const h = height > 0 ? height : Math.round(width * 0.72);
       const cx = width / 2;
       const cy = h / 2;
       const view = viewRef.current;

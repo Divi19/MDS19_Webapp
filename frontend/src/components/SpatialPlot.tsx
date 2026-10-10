@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
 import { DEFAULT_TILING, tileCentre, type Tiling } from "@/lib/tiling";
 import {
-  clusterTissueLabels, formatPercent, isUncertain, MIN_TILES, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
+  clusterTissueLabels, formatPercent, isUncertain, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
   type TissueClass,
 } from "@/lib/tissue";
 
@@ -251,7 +251,7 @@ export default function SpatialPlot({
     const w = width;
     // Fill the flex-allotted wrapper (col-2 must never scroll) but never
     // exceed the natural 4:3-ish aspect ratio when there's room to spare.
-    const h = height > 0 ? Math.min(Math.round(w * 0.72), height) : Math.round(w * 0.72);
+    const h = height > 0 ? height : Math.round(w * 0.72);
     cv.width = w * dpr;
     cv.height = h * dpr;
     cv.style.height = `${h}px`;
@@ -553,16 +553,7 @@ export default function SpatialPlot({
         </div>
       </div>
 
-      <div className="dock glass" data-tour={view === "clusters" ? "cluster-breakdown" : undefined}>
-        {ready && (view === "clusters" || tissueLayer) && (
-          <div className="dock-bar" aria-hidden>
-            {view === "clusters"
-              ? CL.map((c, i) => <span key={i} style={{ flexGrow: pred.counts[i], background: c }} />)
-              : TISSUE_CLASSES.map((name) => (
-                  <span key={name} style={{ flexGrow: pred.tissue!.summary[name].count, background: TISSUE_COLORS[name] }} />
-                ))}
-          </div>
-        )}
+      <div className="dock glass">
         {ready && view === "clusters" && (
           <div className="legend-wrap" ref={clusterLegendRef}>
             <div className="legend">
@@ -577,9 +568,6 @@ export default function SpatialPlot({
                 >
                   <span className="legend-dot" style={{ background: c }} />
                   {clusterPillText(i, legendNamed)}
-                  <span className="legend-stat">
-                    {pred.counts[i]} · {pred.total ? ((pred.counts[i] / pred.total) * 100).toFixed(1) : "0.0"}%
-                  </span>
                 </div>
               ))}
             </div>
@@ -651,7 +639,7 @@ export default function SpatialPlot({
                         type="button"
                         aria-label={label}
                         title={`${label} · click to ${tissuePin === name ? "unpin" : "pin"}`}
-                        className={`legend-item legend-compact${tissuePin === name ? " pinned" : ""}${count < MIN_TILES ? " few" : ""}`}
+                        className={`legend-item legend-compact${tissuePin === name ? " pinned" : ""}`}
                         aria-pressed={tissuePin === name}
                         onClick={() => onTissuePin?.(tissuePin === name ? null : name)}
                         onMouseEnter={() => setTissueHighlight(name)}
@@ -661,10 +649,6 @@ export default function SpatialPlot({
                       >
                         <span className="legend-dot" style={{ background: TISSUE_COLORS[name] }} />
                         {TISSUE_SHORT_NAMES[name]}
-                        <span className="legend-stat">
-                          {count} · {formatPercent(fraction)}
-                          {count < MIN_TILES && " · too few"}
-                        </span>
                       </button>
                     );
                   })}
