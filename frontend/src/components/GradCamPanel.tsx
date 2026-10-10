@@ -69,6 +69,14 @@ const SMOOTH_SIGMA = 2;
 // stair-step squares along the edge. Only the weakest cells are affected.
 const FADE_LO = 0.03;
 const FADE_HI = 0.22;
+// Models that space tiles further apart than the tile size (v16-core: 224 px
+// tiles every 290 px) leave gaps with no heat of their own. Opacity ramps in
+// with how much of a cell's smoothed neighbourhood is covered by tiles
+// (between COVER_LO and COVER_HI), so a gap between two tiles is filled by
+// interpolation, while the strip beyond the last tile at the tissue edge fades
+// out instead of spilling onto the glass.
+const COVER_LO = 0.1;
+const COVER_HI = 0.45;
 const JET_LUT: [number, number, number][] = Array.from({ length: 256 }, (_, i) => {
   const x = i / 255;
   const c = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
@@ -89,6 +97,8 @@ interface HeatGrid {
   tw: number;
   th: number;
   scale: number;
+  /** Original-image pixels covered by one grid cell. */
+  cellPx: number;
 }
 
 /** Separable Gaussian blur, edges replicated. */
@@ -125,11 +135,13 @@ function blurGauss(src: Float32Array, cols: number, rows: number, sigma: number)
   return out;
 }
 
-/** Places every loaded tile's heat cells at its true grid position in one
- * slide-wide grid, smooths it across tile borders, and colours it against one
- * shared scale into an RGBA canvas (one pixel per heat cell). Cells outside
- * tissue, or with almost no attention, stay transparent. Rebuilt after each batch, not on every draw. */
-function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | null {
+/** Places every loaded tile's heat cells at their true pixel position (a cell
+ * is `tiling.tile / tw` image pixels, a tile starts at grid index * stride) in
+ * one slide-wide grid, smooths it across tile borders and gaps, and colours it
+ * against one shared scale into an RGBA canvas (one pixel per heat cell). Cells
+ * outside tissue, or with almost no attention, stay transparent. Rebuilt after
+ * each batch, not on every draw. */
+function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[], tiling: Tiling): HeatGrid | null {
   let tw = 0;
   let th = 0;
   let maxGX = -1;
@@ -148,8 +160,10 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | nu
   }
   if (maxGX < 0) return null;
 
-  const cols = (maxGX + 1) * tw;
-  const rows = (maxGY + 1) * th;
+  const cellPx = tiling.tile / tw;
+  const originCell = (g: number) => Math.round((g * tiling.stride) / cellPx);
+  const cols = originCell(maxGX) + tw;
+  const rows = originCell(maxGY) + th;
   const heatG = new Float32Array(cols * rows);
   const maskG = new Float32Array(cols * rows);
   for (let i = 0; i < spots.length; i++) {
@@ -159,7 +173,7 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | nu
     for (let cy = 0; cy < th; cy++) {
       for (let cx = 0; cx < tw; cx++) {
         const j = cy * tw + cx;
-        const p = (s.gridY * th + cy) * cols + s.gridX * tw + cx;
+        const p = (originCell(s.gridY) + cy) * cols + originCell(s.gridX) + cx;
         heatG[p] = t.heat[j] * t.mask[j];
         maskG[p] = t.mask[j];
       }
@@ -190,10 +204,10 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | nu
     img.data[4 * p] = r;
     img.data[4 * p + 1] = g;
     img.data[4 * p + 2] = b;
-    img.data[4 * p + 3] = Math.round(255 * OVERLAY_ALPHA * Math.min(1, den[p]) * smoothstep(FADE_LO, FADE_HI, v));
+    img.data[4 * p + 3] = Math.round(255 * OVERLAY_ALPHA * smoothstep(COVER_LO, COVER_HI, den[p]) * smoothstep(FADE_LO, FADE_HI, v));
   }
   ctx.putImageData(img, 0, 0);
-  return { cv, cols, rows, tw, th, scale };
+  return { cv, cols, rows, tw, th, scale, cellPx };
 }
 
 interface ImgGeom {
@@ -431,11 +445,10 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     if (grid) {
       const gx = ((0 - geom.sx) / geom.sw) * geom.w;
       const gy = ((0 - geom.sy) / geom.sh) * geom.h;
-      // One grid block per tile spacing, so each tile's heat sits at its
-      // own tile's position (spread over the gap to the next tile).
-      const stride = (pred.tiling ?? DEFAULT_TILING).stride;
-      const gw = (((grid.cols / grid.tw) * stride) / geom.sw) * geom.w;
-      const gh = (((grid.rows / grid.th) * stride) / geom.sh) * geom.h;
+      // Each grid cell is cellPx image pixels, so every tile's heat covers
+      // exactly the pixels it was computed from, whatever the tile spacing.
+      const gw = ((grid.cols * grid.cellPx) / geom.sw) * geom.w;
+      const gh = ((grid.rows * grid.cellPx) / geom.sh) * geom.h;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(grid.cv, gx, gy, gw, gh);
@@ -521,7 +534,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
             }
             peaksRef.current[t.spot_index] = t.peak;
           }
-          gridRef.current = buildHeatGrid(pred.spots, heatRef.current);
+          gridRef.current = buildHeatGrid(pred.spots, heatRef.current, pred.tiling ?? DEFAULT_TILING);
           setScaleShown(gridRef.current?.scale ?? 0);
         } catch {
           if (controller.signal.aborted || seq !== seqRef.current) return;
@@ -704,7 +717,9 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         if (grid) {
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
-          ctx.drawImage(grid.cv, s.gridX * grid.tw, s.gridY * grid.th, grid.tw, grid.th, 0, 0, size, size);
+          const sx = Math.round((s.gridX * tiling.stride) / grid.cellPx);
+          const sy = Math.round((s.gridY * tiling.stride) / grid.cellPx);
+          ctx.drawImage(grid.cv, sx, sy, grid.tw, grid.th, 0, 0, size, size);
         }
       }
       return;
