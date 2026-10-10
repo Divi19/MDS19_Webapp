@@ -75,7 +75,7 @@ export default function TissueAnalysisPanel({
   const pct = (value: number) => `${Math.min(100, (value / scale) * 100)}%`;
 
   return (
-    <div className="col col-3 tissue-analysis">
+    <div className="col col-3 tissue-analysis glass">
       <div className="cluster-analysis-header ta-header">
         <div>
           <div className="cluster-analysis-title">Tissue Analysis</div>

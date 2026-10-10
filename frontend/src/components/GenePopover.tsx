@@ -72,13 +72,18 @@ export default function GenePopover({
   const roomBelow = window.innerHeight - anchor.bottom - gap - margin;
   const roomAbove = anchor.top - gap - margin;
   const opensUp = roomBelow < MIN_USABLE_HEIGHT && roomAbove > roomBelow;
-  const style = opensUp
-    ? { left, width, bottom: window.innerHeight - anchor.top + gap, maxHeight: Math.max(MIN_USABLE_HEIGHT, roomAbove) }
-    : { left, width, top: anchor.bottom + gap, maxHeight: Math.max(MIN_USABLE_HEIGHT, roomBelow) };
+  // The notch points back at the clicked row.
+  const notch = Math.min(Math.max(anchor.x - left + 18, 18), width - 18);
+  const style = (
+    opensUp
+      ? { left, width, bottom: window.innerHeight - anchor.top + gap, maxHeight: Math.max(MIN_USABLE_HEIGHT, roomAbove) }
+      : { left, width, top: anchor.bottom + gap, maxHeight: Math.max(MIN_USABLE_HEIGHT, roomBelow) }
+  ) as React.CSSProperties;
+  style["--notch" as keyof React.CSSProperties] = `${notch}px` as never;
 
   return (
     <div
-      className="gene-popover"
+      className={`gene-popover glass-lite${opensUp ? " up" : ""}`}
       ref={ref}
       style={style}
       role="dialog"

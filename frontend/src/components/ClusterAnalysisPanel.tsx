@@ -40,7 +40,7 @@ export default function ClusterAnalysisPanel({
   const labels = useMemo(() => clusterTissueLabels(pred), [pred]);
 
   return (
-    <div className="col col-3" data-tour="cluster-analysis" hidden={hidden}>
+    <div className="col col-3 glass" data-tour="cluster-analysis" hidden={hidden}>
       <div className="cluster-analysis-header">
         <div className="cluster-analysis-title">
           Cluster Analysis
@@ -134,7 +134,6 @@ export default function ClusterAnalysisPanel({
                             <span
                               key={r.term}
                               className="cluster-analysis-pathway"
-                              style={{ color: CL[a.index], background: `${CL[a.index]}20` }}
                             >
                               {formatTerm(r.term)}
                             </span>
