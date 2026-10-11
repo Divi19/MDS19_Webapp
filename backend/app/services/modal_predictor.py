@@ -267,7 +267,8 @@ class ModalPredictor(BasePredictor):
         return stage["url"]
 
     def explain_batch(self, image_bytes: bytes, spot_indices: list[int],
-                      gene: str | None = None) -> list[TileResult]:
+                      gene: str | None = None,
+                      tissue: str | None = None) -> list[TileResult]:
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
         if not self.gradcam_url:
@@ -276,10 +277,17 @@ class ModalPredictor(BasePredictor):
                 "deployed modal_gradcam_app endpoint")
 
         signed_url = self._stage_for_gradcam(image_bytes)
+        body = {"image_url": signed_url, "spot_indices": spot_indices, "gene": gene}
+        # Only sent when given, so the body stays exactly what the breast-only
+        # Grad-CAM app has always received. With it, the multi-cancer app
+        # explains that cancer's model on its own grid (145 px vs 290 px), so
+        # spot_index points at the same tile as in predict's "spots".
+        if tissue:
+            body["tissue"] = tissue
         try:
             resp = self._http.post(
                 self.gradcam_url,
-                json={"image_url": signed_url, "spot_indices": spot_indices, "gene": gene},
+                json=body,
                 timeout=self.request_timeout,
             )
             resp.raise_for_status()
@@ -301,5 +309,6 @@ class ModalPredictor(BasePredictor):
         except KeyError as exc:
             raise RuntimeError(f"Modal Grad-CAM response missing spot {exc}") from exc
 
-    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
-        return self.explain_batch(image_bytes, [spot_index], gene)[0].png
+    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None,
+                tissue: str | None = None) -> bytes:
+        return self.explain_batch(image_bytes, [spot_index], gene, tissue)[0].png

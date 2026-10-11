@@ -42,6 +42,11 @@ async def _read_upload(file: UploadFile) -> bytes:
     return data
 
 
+def _clean_tissue(tissue: str | None) -> str | None:
+    """Optional `tissue` form field: blank means not given."""
+    return (tissue or "").strip() or None
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health(request: Request):
     predictor = request.app.state.predictor
@@ -61,7 +66,7 @@ async def predict(
     # the tissue router and its "not supported" refusal.
     tissue: str | None = Form(None),
 ):
-    tissue = (tissue or "").strip() or None
+    tissue = _clean_tissue(tissue)
     predictor = request.app.state.predictor
     if tissue and not getattr(predictor, "supports_tissue_override", False):
         raise HTTPException(
@@ -107,11 +112,14 @@ async def predict_gradcam(
     file: UploadFile = File(...),
     spot_index: int = Form(...),
     gene: str | None = Form(None),
+    # The prediction's tissue.code (or the user's override): which cancer
+    # model and grid to explain. Ignored by breast-only predictors.
+    tissue: str | None = Form(None),
 ):
     image_bytes = await _read_upload(file)
     predictor = request.app.state.predictor
     try:
-        png_bytes = predictor.explain(image_bytes, spot_index, gene)
+        png_bytes = predictor.explain(image_bytes, spot_index, gene, tissue=_clean_tissue(tissue))
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:
@@ -128,6 +136,7 @@ async def predict_gradcam_batch(
     file: UploadFile = File(...),
     spot_indices: str = Form(...),  # comma-separated ints, e.g. "0,1,2,3"
     gene: str | None = Form(None),
+    tissue: str | None = Form(None),  # see predict_gradcam
 ):
     image_bytes = await _read_upload(file)
     try:
@@ -139,7 +148,7 @@ async def predict_gradcam_batch(
 
     predictor = request.app.state.predictor
     try:
-        results = predictor.explain_batch(image_bytes, indices, gene)
+        results = predictor.explain_batch(image_bytes, indices, gene, tissue=_clean_tissue(tissue))
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:

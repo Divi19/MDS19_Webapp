@@ -65,17 +65,23 @@ class BasePredictor(ABC):
     # for predictors that would silently ignore it.
     supports_tissue_override: bool = False
 
-    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
+    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None,
+                tissue: str | None = None) -> bytes:
         """
         Grad-CAM overlay (PNG bytes) for one tissue patch. Optional — only
         MclSTExpPredictor implements this; predictors without a real image
         encoder have nothing for Grad-CAM to visualise.
+
+        tissue: the multi-cancer router class the prediction reported (or the
+        user's override), so the explained model and grid match predict's.
+        Predictors that only serve breast accept and ignore it.
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not support Grad-CAM explanations")
 
     def explain_batch(self, image_bytes: bytes, spot_indices: list[int],
-                       gene: str | None = None) -> list[TileResult]:
+                       gene: str | None = None,
+                       tissue: str | None = None) -> list[TileResult]:
         """Batched form of explain() — see MclSTExpPredictor.explain_batch()."""
         raise NotImplementedError(
             f"{type(self).__name__} does not support batched Grad-CAM explanations")
@@ -804,7 +810,8 @@ class MclSTExpPredictor(BasePredictor):
         self._tile_cache = (key, patches, kept, image if h0 else None, coords if h0 else None)
         return patches, kept
 
-    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
+    def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None,
+                tissue: str | None = None) -> bytes:
         """
         Grad-CAM overlay (PNG bytes) for one tissue patch.
 
@@ -819,6 +826,9 @@ class MclSTExpPredictor(BasePredictor):
         one reference spot with the highest REAL measured expression of that
         gene, rather than the reference spot nearest to this patch's own
         embedding.
+
+        tissue is accepted for the BasePredictor contract and ignored: this
+        predictor only serves the breast model.
         """
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
@@ -876,7 +886,8 @@ class MclSTExpPredictor(BasePredictor):
         return encode_png(overlay)
 
     def explain_batch(self, image_bytes: bytes, spot_indices: list[int],
-                       gene: str | None = None) -> list[TileResult]:
+                       gene: str | None = None,
+                       tissue: str | None = None) -> list[TileResult]:
         """
         Grad-CAM overlays for several tissue patches in one forward/backward
         pass — the whole-slide mosaic needs this once per tissue tile, and
