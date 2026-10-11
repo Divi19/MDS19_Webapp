@@ -507,6 +507,9 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     // explainGradcamBatch()'s docstring for why the self-referential
     // fallback is measurably weaker.
     const targetGene = pred.topGenes[0]?.name;
+    // Which cancer model and grid the Grad-CAM service explains — the same
+    // as predict's, so each spot_index is the same tile in both.
+    const tissueCode = pred.cancer?.code;
 
     setLoading(true);
     report(true, 0);
@@ -519,7 +522,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
           (_, k) => start + k,
         );
         try {
-          const tiles = await explainGradcamBatch(file, indices, targetGene, controller.signal);
+          const tiles = await explainGradcamBatch(file, indices, targetGene, controller.signal, tissueCode);
           if (seq !== seqRef.current) return;
           for (const t of tiles) {
             if (t.heat && t.mask && t.heat_size) {
@@ -557,7 +560,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- draw is stable enough per render; re-running this on every draw identity change would restart the whole slide
-  }, [file, fileStatus, ready, pred.spots.length]);
+  }, [file, fileStatus, ready, pred.spots.length, pred.cancer?.code]);
 
   // Lets you check progress without keeping this panel in view — the load
   // keeps running in the background regardless of tab focus, so a glance
@@ -756,6 +759,14 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         )}
         {!loading && loadedCount > 0 && (
           <span className="gradcam-hint">drag to pan · click a spot for detail</span>
+        )}
+        {pred.cancer?.limitedSupport && (
+          <span
+            className="gradcam-limited"
+            title={`The ${pred.cancer.label} model was trained on few slides — read its Grad-CAM with extra caution.`}
+          >
+            limited support
+          </span>
         )}
         {imgTick > 0 && (
           <div className="gradcam-zoom-controls">

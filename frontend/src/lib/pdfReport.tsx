@@ -12,9 +12,10 @@ export interface ReportData {
   analysis: ClusterAnalysis[];
   pathways: Record<number, PathwayState>;
   /** PNG data URL of the Grad-CAM mosaic, captured from the live canvas.
-   * Required — the export is gated on this already being available (see
-   * GeneXApp's export handler), so this is never undefined in practice. */
-  gradcamImage: string;
+   * The export is gated on this being available (see GeneXApp's export
+   * handler); null only for cancers Grad-CAM is not offered for
+   * (lib/cancer.ts), whose report has no Explainability section. */
+  gradcamImage: string | null;
 }
 
 /** Strips each category's own ID prefix, same as the live Cluster Analysis
@@ -248,7 +249,7 @@ function Toc({ data }: { data: ReportData }) {
           { n: "07", name: "Tissue-Specific Gene Expression" },
         ]
       : []),
-    { n: hasTissue ? "08" : "06", name: "Explainability (Grad-CAM)" },
+    ...(data.gradcamImage ? [{ n: hasTissue ? "08" : "06", name: "Explainability (Grad-CAM)" }] : []),
   ];
   return (
     <Page size="A4" style={styles.page}>
@@ -638,7 +639,7 @@ function TissueSpecificGenes({ data }: { data: ReportData }) {
   );
 }
 
-function Explainability({ data, pageNum }: { data: ReportData; pageNum: string }) {
+function Explainability({ data, gradcamImage, pageNum }: { data: ReportData; gradcamImage: string; pageNum: string }) {
   const sectionNum = data.pred.tissue ? "08" : "06";
   const topGene = data.pred.topGenes[0]?.name ?? "the top predicted gene";
   return (
@@ -651,7 +652,7 @@ function Explainability({ data, pageNum }: { data: ReportData; pageNum: string }
         {topGene}, the slide&apos;s top predicted gene. Warmer colour indicates higher attention; it reflects what
         the model weighted most heavily, not a measured biological signal.
       </Text>
-      <PdfImage src={data.gradcamImage} style={{ width: "100%", borderRadius: 6, border: `1 solid ${BORDER}` }} />
+      <PdfImage src={gradcamImage} style={{ width: "100%", borderRadius: 6, border: `1 solid ${BORDER}` }} />
       <Text style={[styles.cardText, { marginTop: 8 }]}>
         Grad-CAM attention map for {topGene} across the full section, captured from the live Spatial Map.
       </Text>
@@ -676,7 +677,9 @@ function ReportDocument({ data }: { data: ReportData }) {
       <GeneExpressionSummary data={data} />
       {hasTissue && <TissueComposition data={data} />}
       {hasTissue && <TissueSpecificGenes data={data} />}
-      <Explainability data={data} pageNum={hasTissue ? "11" : "09"} />
+      {data.gradcamImage && (
+        <Explainability data={data} gradcamImage={data.gradcamImage} pageNum={hasTissue ? "11" : "09"} />
+      )}
     </Document>
   );
 }
