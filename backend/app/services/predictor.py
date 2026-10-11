@@ -60,6 +60,11 @@ class BasePredictor(ABC):
     # this predictor does not run one. Reported by /api/health.
     tissue_model_version: str | None = None
 
+    # Whether predict() accepts a `tissue` override (a multi-cancer router
+    # class such as "COAD"). /api/predict rejects the form field with 400
+    # for predictors that would silently ignore it.
+    supports_tissue_override: bool = False
+
     def explain(self, image_bytes: bytes, spot_index: int, gene: str | None = None) -> bytes:
         """
         Grad-CAM overlay (PNG bytes) for one tissue patch. Optional — only

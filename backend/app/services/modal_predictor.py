@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 # Only need BasePredictor's contract; importing the whole predictor module
 # would pull in torch/mclstexp for a class that uses neither.
+from app.services.errors import TissueNotSupportedError
 from app.services.gradcam import TileResult, tile_from_json
 from app.services.predictor import BasePredictor
 
@@ -56,6 +57,10 @@ class ModalPredictor(BasePredictor):
     # to cover a cold start plus a large slide's inference, not so long that
     # a genuinely dead endpoint hangs the request forever.
     DEFAULT_TIMEOUT_SECONDS = 150.0
+
+    # The multi-cancer Modal app (MULTICANCER=on) takes an optional "tissue"
+    # router class that bypasses its tissue router; see predict().
+    supports_tissue_override = True
 
     # How long the staged upload's signed URL stays valid. Only needs to
     # outlive one Modal request (upload -> Modal's own requests.get ->
@@ -155,15 +160,27 @@ class ModalPredictor(BasePredictor):
             # doesn't corrupt anything.
             logger.warning("Failed to clean up relay object %s: %s", path, exc)
 
-    def predict(self, image_bytes: bytes) -> dict:
+    def predict(self, image_bytes: bytes, tissue: str | None = None) -> dict:
+        """
+        `tissue` (optional) is a multi-cancer router class such as "COAD".
+        It is only sent when given, so without it the request body is exactly
+        what the single-model endpoint has always received.
+
+        Raises TissueNotSupportedError when the Modal tissue router refuses
+        the slide (reply {"unsupported": true, "message", "tissue": {...}}).
+        """
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
 
         path, signed_url = self._stage_upload(image_bytes)
+        body = {"image_url": signed_url}
+        if tissue:
+            body["tissue"] = tissue
+            logger.info("Tissue override requested: %s", tissue)
         try:
             resp = self._http.post(
                 self.predict_url,
-                json={"image_url": signed_url},
+                json=body,
                 timeout=self.request_timeout,
             )
             resp.raise_for_status()
@@ -184,6 +201,13 @@ class ModalPredictor(BasePredictor):
             ) from exc
         finally:
             self._cleanup(path)
+
+        if result.get("unsupported"):
+            verdict = result.get("tissue") or {}
+            message = result.get("message") or (
+                f"Tissue not supported: {verdict.get('label') or verdict.get('code') or 'unknown'}"
+                + (f" ({verdict['reason']})" if verdict.get("reason") else ""))
+            raise TissueNotSupportedError(message, verdict)
 
         for key in ("spots", "top_genes"):
             if key not in result:
