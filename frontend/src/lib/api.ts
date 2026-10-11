@@ -1,3 +1,4 @@
+import { cancerFromApi, type ApiCancerTissue } from "@/lib/cancer";
 import type { Prediction, Spot, TopGene } from "@/lib/mockPrediction";
 import { predictionTissueFromApi, spotTissueFromApi } from "@/lib/tissue";
 import { tilingFromApi } from "@/lib/tiling";
@@ -40,6 +41,11 @@ export interface PredictionResponse {
   // Absent from older backends and saved runs; see tilingFromApi.
   tile_px?: number | null;
   stride_px?: number | null;
+  // Multi-cancer serving (lib/cancer.ts). Absent from breast-only backends
+  // and from runs reopened from History.
+  tissue?: ApiCancerTissue | null;
+  expression_units?: string | null;
+  limited_support?: boolean | null;
 }
 
 export async function predict(file: File): Promise<PredictionResponse> {
@@ -65,11 +71,13 @@ export async function explainGradcam(
   spotIndex: number,
   gene?: string,
   signal?: AbortSignal,
+  tissue?: string,
 ): Promise<Blob> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("spot_index", String(spotIndex));
   if (gene) formData.append("gene", gene);
+  if (tissue) formData.append("tissue", tissue);
 
   const res = await fetch(`${API_URL}/api/predict/gradcam`, {
     method: "POST",
@@ -109,17 +117,23 @@ export interface GradcamBatchTile {
  * self-selected nearest neighbour) — a deletion-test sensitivity check
  * showed the self-referential fallback (omitting gene) is measurably
  * weaker, since a tile's own nearest neighbour starts close to its own
- * maximum similarity, where the gradient is small by construction. */
+ * maximum similarity, where the gradient is small by construction.
+ *
+ * tissue is the prediction's router class (CancerTissue.code), so the
+ * multi-cancer service explains the same model on the same grid as predict
+ * — spot_index then means the same tile. Omitted for breast-only runs. */
 export async function explainGradcamBatch(
   file: File,
   spotIndices: number[],
   gene?: string,
   signal?: AbortSignal,
+  tissue?: string,
 ): Promise<GradcamBatchTile[]> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("spot_indices", spotIndices.join(","));
   if (gene) formData.append("gene", gene);
+  if (tissue) formData.append("tissue", tissue);
 
   const res = await fetch(`${API_URL}/api/predict/gradcam/batch`, {
     method: "POST",
@@ -292,5 +306,6 @@ export function toPrediction(response: PredictionResponse): Prediction {
     total: spots.length,
     tissue,
     tiling: tilingFromApi(response),
+    cancer: cancerFromApi(response),
   };
 }
