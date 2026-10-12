@@ -47,15 +47,24 @@ export function cancerFromApi(response: {
   };
 }
 
+/** Router class of the live HER2ST breast model. */
+const BREAST_CODE = "IDC";
+
 /**
- * Router classes Grad-CAM is shown for. The multi-cancer Grad-CAM service is
- * only verified for breast until its staging check passes; then set this to
- * null to show Grad-CAM for every cancer.
+ * Router classes Grad-CAM is shown for, or null for every cancer. The
+ * multi-cancer Grad-CAM service is live for all of them; set a list such as
+ * ["IDC"] to hide it again for the rest.
  */
-const GRADCAM_ONLY_FOR: readonly string[] | null = ["IDC"];
+const GRADCAM_ONLY_FOR = null as readonly string[] | null;
 
 /** Whether the Grad-CAM view is offered for a prediction. Predictions without
  * a router verdict come from breast-only serving, so they keep Grad-CAM. */
 export function gradcamAvailable(cancer: CancerTissue | null | undefined): boolean {
   return !cancer || GRADCAM_ONLY_FOR === null || GRADCAM_ONLY_FOR.includes(cancer.code);
+}
+
+/** Grad-CAM for the non-breast models is not yet reviewed, so it is labelled
+ * experimental. Breast (and breast-only serving, which has no verdict) is not. */
+export function gradcamExperimental(cancer: CancerTissue | null | undefined): boolean {
+  return !!cancer && cancer.code !== BREAST_CODE;
 }
