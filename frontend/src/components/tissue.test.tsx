@@ -66,7 +66,7 @@ describe("SpatialPlot Tissue view", () => {
 });
 
 describe("SpatialPlot Tissue view — pinning", () => {
-  it("pins a type from the legend, shows the gene's range within it, and unpins", () => {
+  it("pins a type from the legend, switches it to the gene's range within it, and unpins", () => {
     const onTissuePin = vi.fn();
     const { container, rerender } = render(
       <SpatialPlot pred={toPrediction(TISSUE_RESPONSE)} ready view="tissue" gene="ERBB2" onTissuePin={onTissuePin} />,
@@ -86,10 +86,18 @@ describe("SpatialPlot Tissue view — pinning", () => {
         onTissuePin={onTissuePin}
       />,
     );
-    // Pinned: the pills give way to the pinned type and the selected gene's
-    // range within it (raw ERBB2 in the three Cancer tiles: 1.0, 2.0, 3.0).
+    // Pinned: the pills give way to the pinned type, still coloured by tissue
+    // type, with a Tissue | gene switch.
     expect(container.querySelector(".tissue-legend")).toBeNull();
-    expect(container.querySelector(".tgs")!.textContent).toBe("ERBB21.003.00");
+    const tissueBtn = screen.getByRole("button", { name: "Tissue" });
+    expect(tissueBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector(".tgs")).toBeNull();
+    // Switching to the gene shows its range within the type (raw ERBB2 in the
+    // three Cancer tiles: 1.0, 2.0, 3.0); switching back hides it again.
+    fireEvent.click(screen.getByRole("button", { name: "ERBB2" }));
+    expect(container.querySelector(".tgs")!.textContent).toBe("1.003.00");
+    fireEvent.click(tissueBtn);
+    expect(container.querySelector(".tgs")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Unpin Cancer" }));
     expect(onTissuePin).toHaveBeenLastCalledWith(null);
   });

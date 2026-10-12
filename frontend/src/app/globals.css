@@ -147,10 +147,14 @@ button.legend-item{font:inherit;font-size:11.5px}
 .tissue-legend{display:flex;gap:4px;flex-wrap:nowrap;justify-content:center;min-width:0}
 .tissue-gene-scale{display:flex;align-items:center;gap:10px;min-width:0}
 .tissue-gene-scale .unpin{margin-left:2px;color:rgba(255,255,255,.7)}
+/* Tissue | gene switch for a pinned type: a small version of the Table/Cards switch. */
+.colour-by{flex-shrink:0;box-shadow:0 0 0 1px var(--line-soft)}
+.colour-by button{padding:4px 10px;font-size:11px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.colour-by button.on{box-shadow:0 0 0 1px var(--line),0 1px 3px rgba(0,0,0,.12)}
 .tgs{display:flex;align-items:center;gap:8px;min-width:0;font-size:11px;color:var(--muted)}
 .tgs-gene{color:var(--ink);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:110px}
 .tgs-val{flex-shrink:0}
-.tgs .tgs-bar{width:120px;min-width:40px;height:6px}
+.tgs .tgs-bar{width:90px;min-width:40px;height:6px}
 .tgs-empty{font-style:italic}
 .opacity-control{display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);flex-shrink:0}
 .opacity-control input{accent-color:var(--accent);width:64px}

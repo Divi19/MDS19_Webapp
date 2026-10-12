@@ -223,8 +223,14 @@ export default function SpatialPlot({
   // so the tissue names never push the map smaller than before.
   const clusterLegendRef = useRef<HTMLDivElement>(null);
   const [legendNamed, setLegendNamed] = useState(true);
-  // With a type pinned, its tiles show the selected gene's level within that
-  // type; the range sets the colour scale and the legend's min/max.
+  // A pinned type stays highlighted, like hovering it. The bottom card's
+  // "Tissue | gene" switch can instead colour its tiles by the selected
+  // gene's level within that type; the choice belongs to the type it was
+  // made for, so pinning another type starts back on Tissue.
+  const [geneModeType, setGeneModeType] = useState<TissueClass | null>(null);
+  const geneMode = !!tissuePin && geneModeType === tissuePin;
+  // The pinned type's range of the selected gene: the colour scale and the
+  // legend's min/max in gene mode.
   const pinRange = useMemo(() => {
     if (!tissueLayer || !tissuePin) return null;
     const values = pred.spots.filter((s) => s.tissue?.cls === tissuePin).map((s) => rawExpr(s, gene));
@@ -310,7 +316,7 @@ export default function SpatialPlot({
           : focusType == null || s.tissue?.cls === focusType;
     // Gene-within-type colouring while a type is pinned and nothing is being
     // previewed by hover.
-    const geneInPin = pinRange && pinRange.count && !(tissueHighlight ?? tissueHover ?? tissueGroupHover ?? tissueClusterHover ?? tissueClusterPin) ? pinRange : null;
+    const geneInPin = geneMode && pinRange && pinRange.count && !(tissueHighlight ?? tissueHover ?? tissueGroupHover ?? tissueClusterHover ?? tissueClusterPin) ? pinRange : null;
     const drawTissue = (px: number, py: number, r: number, s: Spot) => {
       if (geneInPin && s.tissue?.cls === tissuePin) {
         const span = geneInPin.max - geneInPin.min;
@@ -446,7 +452,7 @@ export default function SpatialPlot({
       ctx.stroke();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
-  }, [pred, ready, view, gene, highlight, clusterPin, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueHover, tissueGroupHover, tissueClusterHover, tissueClusterPin, tissuePin, pinRange, spotOpacity]);
+  }, [pred, ready, view, gene, highlight, clusterPin, width, height, imgTick, imageUrl, showImage, tissueLayer, tissueHighlight, tissueHover, tissueGroupHover, tissueClusterHover, tissueClusterPin, tissuePin, pinRange, spotOpacity, geneMode]);
 
   useEffect(() => {
     draw();
@@ -639,19 +645,42 @@ export default function SpatialPlot({
                     {TISSUE_SHORT_NAMES[tissuePin]}
                     <span aria-hidden className="unpin">×</span>
                   </button>
-                  {pinRange.count ? (
-                    <span
-                      className="tgs"
-                      title={`${gene} in ${tissuePin} tiles, scaled from the lowest to the highest of those tiles`}
+                  <div
+                    className="seg colour-by"
+                    role="group"
+                    aria-label={`Colour ${TISSUE_SHORT_NAMES[tissuePin]} tiles by`}
+                    title={`Colour the ${TISSUE_SHORT_NAMES[tissuePin]} tiles by tissue type or by ${gene}`}
+                  >
+                    <button
+                      type="button"
+                      className={geneMode ? "" : "on"}
+                      aria-pressed={!geneMode}
+                      onClick={() => setGeneModeType(null)}
                     >
-                      <span className="tgs-gene">{gene}</span>
-                      <span className="tgs-val">{pinRange.min.toFixed(2)}</span>
-                      <span className="vbar tgs-bar" />
-                      <span className="tgs-val">{pinRange.max.toFixed(2)}</span>
-                    </span>
-                  ) : (
-                    <span className="tgs tgs-empty">no {TISSUE_SHORT_NAMES[tissuePin]} tiles</span>
-                  )}
+                      Tissue
+                    </button>
+                    <button
+                      type="button"
+                      className={geneMode ? "on" : ""}
+                      aria-pressed={geneMode}
+                      onClick={() => setGeneModeType(tissuePin)}
+                    >
+                      {gene}
+                    </button>
+                  </div>
+                  {geneMode &&
+                    (pinRange.count ? (
+                      <span
+                        className="tgs"
+                        title={`${gene} in ${tissuePin} tiles, scaled from the lowest to the highest of those tiles`}
+                      >
+                        <span className="tgs-val">{pinRange.min.toFixed(2)}</span>
+                        <span className="vbar tgs-bar" />
+                        <span className="tgs-val">{pinRange.max.toFixed(2)}</span>
+                      </span>
+                    ) : (
+                      <span className="tgs tgs-empty">no {TISSUE_SHORT_NAMES[tissuePin]} tiles</span>
+                    ))}
                 </div>
               ) : (
                 <div className="tissue-legend" aria-label="Tissue type legend">
