@@ -653,6 +653,19 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .plot-header .map-tabs button{padding:0 12px}
 .gsel{width:140px}
 .overlay-toggle{padding:0 12px 0 10px}
+/* Gene picker and third control at fixed widths on every tab, so the tabs
+   never move: Clusters shows a cluster picker where the others show the
+   Show image switch. */
+.plot-header .gene-combo{flex-shrink:0}
+.gsel:disabled{cursor:not-allowed;opacity:.6}
+.header-slot{position:relative;width:132px;flex-shrink:0}
+.header-slot .overlay-toggle{width:100%;justify-content:center}
+.overlay-toggle.is-disabled{opacity:.5;cursor:not-allowed}
+.overlay-toggle.is-disabled input{cursor:not-allowed}
+.cluster-select-wrap{position:relative;display:block}
+.cluster-select{appearance:none;-webkit-appearance:none;display:block;width:100%;height:36px;padding:0 26px 0 14px;border:none;border-radius:var(--r-pill);font-size:11.5px;font-weight:500;color:var(--ink-2);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 0 0 1px var(--line),inset 0 1px 0 rgba(255,255,255,.7),0 16px 40px -12px rgba(30,20,40,.28)}
+.cluster-select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cluster-select:disabled{cursor:not-allowed;opacity:.6}
 /* Expression bars use the viridis scale: dark = low, yellow = high */
 .gene-row .bar-track{height:6px}
 .gene-row-head,.gene-row{grid-template-columns:22px minmax(0,1fr) 52px 38px 40px}

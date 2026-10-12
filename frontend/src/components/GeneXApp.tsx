@@ -549,11 +549,11 @@ export default function GeneXApp() {
       setGene(name);
       setGeneQuery("");
       setGeneMenuOpen(false);
-      // Reachable from the Genes and Tissue dropdowns (Grad-CAM has no gene
-      // selection). The Tissue tab stays put: its bottom card follows the gene.
-      if (view !== "tissue") changeView("genes");
+      // The header picker is on every tab and never switches tab: Genes and
+      // Tissue redraw for the gene; Clusters and Grad-CAM just keep it for
+      // when you switch to Genes.
     },
-    [changeView, view],
+    [],
   );
 
   const fileName = uploaded?.name && uploaded.name !== "—" ? uploaded.name : "her2_B1.tiff";
@@ -995,95 +995,121 @@ export default function GeneXApp() {
                   </button>
                 )}
               </nav>
-              {(view === "genes" || view === "tissue") && (
-                <div className="gene-combo">
-                  <input
-                    className="gsel"
-                    placeholder="select a gene"
-                    aria-label="gene"
-                    value={geneMenuOpen ? geneQuery : gene}
-                    onFocus={() => {
-                      setGeneQuery("");
-                      setGeneMenuOpen(true);
-                    }}
-                    onClick={() => setGeneMenuOpen(true)}
-                    onChange={(e) => {
-                      setGeneQuery(e.target.value);
-                      setGeneMenuOpen(true);
-                    }}
-                    onBlur={() => window.setTimeout(() => setGeneMenuOpen(false), 120)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && geneMatches[0]) {
-                        e.preventDefault();
-                        pickGene(geneMatches[0].name);
-                        (e.target as HTMLInputElement).blur();
-                      } else if (e.key === "Escape") {
-                        setGeneMenuOpen(false);
-                      }
-                    }}
-                  />
-                  <span className="gsel-caret" aria-hidden>
-                    ▾
-                  </span>
-                  {geneMenuOpen && (
-                    <div className="gene-dropdown-panel">
-                      <div className="gene-filter-chips">
-                        {(["all", "High", "Mid", "Low", "markers"] as GeneFilter[]).map((f) => (
-                          <button
-                            key={f}
-                            type="button"
-                            className={geneFilter === f ? "on" : ""}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => setGeneFilter(f)}
-                          >
-                            {f === "all" ? "All" : f === "markers" ? "Markers" : f}
-                          </button>
-                        ))}
-                      </div>
-                      {geneMatches.length > 0 ? (
-                        <ul className="gene-menu" role="listbox">
-                          {geneMatches.map((o) => (
-                            <li
-                              key={o.name}
-                              role="option"
-                              aria-selected={o.name === gene}
-                              className={o.name === gene ? "on" : ""}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                pickGene(o.name);
-                              }}
-                            >
-                              <span className="gm-left">
-                                <span
-                                  className="gm-swatch"
-                                  style={{ background: viridis(o.value / maxGeneValue) }}
-                                />
-                                <span className="gm-name">{o.name}</span>
-                              </span>
-                              <span className="gm-right">
-                                <span className={`level-tag ${levelClass(o.level)}`}>{o.level}</span>
-                                <span className="gm-tag">{o.label}</span>
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="gene-menu-empty">no genes match</div>
-                      )}
+              {/* Picker and third control are on every tab at fixed widths, so
+                  the tabs never move when switching. */}
+              <div className="gene-combo">
+                <input
+                  className="gsel"
+                  placeholder="select a gene"
+                  aria-label="gene"
+                  disabled={!ready}
+                  value={geneMenuOpen ? geneQuery : gene}
+                  onFocus={() => {
+                    setGeneQuery("");
+                    setGeneMenuOpen(true);
+                  }}
+                  onClick={() => setGeneMenuOpen(true)}
+                  onChange={(e) => {
+                    setGeneQuery(e.target.value);
+                    setGeneMenuOpen(true);
+                  }}
+                  onBlur={() => window.setTimeout(() => setGeneMenuOpen(false), 120)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && geneMatches[0]) {
+                      e.preventDefault();
+                      pickGene(geneMatches[0].name);
+                      (e.target as HTMLInputElement).blur();
+                    } else if (e.key === "Escape") {
+                      setGeneMenuOpen(false);
+                    }
+                  }}
+                />
+                <span className="gsel-caret" aria-hidden>
+                  ▾
+                </span>
+                {geneMenuOpen && (
+                  <div className="gene-dropdown-panel">
+                    <div className="gene-filter-chips">
+                      {(["all", "High", "Mid", "Low", "markers"] as GeneFilter[]).map((f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          className={geneFilter === f ? "on" : ""}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => setGeneFilter(f)}
+                        >
+                          {f === "all" ? "All" : f === "markers" ? "Markers" : f}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                </div>
-              )}
-              {(view === "genes" || view === "tissue") && uploaded?.url && (
-                <label className="overlay-toggle glass-lite">
-                  <input
-                    type="checkbox"
-                    checked={showImage}
-                    onChange={(e) => setShowImage(e.target.checked)}
-                  />
-                  Show image
-                </label>
-              )}
+                    {geneMatches.length > 0 ? (
+                      <ul className="gene-menu" role="listbox">
+                        {geneMatches.map((o) => (
+                          <li
+                            key={o.name}
+                            role="option"
+                            aria-selected={o.name === gene}
+                            className={o.name === gene ? "on" : ""}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              pickGene(o.name);
+                            }}
+                          >
+                            <span className="gm-left">
+                              <span
+                                className="gm-swatch"
+                                style={{ background: viridis(o.value / maxGeneValue) }}
+                              />
+                              <span className="gm-name">{o.name}</span>
+                            </span>
+                            <span className="gm-right">
+                              <span className={`level-tag ${levelClass(o.level)}`}>{o.level}</span>
+                              <span className="gm-tag">{o.label}</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="gene-menu-empty">no genes match</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="header-slot">
+                {view === "clusters" ? (
+                  // Same as clicking a Cluster breakdown tile or legend pill.
+                  <label className="cluster-select-wrap">
+                    <select
+                      className="cluster-select glass-lite"
+                      aria-label="Show one cluster"
+                      disabled={!ready}
+                      value={clusterPin ?? ""}
+                      onChange={(e) => setClusterPin(e.target.value === "" ? null : Number(e.target.value))}
+                    >
+                      <option value="">All clusters</option>
+                      {pred.clusters.map((c, i) => (
+                        <option key={i} value={i}>
+                          Cluster {i}
+                          {clusterLabels[i] ? ` · ${clusterLabels[i]!.short}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="gsel-caret" aria-hidden>
+                      ▾
+                    </span>
+                  </label>
+                ) : (
+                  <label className={`overlay-toggle glass-lite${uploaded?.url ? "" : " is-disabled"}`}>
+                    <input
+                      type="checkbox"
+                      checked={showImage}
+                      disabled={!uploaded?.url}
+                      onChange={(e) => setShowImage(e.target.checked)}
+                    />
+                    Show image
+                  </label>
+                )}
+              </div>
             </div>
             {gradcamMounted && gradcamOk && (
               <GradCamPanel
