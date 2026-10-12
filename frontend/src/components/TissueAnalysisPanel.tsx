@@ -78,7 +78,16 @@ export default function TissueAnalysisPanel({
     <div className="col col-3 tissue-analysis glass">
       <div className="cluster-analysis-header ta-header">
         <div>
-          <div className="cluster-analysis-title">Tissue Analysis</div>
+          <div className="cluster-analysis-title">
+            Tissue Analysis
+            <span
+              className="info-icon tooltip-below"
+              tabIndex={0}
+              data-tooltip="Compares predicted gene expression between the tissue types the model found (cancer, connective, immune, glands, adipose). Pick a type to see which genes are higher in it, and how its tiles split across expression clusters. These are model predictions, not lab measurements."
+            >
+              i
+            </span>
+          </div>
           <div className="cluster-analysis-sub">
             {pred.total} tiles · {tab === "expression" ? "expression by tissue type" : "tissue types per cluster"}
           </div>
