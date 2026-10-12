@@ -91,7 +91,7 @@ canvas{display:block;width:100%;height:auto}
 .plot-header{position:relative;z-index:12;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px;min-height:36px}
 .plot-header .dataset-label{font-size:11px;color:var(--muted);white-space:nowrap}
 .gene-combo{position:relative;display:inline-block}
-.gsel{border:none;border-radius:var(--r-pill);height:36px;padding:0 28px 0 16px;font-size:12px;font-weight:500;width:190px;color:var(--ink);background:var(--glass-lite);-webkit-backdrop-filter:blur(22px) saturate(1.6);backdrop-filter:blur(22px) saturate(1.6);box-shadow:0 0 0 .5px rgba(0,0,0,.08),inset 0 1px 0 rgba(255,255,255,.7),0 10px 28px -12px rgba(30,20,40,.3)}
+.gsel{border:none;border-radius:var(--r-pill);height:36px;padding:0 28px 0 16px;font-size:12px;font-weight:500;width:190px;color:var(--ink);background:var(--glass-lite);-webkit-backdrop-filter:blur(22px) saturate(1.6);backdrop-filter:blur(22px) saturate(1.6);box-shadow:0 0 0 1px var(--line),inset 0 1px 0 rgba(255,255,255,.7),0 10px 28px -12px rgba(30,20,40,.3)}
 .gsel::placeholder{font-family:var(--sans);font-style:normal;color:var(--faint)}
 .gsel:focus{outline:none;box-shadow:0 0 0 2px var(--accent),0 10px 28px -12px rgba(30,20,40,.3)}
 .gsel-caret{position:absolute;right:13px;top:50%;transform:translateY(-50%);font-size:9px;color:var(--muted);pointer-events:none}
@@ -109,6 +109,8 @@ canvas{display:block;width:100%;height:auto}
 .gene-menu .gm-tag{font-size:10.5px;color:var(--faint)}
 .gene-menu-empty{padding:16px 8px;text-align:center;font-size:11px;color:var(--faint)}
 .overlay-toggle{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px 0 12px;border-radius:var(--r-pill);font-size:11.5px;color:var(--ink-2);cursor:pointer;user-select:none;white-space:nowrap}
+/* The "Show image" pill's edge: .glass-lite's shadow with its outline at 1px. */
+.overlay-toggle.glass-lite{box-shadow:0 0 0 1px var(--line),inset 0 1px 0 rgba(255,255,255,.7),0 16px 40px -12px rgba(30,20,40,.28)}
 .overlay-toggle input,.gene-filter-toggle input{appearance:none;-webkit-appearance:none;width:30px;height:18px;border-radius:var(--r-pill);background:rgba(0,0,0,.16);position:relative;cursor:pointer;margin:0;flex-shrink:0;transition:background .25s var(--ease)}
 .overlay-toggle input::after,.gene-filter-toggle input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .25s var(--ease)}
 .overlay-toggle input:checked,.gene-filter-toggle input:checked{background:var(--accent)}
@@ -602,7 +604,7 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .upload-btn:active,.replace-btn:active{transform:scale(.96)}
 .upload-btn svg{width:16px;height:16px}
 .upload-btn .kbd{margin-left:auto;font-size:10px;background:rgba(255,255,255,.2);padding:1px 7px;border-radius:var(--r-pill)}
-.replace-btn{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.7);box-shadow:0 0 0 .5px rgba(0,0,0,.1);border:none;color:var(--ink-2);border-radius:var(--r-pill);padding:0 14px;font-size:11.5px;cursor:pointer;transition:transform .15s var(--ease)}
+.replace-btn{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.7);box-shadow:0 0 0 1px var(--line);border:none;color:var(--ink-2);border-radius:var(--r-pill);padding:0 14px;font-size:11.5px;cursor:pointer;transition:transform .15s var(--ease)}
 .replace-btn:hover{background:#fff}
 .replace-btn svg{width:13px;height:13px}
 .input-card{flex-shrink:0}
