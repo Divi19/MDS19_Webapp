@@ -2,6 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { explainGradcamBatch } from "@/lib/api";
+import { gradcamExperimental } from "@/lib/cancer";
 import type { Prediction, Spot } from "@/lib/mockPrediction";
 import { DEFAULT_TILING, tileOrigin, type Tiling } from "@/lib/tiling";
 
@@ -69,6 +70,14 @@ const SMOOTH_SIGMA = 2;
 // stair-step squares along the edge. Only the weakest cells are affected.
 const FADE_LO = 0.03;
 const FADE_HI = 0.22;
+// Models that space tiles further apart than the tile size (v16-core: 224 px
+// tiles every 290 px) leave gaps with no heat of their own. Opacity ramps in
+// with how much of a cell's smoothed neighbourhood is covered by tiles
+// (between COVER_LO and COVER_HI), so a gap between two tiles is filled by
+// interpolation, while the strip beyond the last tile at the tissue edge fades
+// out instead of spilling onto the glass.
+const COVER_LO = 0.1;
+const COVER_HI = 0.45;
 // Warm ramp (low -> high): #DE4968 -> #FE9F6D -> #FCFDBF. Low attention is
 // already faded to transparent by FADE_LO/FADE_HI above.
 const RAMP_STOPS: [number, number, number][] = [
@@ -98,6 +107,8 @@ interface HeatGrid {
   tw: number;
   th: number;
   scale: number;
+  /** Original-image pixels covered by one grid cell. */
+  cellPx: number;
 }
 
 /** Separable Gaussian blur, edges replicated. */
@@ -134,11 +145,13 @@ function blurGauss(src: Float32Array, cols: number, rows: number, sigma: number)
   return out;
 }
 
-/** Places every loaded tile's heat cells at its true grid position in one
- * slide-wide grid, smooths it across tile borders, and colours it against one
- * shared scale into an RGBA canvas (one pixel per heat cell). Cells outside
- * tissue, or with almost no attention, stay transparent. Rebuilt after each batch, not on every draw. */
-function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | null {
+/** Places every loaded tile's heat cells at their true pixel position (a cell
+ * is `tiling.tile / tw` image pixels, a tile starts at grid index * stride) in
+ * one slide-wide grid, smooths it across tile borders and gaps, and colours it
+ * against one shared scale into an RGBA canvas (one pixel per heat cell). Cells
+ * outside tissue, or with almost no attention, stay transparent. Rebuilt after
+ * each batch, not on every draw. */
+function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[], tiling: Tiling): HeatGrid | null {
   let tw = 0;
   let th = 0;
   let maxGX = -1;
@@ -157,8 +170,10 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | nu
   }
   if (maxGX < 0) return null;
 
-  const cols = (maxGX + 1) * tw;
-  const rows = (maxGY + 1) * th;
+  const cellPx = tiling.tile / tw;
+  const originCell = (g: number) => Math.round((g * tiling.stride) / cellPx);
+  const cols = originCell(maxGX) + tw;
+  const rows = originCell(maxGY) + th;
   const heatG = new Float32Array(cols * rows);
   const maskG = new Float32Array(cols * rows);
   for (let i = 0; i < spots.length; i++) {
@@ -168,7 +183,7 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | nu
     for (let cy = 0; cy < th; cy++) {
       for (let cx = 0; cx < tw; cx++) {
         const j = cy * tw + cx;
-        const p = (s.gridY * th + cy) * cols + s.gridX * tw + cx;
+        const p = (originCell(s.gridY) + cy) * cols + originCell(s.gridX) + cx;
         heatG[p] = t.heat[j] * t.mask[j];
         maskG[p] = t.mask[j];
       }
@@ -199,10 +214,10 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[]): HeatGrid | nu
     img.data[4 * p] = r;
     img.data[4 * p + 1] = g;
     img.data[4 * p + 2] = b;
-    img.data[4 * p + 3] = Math.round(255 * OVERLAY_ALPHA * Math.min(1, den[p]) * smoothstep(FADE_LO, FADE_HI, v));
+    img.data[4 * p + 3] = Math.round(255 * OVERLAY_ALPHA * smoothstep(COVER_LO, COVER_HI, den[p]) * smoothstep(FADE_LO, FADE_HI, v));
   }
   ctx.putImageData(img, 0, 0);
-  return { cv, cols, rows, tw, th, scale };
+  return { cv, cols, rows, tw, th, scale, cellPx };
 }
 
 interface ImgGeom {
@@ -334,8 +349,14 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     getSnapshot: () => canvasRef.current?.toDataURL("image/png") ?? null,
   }), []);
 
+  // Space the map may use: the panel's full content width, and the height
+  // the map box gets from the column (capped below at the map's own height).
   const [width, setWidth] = useState(520);
   const [height, setHeight] = useState(0);
+  // Map box border (both sides), so the box can be sized around the canvas.
+  const [frame, setFrame] = useState(2);
+  // The uploaded slide's width / height; null until it has loaded.
+  const [imgAspect, setImgAspect] = useState<number | null>(null);
   const [imgTick, setImgTick] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
@@ -355,11 +376,16 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     const el = wrapRef.current;
     if (!el) return;
     const measure = () => {
-      setWidth(el.clientWidth || 520);
+      // Width comes from the panel, not the box: the box itself is sized
+      // to the map below, so measuring it would feed back into itself.
+      const border = el.offsetWidth - el.clientWidth;
+      setFrame(border);
+      setWidth(Math.max(1, (el.parentElement?.clientWidth ?? 520 + border) - border));
       setHeight(el.clientHeight || 0);
     };
     const ro = new ResizeObserver(measure);
     ro.observe(el);
+    if (el.parentElement) ro.observe(el.parentElement);
     measure();
     return () => ro.disconnect();
   }, []);
@@ -367,6 +393,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
   useEffect(() => {
     if (!imageUrl) {
       imgRef.current = null;
+      setImgAspect(null);
       return;
     }
     let cancelled = false;
@@ -374,6 +401,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     img.onload = () => {
       if (cancelled) return;
       imgRef.current = img;
+      setImgAspect(img.naturalWidth / img.naturalHeight);
       setImgTick((t) => t + 1);
     };
     img.src = imageUrl;
@@ -382,13 +410,21 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     };
   }, [imageUrl]);
 
+  // The map takes the slide's own aspect ratio: as wide as the panel, unless
+  // that would be taller than the space left, in which case it narrows. The
+  // box around it is sized to match, so there is no empty band below or
+  // beside the slide, and the whole slide is shown (no cropping).
+  const aspect = imgAspect ?? 1 / 0.72;
+  const mapW = Math.max(1, Math.round(height > 0 ? Math.min(width, height * aspect) : width));
+  const mapH = Math.max(1, Math.round(mapW / aspect));
+
   const draw = useCallback(() => {
     const cv = canvasRef.current;
     const img = imgRef.current;
     if (!cv) return;
     const dpr = window.devicePixelRatio || 1;
-    const w = width;
-    const h = height > 0 ? height : Math.round(w * 0.72);
+    const w = mapW;
+    const h = mapH;
     cv.width = w * dpr;
     cv.height = h * dpr;
     cv.style.height = `${h}px`;
@@ -440,28 +476,27 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     if (grid) {
       const gx = ((0 - geom.sx) / geom.sw) * geom.w;
       const gy = ((0 - geom.sy) / geom.sh) * geom.h;
-      // One grid block per tile spacing, so each tile's heat sits at its
-      // own tile's position (spread over the gap to the next tile).
-      const stride = (pred.tiling ?? DEFAULT_TILING).stride;
-      const gw = (((grid.cols / grid.tw) * stride) / geom.sw) * geom.w;
-      const gh = (((grid.rows / grid.th) * stride) / geom.sh) * geom.h;
+      // Each grid cell is cellPx image pixels, so every tile's heat covers
+      // exactly the pixels it was computed from, whatever the tile spacing.
+      const gw = ((grid.cols * grid.cellPx) / geom.sw) * geom.w;
+      const gh = ((grid.rows * grid.cellPx) / geom.sh) * geom.h;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(grid.cv, gx, gy, gw, gh);
     }
-  }, [pred, width, height]);
+  }, [pred, mapW, mapH]);
 
   useEffect(() => {
     draw();
   }, [draw, imgTick]);
 
-  // The tile-loading effect below deliberately doesn't re-run when the canvas
-  // is resized, so it calls draw through this ref to always paint at the
-  // current size instead of the one it started with.
+  // The loading loop below outlives many renders, so it draws through this
+  // ref: calling the draw() it started with would repaint at a stale size
+  // (e.g. before the slide's aspect ratio was known) after every batch.
   const drawRef = useRef(draw);
   useEffect(() => {
     drawRef.current = draw;
-  }, [draw]);
+  });
 
   // Real per-tile Grad-CAM (one backward pass per tile — see predictor.py's
   // explain_batch()), fetched in batches of REQUEST_BATCH_SIZE across every
@@ -511,6 +546,9 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     // explainGradcamBatch()'s docstring for why the self-referential
     // fallback is measurably weaker.
     const targetGene = pred.topGenes[0]?.name;
+    // Which cancer model and grid the Grad-CAM service explains — the same
+    // as predict's, so each spot_index is the same tile in both.
+    const tissueCode = pred.cancer?.code;
 
     setLoading(true);
     report(true, 0);
@@ -523,7 +561,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
           (_, k) => start + k,
         );
         try {
-          const tiles = await explainGradcamBatch(file, indices, targetGene, controller.signal);
+          const tiles = await explainGradcamBatch(file, indices, targetGene, controller.signal, tissueCode);
           if (seq !== seqRef.current) return;
           for (const t of tiles) {
             if (t.heat && t.mask && t.heat_size) {
@@ -538,7 +576,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
             }
             peaksRef.current[t.spot_index] = t.peak;
           }
-          gridRef.current = buildHeatGrid(pred.spots, heatRef.current);
+          gridRef.current = buildHeatGrid(pred.spots, heatRef.current, pred.tiling ?? DEFAULT_TILING);
           setScaleShown(gridRef.current?.scale ?? 0);
         } catch {
           if (controller.signal.aborted || seq !== seqRef.current) return;
@@ -560,8 +598,8 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     return () => {
       controller.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- draw is stable enough per render; re-running this on every draw identity change would restart the whole slide
-  }, [file, fileStatus, ready, pred.spots.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- redraws go through drawRef; depending on pred itself (not just its spot count) would restart the whole slide on every new pred object
+  }, [file, fileStatus, ready, pred.spots.length, pred.cancer?.code]);
 
   // Lets you check progress without keeping this panel in view — the load
   // keeps running in the background regardless of tab focus, so a glance
@@ -598,11 +636,11 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       view.panX = mx - worldX * newScale;
       view.panY = my - worldY * newScale;
       view.scale = newScale;
-      clampPan(view, width, height > 0 ? height : Math.round(width * 0.72));
+      clampPan(view, mapW, mapH);
       setZoomed(view.scale > 1.001);
       draw();
     },
-    [draw, width, height],
+    [draw, mapW, mapH],
   );
 
   const pickTileAt = useCallback(
@@ -616,8 +654,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       const view = viewRef.current;
       const worldX = (mx - view.panX) / view.scale;
       const worldY = (my - view.panY) / view.scale;
-      const h = height > 0 ? height : Math.round(width * 0.72);
-      const geom = computeGeom(img, width, h);
+      const geom = computeGeom(img, mapW, mapH);
       for (let i = 0; i < pred.spots.length; i++) {
         if (!tileImgsRef.current[i] && !heatRef.current[i]) continue;
         const s = pred.spots[i];
@@ -629,7 +666,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         }
       }
     },
-    [pred, width, height],
+    [pred, mapW, mapH],
   );
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -649,11 +686,10 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       const view = viewRef.current;
       view.panX += dx;
       view.panY += dy;
-      const h = height > 0 ? height : Math.round(width * 0.72);
-      clampPan(view, width, h);
+      clampPan(view, mapW, mapH);
       draw();
     },
-    [draw, width, height],
+    [draw, mapW, mapH],
   );
 
   const handleMouseUp = useCallback(
@@ -677,9 +713,8 @@ const GradCamPanel = forwardRef<GradCamHandle, {
   // of the mouse position, for the explicit +/- buttons.
   const zoomBy = useCallback(
     (factor: number) => {
-      const h = height > 0 ? height : Math.round(width * 0.72);
-      const cx = width / 2;
-      const cy = h / 2;
+      const cx = mapW / 2;
+      const cy = mapH / 2;
       const view = viewRef.current;
       const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * factor));
       const worldX = (cx - view.panX) / view.scale;
@@ -687,11 +722,11 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       view.panX = cx - worldX * newScale;
       view.panY = cy - worldY * newScale;
       view.scale = newScale;
-      clampPan(view, width, h);
+      clampPan(view, mapW, mapH);
       setZoomed(view.scale > 1.001);
       draw();
     },
-    [draw, width, height],
+    [draw, mapW, mapH],
   );
 
   useEffect(() => {
@@ -721,7 +756,9 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         if (grid) {
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
-          ctx.drawImage(grid.cv, s.gridX * grid.tw, s.gridY * grid.th, grid.tw, grid.th, 0, 0, size, size);
+          const sx = Math.round((s.gridX * tiling.stride) / grid.cellPx);
+          const sy = Math.round((s.gridY * tiling.stride) / grid.cellPx);
+          ctx.drawImage(grid.cv, sx, sy, grid.tw, grid.th, 0, 0, size, size);
         }
       }
       return;
@@ -749,7 +786,11 @@ const GradCamPanel = forwardRef<GradCamHandle, {
 
   return (
     <div className="plot-body" style={{ display: hidden ? "none" : undefined }}>
-      <div className="canvas-wrap" ref={wrapRef}>
+      <div
+        className="canvas-wrap gradcam-map"
+        ref={wrapRef}
+        style={{ width: mapW + frame, maxHeight: Math.round(width / aspect) + frame }}
+      >
         <canvas
           ref={canvasRef}
           width={520}
@@ -774,6 +815,14 @@ const GradCamPanel = forwardRef<GradCamHandle, {
           {!loading && loadedCount > 0 && (
             <span className="gradcam-hint">drag to pan · click a spot for detail</span>
           )}
+          {pred.cancer?.limitedSupport && (
+            <span
+              className="gradcam-limited"
+              title={`The ${pred.cancer.label} model was trained on few slides — read its Grad-CAM with extra caution.`}
+            >
+              limited support
+            </span>
+          )}
           {imgTick > 0 && (
             <div className="gradcam-zoom-controls">
               <button type="button" className="gradcam-reset-btn" onClick={() => zoomBy(1 / ZOOM_STEP)} aria-label="Zoom out">
@@ -792,6 +841,9 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         </div>
         {!error && (
           <>
+            {gradcamExperimental(pred.cancer) && (
+              <div className="gradcam-caption">Experimental for this cancer type.</div>
+            )}
             <div className="legend">
               <div className="vbar vbar-warm" />
             </div>

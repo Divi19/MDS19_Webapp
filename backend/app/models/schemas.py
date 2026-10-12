@@ -41,6 +41,16 @@ class PredictionResponse(BaseModel):
     # report it (the frontend then falls back to 224/224).
     tile_px: int | None = None
     stride_px: int | None = None
+    # Multi-cancer serving. Null from predictors without a tissue router
+    # (dummy, local MclSTExp, Modal with MULTICANCER off).
+    # tissue: the router's verdict for the whole slide —
+    #   {code, label, prob, supported, reason, limited_support, overridden,
+    #    router_code?, probs?}. `code` is the router class (e.g. "COAD").
+    tissue: dict | None = None
+    # Units of every spot's `expression` values; differs per cancer model.
+    expression_units: str | None = None
+    # True for cancers with few training slides (PAAD, LYMPH_IDC, READ, BLCA).
+    limited_support: bool | None = None
 
 
 class HealthResponse(BaseModel):

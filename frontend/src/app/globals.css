@@ -659,3 +659,8 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .gene-row-head,.gene-row{grid-template-columns:16px 88px minmax(0,1fr) 38px 46px;gap:10px}
 .gene-row-head>:nth-child(3),.gene-row>:nth-child(3){text-align:right}
 .gene-row .level-tag{justify-self:end}
+
+/* Multi-cancer Grad-CAM additions */
+.gradcam-map{align-self:center}
+.gradcam-caption{font-size:12px;color:var(--faint);margin-top:6px}
+.gradcam-limited{font-size:12px;padding:1px 8px;border-radius:var(--r-pill);background:rgba(214,158,46,.16);color:#8a6d1f;font-weight:500}

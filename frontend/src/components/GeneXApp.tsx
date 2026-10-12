@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CL, NAMED_GENES, viridis, type Level, type Prediction } from "@/lib/mockPrediction";
 import { predict, toPrediction } from "@/lib/api";
+import { gradcamAvailable } from "@/lib/cancer";
 import { analyzeClusters } from "@/lib/clusterAnalysis";
 import { useAuth } from "@/lib/auth";
 import { downloadPredictionImage, getPredictionResponse, savePrediction } from "@/lib/history";
@@ -73,6 +74,8 @@ export default function GeneXApp() {
   // used to throw away every loaded tile and the in-flight fetch loop,
   // forcing a full restart on returning to the tab.
   const [gradcamMounted, setGradcamMounted] = useState(false);
+  // Grad-CAM is offered only for the cancers it is verified for (lib/cancer.ts).
+  const gradcamOk = gradcamAvailable(pred.cancer);
   const [showImage, setShowImage] = useState(true);
   // Tissue tab: the pinned tissue type (shared by the map legend and the
   // Tissue Analysis picker), and the type hovered in the analysis panel.
@@ -223,6 +226,8 @@ export default function GeneXApp() {
         setPred(converted);
         // A prediction without tissue data has no Tissue tab to stay on.
         if (!converted.tissue) setView((v) => (v === "tissue" ? "clusters" : v));
+        // Nor one whose cancer has no Grad-CAM yet a Grad-CAM tab.
+        if (!gradcamAvailable(converted.cancer)) setView((v) => (v === "gradcam" ? "clusters" : v));
         setGene(converted.topGenes[0]?.name ?? converted.genes[0] ?? "");
         setTissuePin(null);
         setTissueClusterPin(null);
@@ -304,23 +309,27 @@ export default function GeneXApp() {
       showToast("Run a section first");
       return;
     }
-    if (!gradcamMounted) {
-      showToast("Open the Grad-CAM tab first — the report needs it to finish before it can be generated");
-      return;
-    }
-    if (gradcamStatus.loading) {
-      const pct = gradcamStatus.total ? Math.round((gradcamStatus.loadedCount / gradcamStatus.total) * 100) : 0;
-      showToast(`Grad-CAM is still computing (${pct}%) — try again once it finishes`);
-      return;
-    }
-    if (!gradcamStatus.ready) {
-      showToast("Grad-CAM hasn't finished for this section yet — open the Grad-CAM tab and wait for it to complete");
-      return;
-    }
-    const snapshot = gradcamRef.current?.getSnapshot();
-    if (!snapshot) {
-      showToast("Could not capture the Grad-CAM map — try reopening the Grad-CAM tab");
-      return;
+    // A cancer without Grad-CAM (see gradcamOk) exports without that section.
+    let snapshot: string | null = null;
+    if (gradcamOk) {
+      if (!gradcamMounted) {
+        showToast("Open the Grad-CAM tab first — the report needs it to finish before it can be generated");
+        return;
+      }
+      if (gradcamStatus.loading) {
+        const pct = gradcamStatus.total ? Math.round((gradcamStatus.loadedCount / gradcamStatus.total) * 100) : 0;
+        showToast(`Grad-CAM is still computing (${pct}%) — try again once it finishes`);
+        return;
+      }
+      if (!gradcamStatus.ready) {
+        showToast("Grad-CAM hasn't finished for this section yet — open the Grad-CAM tab and wait for it to complete");
+        return;
+      }
+      snapshot = gradcamRef.current?.getSnapshot() ?? null;
+      if (!snapshot) {
+        showToast("Could not capture the Grad-CAM map — try reopening the Grad-CAM tab");
+        return;
+      }
     }
     setExportingPdf(true);
     try {
@@ -345,13 +354,16 @@ export default function GeneXApp() {
     } finally {
       setExportingPdf(false);
     }
-  }, [ready, pred, gradcamMounted, gradcamStatus, uploaded, clusterAnalysis, pathways, showToast]);
+  }, [ready, pred, gradcamOk, gradcamMounted, gradcamStatus, uploaded, clusterAnalysis, pathways, showToast]);
 
   // Signed-in visitors are taken straight to History; everyone else must
   // sign in first, since History is a core part of the tutorial.
   const tutorialSteps = useMemo(
-    () => TUTORIAL_STEPS.filter((step) => step.id !== "sign-in" || !user),
-    [user],
+    () =>
+      TUTORIAL_STEPS.filter(
+        (step) => (step.id !== "sign-in" || !user) && (step.id !== "gradcam" || gradcamOk),
+      ),
+    [user, gradcamOk],
   );
 
   /** Moves the tutorial to a step, first putting the page into the state
@@ -977,9 +989,11 @@ export default function GeneXApp() {
                     Tissue
                   </button>
                 )}
-                <button className={view === "gradcam" ? "on" : ""} disabled={!ready} onClick={() => changeView("gradcam")}>
-                  Grad-CAM
-                </button>
+                {gradcamOk && (
+                  <button className={view === "gradcam" ? "on" : ""} disabled={!ready} onClick={() => changeView("gradcam")}>
+                    Grad-CAM
+                  </button>
+                )}
               </nav>
               {(view === "genes" || view === "tissue") && (
                 <div className="gene-combo">
@@ -1071,7 +1085,7 @@ export default function GeneXApp() {
                 </label>
               )}
             </div>
-            {gradcamMounted && (
+            {gradcamMounted && gradcamOk && (
               <GradCamPanel
                 ref={gradcamRef}
                 pred={pred}

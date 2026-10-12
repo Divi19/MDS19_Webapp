@@ -11,6 +11,7 @@
  * Nothing else in the UI needs to change.
  */
 
+import type { CancerTissue } from "./cancer";
 import type { Tiling } from "./tiling";
 import type { PredictionTissue, SpotTissue } from "./tissue";
 
@@ -86,6 +87,9 @@ export interface Prediction {
   /** How spot grid indices map to original-image pixels (see lib/tiling.ts).
    * Absent on synthetic demo data, which has no real tiling. */
   tiling?: Tiling;
+  /** Which cancer model made the prediction (lib/cancer.ts). Null/absent for
+   * breast-only serving and demo data. */
+  cancer?: CancerTissue | null;
 }
 
 /* ---------- deterministic rng ---------- */

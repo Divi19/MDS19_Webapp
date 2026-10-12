@@ -6,6 +6,7 @@ from fastapi.responses import Response
 
 from app.models.schemas import PredictionResponse, HealthResponse, PathwayRequest, PathwayResult
 from app.services.david_client import PathwayLookupError
+from app.services.errors import TissueNotSupportedError
 from app.services.gradcam import tile_json
 from app.services.wsi import is_wsi_filename, convert_wsi_to_image_bytes
 
@@ -41,6 +42,11 @@ async def _read_upload(file: UploadFile) -> bytes:
     return data
 
 
+def _clean_tissue(tissue: str | None) -> str | None:
+    """Optional `tissue` form field: blank means not given."""
+    return (tissue or "").strip() or None
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health(request: Request):
     predictor = request.app.state.predictor
@@ -53,11 +59,33 @@ async def health(request: Request):
 
 
 @router.post("/predict", response_model=PredictionResponse)
-async def predict(request: Request, file: UploadFile = File(...)):
-    image_bytes = await _read_upload(file)
+async def predict(
+    request: Request,
+    file: UploadFile = File(...),
+    # Multi-cancer router class (e.g. "COAD") chosen by the user. Bypasses
+    # the tissue router and its "not supported" refusal.
+    tissue: str | None = Form(None),
+):
+    tissue = _clean_tissue(tissue)
     predictor = request.app.state.predictor
+    if tissue and not getattr(predictor, "supports_tissue_override", False):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Choosing the tissue type is not supported by this deployment "
+                   f"({type(predictor).__name__})")
+
+    image_bytes = await _read_upload(file)
     try:
-        result = predictor.predict(image_bytes)
+        # Only pass tissue when given, so predictors without the parameter
+        # keep their original predict(image_bytes) signature.
+        result = (predictor.predict(image_bytes, tissue=tissue) if tissue
+                  else predictor.predict(image_bytes))
+    except TissueNotSupportedError as exc:
+        raise HTTPException(status_code=422, detail={
+            "code": "tissue_not_supported",
+            "message": exc.message,
+            "tissue": exc.tissue,
+        })
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {exc}")
 
@@ -72,6 +100,9 @@ async def predict(request: Request, file: UploadFile = File(...)):
         tissue_summary=result.get("tissue_summary"),
         tile_px=result.get("tile_px"),
         stride_px=result.get("stride_px"),
+        tissue=result.get("tissue"),
+        expression_units=result.get("expression_units"),
+        limited_support=result.get("limited_support"),
     )
 
 
@@ -81,11 +112,14 @@ async def predict_gradcam(
     file: UploadFile = File(...),
     spot_index: int = Form(...),
     gene: str | None = Form(None),
+    # The prediction's tissue.code (or the user's override): which cancer
+    # model and grid to explain. Ignored by breast-only predictors.
+    tissue: str | None = Form(None),
 ):
     image_bytes = await _read_upload(file)
     predictor = request.app.state.predictor
     try:
-        png_bytes = predictor.explain(image_bytes, spot_index, gene)
+        png_bytes = predictor.explain(image_bytes, spot_index, gene, tissue=_clean_tissue(tissue))
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:
@@ -102,6 +136,7 @@ async def predict_gradcam_batch(
     file: UploadFile = File(...),
     spot_indices: str = Form(...),  # comma-separated ints, e.g. "0,1,2,3"
     gene: str | None = Form(None),
+    tissue: str | None = Form(None),  # see predict_gradcam
 ):
     image_bytes = await _read_upload(file)
     try:
@@ -113,7 +148,7 @@ async def predict_gradcam_batch(
 
     predictor = request.app.state.predictor
     try:
-        results = predictor.explain_batch(image_bytes, indices, gene)
+        results = predictor.explain_batch(image_bytes, indices, gene, tissue=_clean_tissue(tissue))
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:
