@@ -308,6 +308,9 @@ const GradCamPanel = forwardRef<GradCamHandle, {
   // could not be retrieved.
   fileStatus?: "idle" | "loading" | "failed";
   imageUrl?: string | null;
+  /** The header's Show image switch: off, the heat map is drawn on a plain
+   * background instead of the slide. */
+  showImage?: boolean;
   // Visually hides the panel without unmounting it — the loading effect
   // keeps running and already-loaded tiles stay in memory while another
   // tab is showing, instead of losing all progress on every tab switch.
@@ -316,7 +319,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
    * report export on Grad-CAM actually being ready for this prediction. */
   onStatusChange?: (status: GradCamStatus) => void;
 }>(function GradCamPanel(
-  { pred, ready, file, fileStatus = "idle", imageUrl, hidden, onStatusChange },
+  { pred, ready, file, fileStatus = "idle", imageUrl, showImage = true, hidden, onStatusChange },
   ref,
 ) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -349,14 +352,10 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     getSnapshot: () => canvasRef.current?.toDataURL("image/png") ?? null,
   }), []);
 
-  // Space the map may use: the panel's full content width, and the height
-  // the map box gets from the column (capped below at the map's own height).
+  // The map box's inner size: it fills the stage exactly like the Genes
+  // tab's box (SpatialPlot), so the two are the same size.
   const [width, setWidth] = useState(520);
   const [height, setHeight] = useState(0);
-  // Map box border (both sides), so the box can be sized around the canvas.
-  const [frame, setFrame] = useState(2);
-  // The uploaded slide's width / height; null until it has loaded.
-  const [imgAspect, setImgAspect] = useState<number | null>(null);
   const [imgTick, setImgTick] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
@@ -376,16 +375,11 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     const el = wrapRef.current;
     if (!el) return;
     const measure = () => {
-      // Width comes from the panel, not the box: the box itself is sized
-      // to the map below, so measuring it would feed back into itself.
-      const border = el.offsetWidth - el.clientWidth;
-      setFrame(border);
-      setWidth(Math.max(1, (el.parentElement?.clientWidth ?? 520 + border) - border));
+      setWidth(el.clientWidth || 520);
       setHeight(el.clientHeight || 0);
     };
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    if (el.parentElement) ro.observe(el.parentElement);
     measure();
     return () => ro.disconnect();
   }, []);
@@ -393,7 +387,6 @@ const GradCamPanel = forwardRef<GradCamHandle, {
   useEffect(() => {
     if (!imageUrl) {
       imgRef.current = null;
-      setImgAspect(null);
       return;
     }
     let cancelled = false;
@@ -401,7 +394,6 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     img.onload = () => {
       if (cancelled) return;
       imgRef.current = img;
-      setImgAspect(img.naturalWidth / img.naturalHeight);
       setImgTick((t) => t + 1);
     };
     img.src = imageUrl;
@@ -410,13 +402,11 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     };
   }, [imageUrl]);
 
-  // The map takes the slide's own aspect ratio: as wide as the panel, unless
-  // that would be taller than the space left, in which case it narrows. The
-  // box around it is sized to match, so there is no empty band below or
-  // beside the slide, and the whole slide is shown (no cropping).
-  const aspect = imgAspect ?? 1 / 0.72;
-  const mapW = Math.max(1, Math.round(height > 0 ? Math.min(width, height * aspect) : width));
-  const mapH = Math.max(1, Math.round(mapW / aspect));
+  // Same canvas size as SpatialPlot's: the box's full inner size, with the
+  // slide cover-fitted into it, so Grad-CAM and Genes show the slide at the
+  // same size and position.
+  const mapW = Math.max(1, width);
+  const mapH = Math.max(1, height > 0 ? height : Math.round(width * 0.72));
 
   const draw = useCallback(() => {
     const cv = canvasRef.current;
@@ -436,7 +426,12 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     if (!img) return;
 
     const geom = computeGeom(img, w, h);
-    ctx.drawImage(img, geom.sx, geom.sy, geom.sw, geom.sh, 0, 0, w, h);
+    if (showImage) {
+      ctx.drawImage(img, geom.sx, geom.sy, geom.sw, geom.sh, 0, 0, w, h);
+    } else {
+      ctx.fillStyle = "#faf8f3";
+      ctx.fillRect(0, 0, w, h);
+    }
 
     // Reference scale for opacity: the 90th-percentile peak among loaded
     // spots, not the literal max — one unusually strong outlier spot
@@ -484,7 +479,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(grid.cv, gx, gy, gw, gh);
     }
-  }, [pred, mapW, mapH]);
+  }, [pred, mapW, mapH, showImage]);
 
   useEffect(() => {
     draw();
@@ -766,13 +761,14 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     if (img) ctx.drawImage(img, 0, 0, size, size);
   }, [selectedTile, pred.spots, pred.tiling]);
 
-  const statusText = !ready
-    ? ""
+  // The colour bar's middle label doubles as the progress readout.
+  const scaleLabel = error
+    ? "Grad-CAM unavailable"
     : loading
       ? `computing Grad-CAM: spot ${loadedCount}/${total} (${pct}%)`
-      : loadedCount > 0
-        ? `Grad-CAM: ${total} spot${total === 1 ? "" : "s"}${failedCount ? `, ${failedCount} failed` : ""}`
-        : "";
+      : `Grad-CAM attention${scaleShown > 0 ? ", one scale for the whole slide" : ""}${
+          failedCount ? ` · ${failedCount} spot${failedCount === 1 ? "" : "s"} failed` : ""
+        }`;
 
   if (!ready) {
     return (
@@ -786,11 +782,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
 
   return (
     <div className="plot-body" style={{ display: hidden ? "none" : undefined }}>
-      <div
-        className="canvas-wrap gradcam-map"
-        ref={wrapRef}
-        style={{ width: mapW + frame, maxHeight: Math.round(width / aspect) + frame }}
-      >
+      <div className="canvas-wrap gradcam-map" ref={wrapRef}>
         <canvas
           ref={canvasRef}
           width={520}
@@ -803,27 +795,30 @@ const GradCamPanel = forwardRef<GradCamHandle, {
           style={{ cursor: dragging ? "grabbing" : "grab" }}
         />
         {error && <div className="canvas-empty">{error}</div>}
-      </div>
-      <div className="dock glass">
-        <div className="gradcam-controls">
-          <span className="page-label">{statusText}</span>
-          {loading && (
-            <div className="gradcam-progress-track">
-              <div className="gradcam-progress-fill" style={{ width: `${pct}%` }} />
-            </div>
-          )}
-          {!loading && loadedCount > 0 && (
-            <span className="gradcam-hint">drag to pan · click a spot for detail</span>
-          )}
-          {pred.cancer?.limitedSupport && (
-            <span
-              className="gradcam-limited"
-              title={`The ${pred.cancer.label} model was trained on few slides — read its Grad-CAM with extra caution.`}
-            >
-              limited support
-            </span>
-          )}
-          {imgTick > 0 && (
+        {/* Notes and view controls float on the map, so the card below can be
+            the same size as the Genes tab's colour bar. */}
+        {(pred.cancer?.limitedSupport || (!error && gradcamExperimental(pred.cancer))) && (
+          <div className="gradcam-overlay tl">
+            {pred.cancer?.limitedSupport && (
+              <span
+                className="gradcam-limited"
+                title={`The ${pred.cancer.label} model was trained on few slides — read its Grad-CAM with extra caution.`}
+              >
+                limited support
+              </span>
+            )}
+            {!error && gradcamExperimental(pred.cancer) && (
+              <span className="gradcam-chip">Experimental for this cancer type</span>
+            )}
+          </div>
+        )}
+        {imgTick > 0 && (
+          <div className="gradcam-overlay tr">
+            {zoomed && (
+              <button type="button" className="gradcam-reset-btn" onClick={resetView}>
+                Reset view
+              </button>
+            )}
             <div className="gradcam-zoom-controls">
               <button type="button" className="gradcam-reset-btn" onClick={() => zoomBy(1 / ZOOM_STEP)} aria-label="Zoom out">
                 −
@@ -832,38 +827,23 @@ const GradCamPanel = forwardRef<GradCamHandle, {
                 +
               </button>
             </div>
-          )}
-          {zoomed && (
-            <button type="button" className="gradcam-reset-btn" onClick={resetView}>
-              Reset view
-            </button>
-          )}
-        </div>
-        {!error && (
-          <>
-            {gradcamExperimental(pred.cancer) && (
-              <div className="gradcam-caption">Experimental for this cancer type.</div>
-            )}
-            <div className="legend">
-              <div className="vbar vbar-warm" />
-            </div>
-            <div className="vscale">
-              {scaleShown > 0 ? (
-                <>
-                  <span>0</span>
-                  <span>Grad-CAM attention, one scale for the whole slide</span>
-                  <span>{scaleShown.toPrecision(2)}+</span>
-                </>
-              ) : (
-                <>
-                  <span>low</span>
-                  <span>Grad-CAM attention</span>
-                  <span>high</span>
-                </>
-              )}
-            </div>
-          </>
+          </div>
         )}
+        {!loading && loadedCount > 0 && (
+          <div className="gradcam-overlay bl">
+            <span className="gradcam-chip">drag to pan · click a spot for detail</span>
+          </div>
+        )}
+      </div>
+      <div className="dock glass">
+        <div className="legend">
+          <div className="vbar vbar-warm" />
+        </div>
+        <div className="vscale">
+          <span>{scaleShown > 0 ? "0" : "low"}</span>
+          <span>{scaleLabel}</span>
+          <span>{scaleShown > 0 ? `${scaleShown.toPrecision(2)}+` : "high"}</span>
+        </div>
       </div>
 
       {selectedTile !== null && (

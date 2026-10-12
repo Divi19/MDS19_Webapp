@@ -1119,6 +1119,7 @@ export default function GeneXApp() {
                 file={uploaded?.file ?? null}
                 fileStatus={originalImageStatus}
                 imageUrl={uploaded?.url}
+                showImage={showImage}
                 hidden={view !== "gradcam"}
                 onStatusChange={setGradcamStatus}
               />
