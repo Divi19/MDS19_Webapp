@@ -316,7 +316,16 @@ export default function SpatialPlot({
           : focusType == null || s.tissue?.cls === focusType;
     // Gene-within-type colouring while a type is pinned and nothing is being
     // previewed by hover.
-    const geneInPin = geneMode && pinRange && pinRange.count && !(tissueHighlight ?? tissueHover ?? tissueGroupHover ?? tissueClusterHover ?? tissueClusterPin) ? pinRange : null;
+    // Another type, group or cluster being previewed takes over the map; a
+    // preview of the pinned type itself does not (clicking a legend pill
+    // pins it while the pointer is still on it).
+    const previewing =
+      (tissueHighlight != null && tissueHighlight !== tissuePin) ||
+      (tissueHover != null && tissueHover !== tissuePin) ||
+      tissueGroupHover != null ||
+      tissueClusterHover != null ||
+      tissueClusterPin != null;
+    const geneInPin = geneMode && pinRange && pinRange.count && !previewing ? pinRange : null;
     const drawTissue = (px: number, py: number, r: number, s: Spot) => {
       if (geneInPin && s.tissue?.cls === tissuePin) {
         const span = geneInPin.max - geneInPin.min;
@@ -695,7 +704,12 @@ export default function SpatialPlot({
                         title={`${label} · click to ${tissuePin === name ? "unpin" : "pin"}`}
                         className={`legend-item legend-compact${tissuePin === name ? " pinned" : ""}`}
                         aria-pressed={tissuePin === name}
-                        onClick={() => onTissuePin?.(tissuePin === name ? null : name)}
+                        onClick={() => {
+                          // The pill is replaced by the pinned controls, so its
+                          // mouse-leave never fires: drop the preview here.
+                          setTissueHighlight(null);
+                          onTissuePin?.(tissuePin === name ? null : name);
+                        }}
                         onMouseEnter={() => setTissueHighlight(name)}
                         onMouseLeave={() => setTissueHighlight(null)}
                         onFocus={() => setTissueHighlight(name)}
