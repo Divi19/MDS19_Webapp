@@ -339,8 +339,14 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     getSnapshot: () => canvasRef.current?.toDataURL("image/png") ?? null,
   }), []);
 
+  // Space the map may use: the panel's full content width, and the height
+  // the map box gets from the column (capped below at the map's own height).
   const [width, setWidth] = useState(520);
   const [height, setHeight] = useState(0);
+  // Map box border (both sides), so the box can be sized around the canvas.
+  const [frame, setFrame] = useState(2);
+  // The uploaded slide's width / height; null until it has loaded.
+  const [imgAspect, setImgAspect] = useState<number | null>(null);
   const [imgTick, setImgTick] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
@@ -360,11 +366,16 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     const el = wrapRef.current;
     if (!el) return;
     const measure = () => {
-      setWidth(el.clientWidth || 520);
+      // Width comes from the panel, not the box: the box itself is sized
+      // to the map below, so measuring it would feed back into itself.
+      const border = el.offsetWidth - el.clientWidth;
+      setFrame(border);
+      setWidth(Math.max(1, (el.parentElement?.clientWidth ?? 520 + border) - border));
       setHeight(el.clientHeight || 0);
     };
     const ro = new ResizeObserver(measure);
     ro.observe(el);
+    if (el.parentElement) ro.observe(el.parentElement);
     measure();
     return () => ro.disconnect();
   }, []);
@@ -372,6 +383,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
   useEffect(() => {
     if (!imageUrl) {
       imgRef.current = null;
+      setImgAspect(null);
       return;
     }
     let cancelled = false;
@@ -379,6 +391,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     img.onload = () => {
       if (cancelled) return;
       imgRef.current = img;
+      setImgAspect(img.naturalWidth / img.naturalHeight);
       setImgTick((t) => t + 1);
     };
     img.src = imageUrl;
@@ -387,13 +400,21 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     };
   }, [imageUrl]);
 
+  // The map takes the slide's own aspect ratio: as wide as the panel, unless
+  // that would be taller than the space left, in which case it narrows. The
+  // box around it is sized to match, so there is no empty band below or
+  // beside the slide, and the whole slide is shown (no cropping).
+  const aspect = imgAspect ?? 1 / 0.72;
+  const mapW = Math.max(1, Math.round(height > 0 ? Math.min(width, height * aspect) : width));
+  const mapH = Math.max(1, Math.round(mapW / aspect));
+
   const draw = useCallback(() => {
     const cv = canvasRef.current;
     const img = imgRef.current;
     if (!cv) return;
     const dpr = window.devicePixelRatio || 1;
-    const w = width;
-    const h = height > 0 ? Math.min(Math.round(w * 0.72), height) : Math.round(w * 0.72);
+    const w = mapW;
+    const h = mapH;
     cv.width = w * dpr;
     cv.height = h * dpr;
     cv.style.height = `${h}px`;
@@ -453,11 +474,19 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(grid.cv, gx, gy, gw, gh);
     }
-  }, [pred, width, height]);
+  }, [pred, mapW, mapH]);
 
   useEffect(() => {
     draw();
   }, [draw, imgTick]);
+
+  // The loading loop below outlives many renders, so it draws through this
+  // ref: calling the draw() it started with would repaint at a stale size
+  // (e.g. before the slide's aspect ratio was known) after every batch.
+  const drawRef = useRef(draw);
+  useEffect(() => {
+    drawRef.current = draw;
+  });
 
   // Real per-tile Grad-CAM (one backward pass per tile — see predictor.py's
   // explain_batch()), fetched in batches of REQUEST_BATCH_SIZE across every
@@ -486,7 +515,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     setSelectedTile(null);
     viewRef.current = { scale: 1, panX: 0, panY: 0 };
     setZoomed(false);
-    draw();
+    drawRef.current();
     report(false, 0);
 
     if (!ready || !total) return;
@@ -547,7 +576,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         if (seq !== seqRef.current) return;
         const loadedSoFar = Math.min(start + REQUEST_BATCH_SIZE, total);
         setLoadedCount(loadedSoFar);
-        draw();
+        drawRef.current();
         report(true, loadedSoFar);
       }
       if (seq === seqRef.current) {
@@ -559,7 +588,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     return () => {
       controller.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- draw is stable enough per render; re-running this on every draw identity change would restart the whole slide
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- redraws go through drawRef; depending on pred itself (not just its spot count) would restart the whole slide on every new pred object
   }, [file, fileStatus, ready, pred.spots.length, pred.cancer?.code]);
 
   // Lets you check progress without keeping this panel in view — the load
@@ -597,11 +626,11 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       view.panX = mx - worldX * newScale;
       view.panY = my - worldY * newScale;
       view.scale = newScale;
-      clampPan(view, width, height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72));
+      clampPan(view, mapW, mapH);
       setZoomed(view.scale > 1.001);
       draw();
     },
-    [draw, width, height],
+    [draw, mapW, mapH],
   );
 
   const pickTileAt = useCallback(
@@ -615,8 +644,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       const view = viewRef.current;
       const worldX = (mx - view.panX) / view.scale;
       const worldY = (my - view.panY) / view.scale;
-      const h = height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72);
-      const geom = computeGeom(img, width, h);
+      const geom = computeGeom(img, mapW, mapH);
       for (let i = 0; i < pred.spots.length; i++) {
         if (!tileImgsRef.current[i] && !heatRef.current[i]) continue;
         const s = pred.spots[i];
@@ -628,7 +656,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         }
       }
     },
-    [pred, width, height],
+    [pred, mapW, mapH],
   );
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -648,11 +676,10 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       const view = viewRef.current;
       view.panX += dx;
       view.panY += dy;
-      const h = height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72);
-      clampPan(view, width, h);
+      clampPan(view, mapW, mapH);
       draw();
     },
-    [draw, width, height],
+    [draw, mapW, mapH],
   );
 
   const handleMouseUp = useCallback(
@@ -676,9 +703,8 @@ const GradCamPanel = forwardRef<GradCamHandle, {
   // of the mouse position, for the explicit +/- buttons.
   const zoomBy = useCallback(
     (factor: number) => {
-      const h = height > 0 ? Math.min(Math.round(width * 0.72), height) : Math.round(width * 0.72);
-      const cx = width / 2;
-      const cy = h / 2;
+      const cx = mapW / 2;
+      const cy = mapH / 2;
       const view = viewRef.current;
       const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * factor));
       const worldX = (cx - view.panX) / view.scale;
@@ -686,11 +712,11 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       view.panX = cx - worldX * newScale;
       view.panY = cy - worldY * newScale;
       view.scale = newScale;
-      clampPan(view, width, h);
+      clampPan(view, mapW, mapH);
       setZoomed(view.scale > 1.001);
       draw();
     },
-    [draw, width, height],
+    [draw, mapW, mapH],
   );
 
   useEffect(() => {
@@ -784,7 +810,11 @@ const GradCamPanel = forwardRef<GradCamHandle, {
           </button>
         )}
       </div>
-      <div className="canvas-wrap" ref={wrapRef}>
+      <div
+        className="canvas-wrap gradcam-map"
+        ref={wrapRef}
+        style={{ width: mapW + frame, maxHeight: Math.round(width / aspect) + frame }}
+      >
         <canvas
           ref={canvasRef}
           width={520}
