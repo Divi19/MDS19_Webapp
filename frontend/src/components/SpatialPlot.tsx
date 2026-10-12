@@ -38,9 +38,12 @@ function ringFor(color: string): string {
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   });
   const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  const t = Math.min(1, Math.max(0, (lum - 0.05) / 0.35));
+  // 70% for the darkest spots, easing to 25% for the brightest; mid tones
+  // (teal, green) keep a clear ring (about 45-60%) so they don't blend into
+  // the tissue.
+  const t = Math.min(1, Math.max(0, (lum - 0.05) / 0.7));
   const bright = t * t * (3 - 2 * t);
-  ring = `rgba(255,255,255,${(0.15 + 0.55 * (1 - bright)).toFixed(2)})`;
+  ring = `rgba(255,255,255,${(0.25 + 0.45 * (1 - bright)).toFixed(2)})`;
   ringCache.set(color, ring);
   return ring;
 }
