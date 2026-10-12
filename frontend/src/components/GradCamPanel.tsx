@@ -78,19 +78,12 @@ const FADE_HI = 0.22;
 // out instead of spilling onto the glass.
 const COVER_LO = 0.1;
 const COVER_HI = 0.45;
-// Warm ramp (low -> high): #DE4968 -> #FE9F6D -> #FCFDBF. Low attention is
-// already faded to transparent by FADE_LO/FADE_HI above.
-const RAMP_STOPS: [number, number, number][] = [
-  [0xde, 0x49, 0x68],
-  [0xfe, 0x9f, 0x6d],
-  [0xfc, 0xfd, 0xbf],
-];
-const WARM_LUT: [number, number, number][] = Array.from({ length: 256 }, (_, i) => {
-  const x = (i / 255) * (RAMP_STOPS.length - 1);
-  const k = Math.min(RAMP_STOPS.length - 2, Math.floor(x));
-  const f = x - k;
-  const [a, b] = [RAMP_STOPS[k], RAMP_STOPS[k + 1]];
-  return [0, 1, 2].map((c) => Math.round(a[c] + (b[c] - a[c]) * f)) as [number, number, number];
+// Jet ramp (low -> high): dark blue, blue, cyan, yellow, red. Low attention
+// is already faded to transparent by FADE_LO/FADE_HI above.
+const JET_LUT: [number, number, number][] = Array.from({ length: 256 }, (_, i) => {
+  const x = i / 255;
+  const c = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
+  return [c(1.5 - Math.abs(4 * x - 3)), c(1.5 - Math.abs(4 * x - 2)), c(1.5 - Math.abs(4 * x - 1))];
 });
 
 interface TileHeat {
@@ -210,7 +203,7 @@ function buildHeatGrid(spots: Spot[], tiles: (TileHeat | null)[], tiling: Tiling
   const img = ctx.createImageData(cols, rows);
   for (let p = 0; p < heat.length; p++) {
     const v = scale > 0 ? Math.min(1, Math.max(0, heat[p] / scale)) : 0;
-    const [r, g, b] = WARM_LUT[Math.round(v * 255)];
+    const [r, g, b] = JET_LUT[Math.round(v * 255)];
     img.data[4 * p] = r;
     img.data[4 * p + 1] = g;
     img.data[4 * p + 2] = b;
@@ -837,7 +830,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       </div>
       <div className="dock glass">
         <div className="legend">
-          <div className="vbar vbar-warm" />
+          <div className="vbar vbar-jet" />
         </div>
         <div className="vscale">
           <span>{scaleShown > 0 ? "0" : "low"}</span>
