@@ -223,9 +223,9 @@ button.legend-item{font:inherit;font-size:11.5px}
 .gene-tile-value{font-size:11px;color:var(--ink)}
 
 .gene-pagination{display:flex;align-items:center;justify-content:center;gap:4px;margin-top:8px;flex-wrap:wrap}
-.page-btn{border:none;background:rgba(255,255,255,.7);box-shadow:0 0 0 .5px rgba(0,0,0,.1);color:var(--ink);font-size:13px;line-height:1;padding:5px 9px;border-radius:var(--r-pill);cursor:pointer;transition:transform .15s var(--ease)}
+.page-btn{border:none;background:rgba(255,255,255,.7);box-shadow:0 0 0 1px var(--line);color:var(--ink);font-size:13px;line-height:1;padding:5px 9px;border-radius:var(--r-pill);cursor:pointer;transition:transform .15s var(--ease)}
 .page-btn:hover:not(:disabled){background:#fff}
-.page-btn:disabled{color:var(--faint);cursor:not-allowed;opacity:.5}
+.page-btn:disabled{color:var(--faint);cursor:not-allowed;opacity:.5;box-shadow:0 0 0 1px var(--line-disabled)}
 .page-numbers{display:flex;gap:2px;margin:0 2px}
 .page-num{width:26px;height:26px;display:grid;place-items:center;border:none;background:none;border-radius:50%;font-size:11px;color:var(--muted);cursor:pointer;padding:0}
 .page-num:hover{background:rgba(0,0,0,.05)}
@@ -628,7 +628,7 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .replace-btn{padding:0 12px;font-size:11px}
 /* Gene chips in Cluster Analysis read as clickable pills */
 .cluster-analysis-genes{gap:6px}
-.cluster-analysis-gene{background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.14);padding:2px 12px;border-radius:var(--r-pill)}
+.cluster-analysis-gene{background:#fff;box-shadow:0 0 0 1px var(--line-chip);padding:2px 12px;border-radius:var(--r-pill)}
 .cluster-analysis-gene:hover{background:var(--ink);color:#fff;box-shadow:0 0 0 .5px var(--ink)}
 .cluster-analysis-gene:active{transform:scale(.96)}
 
