@@ -273,6 +273,10 @@ button.legend-item{font:inherit;font-size:11.5px}
 .ta-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .ta-header .seg{flex-shrink:0}
 .ta-header .seg button{padding:4px 12px;font-size:11px}
+/* Same edges as Cluster Analysis and the Table/Cards switch. */
+.ta-header .seg{box-shadow:0 0 0 1px var(--line-soft)}
+.ta-header .seg button.on{box-shadow:0 0 0 1px var(--line),0 1px 3px rgba(0,0,0,.12)}
+.ta-types .legend-item{box-shadow:0 0 0 1px var(--line-chip)}
 .ta-title{font-size:13px;font-weight:600}
 .ta-row{display:grid;grid-template-columns:86px 1fr 44px 44px;align-items:center;gap:6px;font-size:11px;min-height:24px;padding:0 6px;margin:0 -6px;border-radius:10px}
 .ta-bar{position:relative;height:6px;border-radius:var(--r-pill);background:rgba(0,0,0,.08)}
@@ -304,7 +308,7 @@ button.legend-item{font:inherit;font-size:11.5px}
 .ta-between .cluster-analysis-label{margin:2px 0 4px}
 .ta-table{display:flex;flex-direction:column;margin-top:2px}
 .ta-table-head,.ta-table-row{display:grid;grid-template-columns:minmax(0,1fr) 54px 54px 48px 56px;gap:6px;align-items:center}
-.ta-table-head{padding:0 6px 6px;font-size:10.5px;color:var(--faint);font-weight:400;border-bottom:1px solid var(--hairline)}
+.ta-table-head{padding:0 6px 6px;font-size:10.5px;color:var(--faint);font-weight:400;border-bottom:1px solid var(--line)}
 .ta-table-head span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ta-table-head span:nth-child(n+2){text-align:right}
 .ta-table-row{width:100%;min-height:32px;padding:0 6px;border:none;border-radius:10px;background:none;cursor:pointer;text-align:left;font:inherit;color:inherit}
