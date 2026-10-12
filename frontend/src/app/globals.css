@@ -41,7 +41,7 @@ button{color:inherit}
 
 /* ---------- shell ---------- */
 .app{position:relative;height:100vh;overflow:hidden;display:flex;flex-direction:column}
-.grid{flex:1;min-height:0;display:grid;grid-template-columns:24% 46% 30%;gap:0;padding:0}
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:24% 42% 34%;gap:0;padding:0}
 
 /* top capsules */
 .topbar{position:relative;z-index:30;flex-shrink:0;margin:0;padding:10px 20px;background:rgba(248,248,250,.9);border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;pointer-events:none}
@@ -564,7 +564,7 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
 
-/* Three columns: 24% | 46% | 30%, panels flush to the edges. */
+/* Three columns: 24% | 42% | 34%, panels flush to the edges. */
 @media (min-width:1001px){
   .col-1,.col-3{border-radius:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(248,248,250,.82)}
   .col-1{padding:14px;border-right:1px solid var(--border)}
