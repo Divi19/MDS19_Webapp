@@ -2,6 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { explainGradcamBatch } from "@/lib/api";
+import { gradcamExperimental } from "@/lib/cancer";
 import type { Prediction, Spot } from "@/lib/mockPrediction";
 import { DEFAULT_TILING, tileOrigin, type Tiling } from "@/lib/tiling";
 
@@ -800,6 +801,9 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       </div>
       {!error && (
         <>
+          {gradcamExperimental(pred.cancer) && (
+            <div className="gradcam-caption">Experimental for this cancer type.</div>
+          )}
           <div className="legend">
             <div className="vbar vbar-jet" />
           </div>

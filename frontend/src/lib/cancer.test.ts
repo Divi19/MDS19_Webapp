@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toPrediction } from "@/lib/api";
-import { cancerFromApi, gradcamAvailable } from "@/lib/cancer";
+import { cancerFromApi, gradcamAvailable, gradcamExperimental } from "@/lib/cancer";
 import { OLD_RESPONSE } from "@/test/fixtures";
 
 const COAD = {
@@ -26,8 +26,16 @@ describe("cancer", () => {
     expect(gradcamAvailable(cancerFromApi({ tissue: { ...COAD, code: "IDC" } }))).toBe(true);
   });
 
-  it("hides Grad-CAM for other cancers until it is verified", () => {
-    expect(gradcamAvailable(cancerFromApi({ tissue: COAD }))).toBe(false);
-    expect(gradcamAvailable(cancerFromApi({ tissue: { ...COAD, code: "LYMPH_IDC" } }))).toBe(false);
+  it("shows Grad-CAM for every other cancer too", () => {
+    for (const code of ["COAD", "LYMPH_IDC", "CSCC", "EPM", "BLCA"]) {
+      expect(gradcamAvailable(cancerFromApi({ tissue: { ...COAD, code } }))).toBe(true);
+    }
+  });
+
+  it("labels Grad-CAM experimental for non-breast cancers only", () => {
+    expect(gradcamExperimental(null)).toBe(false);
+    expect(gradcamExperimental(cancerFromApi({ tissue: { ...COAD, code: "IDC" } }))).toBe(false);
+    expect(gradcamExperimental(cancerFromApi({ tissue: COAD }))).toBe(true);
+    expect(gradcamExperimental(cancerFromApi({ tissue: { ...COAD, code: "LYMPH_IDC" } }))).toBe(true);
   });
 });
