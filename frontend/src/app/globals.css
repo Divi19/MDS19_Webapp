@@ -12,7 +12,9 @@
 
   /* Legacy names, remapped so every older rule picks up the new skin. */
   --bg:var(--ground); --surface:#fff; --surface2:rgba(255,255,255,.55); --surface3:rgba(0,0,0,.05);
-  --border:rgba(0,0,0,.08); --border2:rgba(0,0,0,.18);
+  --border:#D9D9E0; --border2:rgba(0,0,0,.18);
+  /* Darker edges for cards, pills and dividers. */
+  --line:#D4D4DC; --line-soft:#DCDCE3; --line-chip:#CFCFD8; --line-disabled:#E4E4E9;
   --text:var(--ink); --muted2:var(--faint);
   --accent-hover:#234a85; --accent-soft:rgba(44,90,160,.09); --accent-ring:rgba(44,90,160,.24);
   --radius:12px; --radius-lg:var(--r-chip);
