@@ -23,6 +23,11 @@ const popEase = (t: number) => {
   return 1 + (c + 1) * x * x * x + c * x * x;
 };
 const RING = "rgba(255,255,255,.95)";
+// Gene expression spots get a thinner, fainter ring: a bright one haloes the
+// light end of the scale (yellow, teal) and hides its colour, while a faint
+// one still separates dark (purple) spots from the tissue.
+const GENE_RING = "rgba(255,255,255,.35)";
+const GENE_RING_WIDTH = 1;
 
 
 interface ImgGeom {
@@ -125,8 +130,8 @@ function drawGeneSpot(
   ctx.globalAlpha = opacity;
   ctx.fillStyle = viridis(t);
   ctx.fill();
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = RING;
+  ctx.lineWidth = GENE_RING_WIDTH;
+  ctx.strokeStyle = GENE_RING;
   ctx.stroke();
   ctx.globalAlpha = 1;
 }
@@ -339,8 +344,8 @@ export default function SpatialPlot({
         return;
       }
       ctx.globalAlpha = 0.72;
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = RING;
+      ctx.lineWidth = GENE_RING_WIDTH;
+      ctx.strokeStyle = GENE_RING;
       for (const s of pred.spots) {
         const [px, py] = spotXY(s, geom);
         const k = popOf(px, py);
@@ -416,8 +421,8 @@ export default function SpatialPlot({
       ctx.fillStyle =
         !genesView && activeCluster !== null && s.cluster !== activeCluster ? `${col}20` : col;
       ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = RING;
+      ctx.lineWidth = genesView ? GENE_RING_WIDTH : 1.5;
+      ctx.strokeStyle = genesView ? GENE_RING : RING;
       ctx.stroke();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
