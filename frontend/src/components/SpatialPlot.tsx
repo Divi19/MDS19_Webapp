@@ -22,12 +22,28 @@ const popEase = (t: number) => {
   const x = Math.min(1, Math.max(0, t)) - 1;
   return 1 + (c + 1) * x * x * x + c * x * x;
 };
-const RING = "rgba(255,255,255,.95)";
-// Gene expression spots get a thinner, fainter ring: a bright one haloes the
-// light end of the scale (yellow, teal) and hides its colour, while a faint
-// one still separates dark (purple) spots from the tissue.
-const GENE_RING = "rgba(255,255,255,.35)";
-const GENE_RING_WIDTH = 1;
+/** Spot rings: white, strongest around dark spots (purple, dark blue, dark
+ * orange) so they stand out from the tissue, and fading towards bright ones
+ * (yellow, light green) so those are not haloed and keep their colour. */
+const RING_WIDTH = 1.25;
+const ringCache = new Map<string, string>();
+function ringFor(color: string): string {
+  let ring = ringCache.get(color);
+  if (ring) return ring;
+  const m = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
+  const n = color.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  const rgb = m ? m.slice(1, 4).map((h) => parseInt(h, 16)) : n ? n.slice(1, 4).map(Number) : [128, 128, 128];
+  const [r, g, b] = rgb.map((v) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const t = Math.min(1, Math.max(0, (lum - 0.05) / 0.35));
+  const bright = t * t * (3 - 2 * t);
+  ring = `rgba(255,255,255,${(0.15 + 0.55 * (1 - bright)).toFixed(2)})`;
+  ringCache.set(color, ring);
+  return ring;
+}
 
 
 interface ImgGeom {
@@ -95,8 +111,8 @@ function drawTissueSpot(
   ctx.fill();
   if (!low) {
     ctx.globalAlpha = fade;
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = RING;
+    ctx.lineWidth = RING_WIDTH;
+    ctx.strokeStyle = ringFor(col);
     ctx.stroke();
   }
   if (low) {
@@ -127,13 +143,14 @@ function drawGeneSpot(
 ) {
   ctx.beginPath();
   ctx.arc(px, py, r, 0, 6.2832);
+  const col = viridis(t);
   ctx.globalAlpha = opacity;
-  ctx.fillStyle = viridis(t);
+  ctx.fillStyle = col;
   ctx.fill();
-  ctx.lineWidth = GENE_RING_WIDTH;
-  ctx.strokeStyle = GENE_RING;
-  ctx.stroke();
   ctx.globalAlpha = 1;
+  ctx.lineWidth = RING_WIDTH;
+  ctx.strokeStyle = ringFor(col);
+  ctx.stroke();
 }
 
 export default function SpatialPlot({
@@ -343,17 +360,20 @@ export default function SpatialPlot({
         }
         return;
       }
-      ctx.globalAlpha = 0.72;
-      ctx.lineWidth = GENE_RING_WIDTH;
-      ctx.strokeStyle = GENE_RING;
+      ctx.lineWidth = RING_WIDTH;
       for (const s of pred.spots) {
         const [px, py] = spotXY(s, geom);
         const k = popOf(px, py);
         if (k <= 0.02) continue;
+        const col = viridis(s.expr[gk] ?? 0);
         ctx.beginPath();
         ctx.arc(px, py, r * k, 0, 6.2832);
-        ctx.fillStyle = viridis(s.expr[gk] ?? 0);
+        ctx.globalAlpha = 0.72;
+        ctx.fillStyle = col;
         ctx.fill();
+        // The ring is drawn solid so its strength is set by ringFor alone.
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = ringFor(col);
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
@@ -421,8 +441,8 @@ export default function SpatialPlot({
       ctx.fillStyle =
         !genesView && activeCluster !== null && s.cluster !== activeCluster ? `${col}20` : col;
       ctx.fill();
-      ctx.lineWidth = genesView ? GENE_RING_WIDTH : 1.5;
-      ctx.strokeStyle = genesView ? GENE_RING : RING;
+      ctx.lineWidth = RING_WIDTH;
+      ctx.strokeStyle = ringFor(col);
       ctx.stroke();
     }
     geomRef.current = { mL, mT, pw, ph, gk };
