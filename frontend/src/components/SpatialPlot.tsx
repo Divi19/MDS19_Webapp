@@ -26,10 +26,15 @@ const popEase = (t: number) => {
  * orange) so they stand out from the tissue, and fading towards bright ones
  * (yellow, light green) so those are not haloed and keep their colour. */
 const RING_WIDTH = 1.25;
-const ringCache = new Map<string, string>();
-function ringFor(color: string): string {
-  let ring = ringCache.get(color);
-  if (ring) return ring;
+const smoothstep = (lo: number, hi: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
+  return t * t * (3 - 2 * t);
+};
+/** Relative luminance (0 dark to 1 white) of a "#rrggbb" or "rgb(...)" colour. */
+const lumCache = new Map<string, number>();
+function luminance(color: string): number {
+  let lum = lumCache.get(color);
+  if (lum !== undefined) return lum;
   const m = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
   const n = color.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
   const rgb = m ? m.slice(1, 4).map((h) => parseInt(h, 16)) : n ? n.slice(1, 4).map(Number) : [128, 128, 128];
@@ -37,15 +42,21 @@ function ringFor(color: string): string {
     const c = v / 255;
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   });
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  lumCache.set(color, lum);
+  return lum;
+}
+/** How much a colour is at the very bright end (yellow): 0 below
+ * yellow-green, 1 at viridis yellow. */
+const topBrightness = (color: string) => smoothstep(0.55, 0.78, luminance(color));
+function ringFor(color: string): string {
+  const lum = luminance(color);
   // 70% for the darkest spots, easing to 25% for the brightest; mid tones
   // (teal, green) keep a clear ring (about 45-60%) so they don't blend into
-  // the tissue.
-  const t = Math.min(1, Math.max(0, (lum - 0.05) / 0.7));
-  const bright = t * t * (3 - 2 * t);
-  ring = `rgba(255,255,255,${(0.25 + 0.45 * (1 - bright)).toFixed(2)})`;
-  ringCache.set(color, ring);
-  return ring;
+  // the tissue. The very brightest (yellow, the highest expression) get a
+  // little back, up to 45%, so they still catch the eye.
+  const alpha = 0.25 + 0.45 * (1 - smoothstep(0.05, 0.75, lum)) + 0.2 * topBrightness(color);
+  return `rgba(255,255,255,${alpha.toFixed(2)})`;
 }
 
 
@@ -386,7 +397,8 @@ export default function SpatialPlot({
         const col = viridis(s.expr[gk] ?? 0);
         ctx.beginPath();
         ctx.arc(px, py, r * k, 0, 6.2832);
-        ctx.globalAlpha = 0.72;
+        // Yellow is drawn more solidly so the pink tissue doesn't wash it out.
+        ctx.globalAlpha = 0.72 + 0.16 * topBrightness(col);
         ctx.fillStyle = col;
         ctx.fill();
         // The ring is drawn solid so its strength is set by ringFor alone.
