@@ -754,12 +754,13 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     if (img) ctx.drawImage(img, 0, 0, size, size);
   }, [selectedTile, pred.spots, pred.tiling]);
 
-  // The colour bar's middle label doubles as the progress readout.
+  // The colour bar's middle label doubles as the progress readout and, once
+  // loaded, the how-to hint (kept off the map so it covers nothing).
   const scaleLabel = error
     ? "Grad-CAM unavailable"
     : loading
       ? `computing Grad-CAM: spot ${loadedCount}/${total} (${pct}%)`
-      : `Grad-CAM attention${scaleShown > 0 ? ", one scale for the whole slide" : ""}${
+      : `Grad-CAM attention${loadedCount > 0 ? " · drag to pan · click a spot for detail" : ""}${
           failedCount ? ` · ${failedCount} spot${failedCount === 1 ? "" : "s"} failed` : ""
         }`;
 
@@ -822,11 +823,6 @@ const GradCamPanel = forwardRef<GradCamHandle, {
             </div>
           </div>
         )}
-        {!loading && loadedCount > 0 && (
-          <div className="gradcam-overlay bl">
-            <span className="gradcam-chip">drag to pan · click a spot for detail</span>
-          </div>
-        )}
       </div>
       <div className="dock glass">
         <div className="legend">
@@ -835,7 +831,9 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         <div className="vscale">
           <span>{scaleShown > 0 ? "0" : "low"}</span>
           <span>{scaleLabel}</span>
-          <span>{scaleShown > 0 ? `${scaleShown.toPrecision(2)}+` : "high"}</span>
+          <span title={scaleShown > 0 ? "One colour scale for the whole slide" : undefined}>
+            {scaleShown > 0 ? `${scaleShown.toPrecision(2)}+` : "high"}
+          </span>
         </div>
       </div>
 

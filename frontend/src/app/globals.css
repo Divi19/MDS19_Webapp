@@ -698,6 +698,5 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .gradcam-overlay{position:absolute;z-index:2;display:flex;align-items:center;gap:6px}
 .gradcam-overlay.tl{top:10px;left:10px}
 .gradcam-overlay.tr{top:10px;right:10px}
-.gradcam-overlay.bl{bottom:10px;left:10px}
 .gradcam-overlay .gradcam-limited{padding:3px 10px;background:#FBF1DC;box-shadow:0 0 0 1px var(--line)}
 .gradcam-chip{font-size:11px;color:var(--ink-2);background:rgba(255,255,255,.85);box-shadow:0 0 0 1px var(--line);padding:3px 10px;border-radius:var(--r-pill);white-space:nowrap}
