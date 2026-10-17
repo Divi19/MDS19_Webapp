@@ -50,6 +50,13 @@ CATEGORY_BY_LIBRARY = {v: k for k, v in LIBRARY_BY_CATEGORY.items()}
 # DAVID's own cut-off was EASE <= 0.1; for a 5-gene marker set a raw
 # p <= 0.05 is the more defensible "significant" bar, and Enrichr's adjusted
 # p-values are too strict to ever pass at that list size.
+# Enrichr rate-limits bursts (a 5-cluster result fires 5 lookups at once and
+# the extras got 429s), so lookups are serialised, spaced apart, and a 429/503
+# is retried with backoff (honouring Retry-After when given).
+MIN_SPACING_SECONDS = 0.5
+RETRY_STATUSES = {429, 502, 503, 504}
+MAX_ATTEMPTS = 4
+BACKOFF_SECONDS = (1.0, 2.0, 4.0)
 MAX_PVALUE = 0.05
 MAX_TERMS_PER_LIBRARY = 10
 
@@ -69,10 +76,29 @@ class EnrichrClient:
     def __init__(self, timeout: float = 20.0):
         self._http = httpx.Client(timeout=timeout, follow_redirects=True)
         self._cache_lock = threading.Lock()
+        self._request_lock = threading.Lock()
+        self._last_request = 0.0
         self._result_cache: dict[tuple, list[dict]] = {}
 
+    def _send(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """One HTTP call, retried on rate-limit/transient statuses."""
+        for attempt in range(MAX_ATTEMPTS):
+            resp = self._http.request(method, url, **kwargs)
+            if resp.status_code not in RETRY_STATUSES or attempt == MAX_ATTEMPTS - 1:
+                resp.raise_for_status()
+                return resp
+            try:
+                delay = float(resp.headers.get("Retry-After", ""))
+            except ValueError:
+                delay = BACKOFF_SECONDS[attempt]
+            delay = min(delay, 8.0)
+            logger.info("Enrichr %s from %s; retrying in %.1fs", resp.status_code, url, delay)
+            time.sleep(delay)
+        raise AssertionError("unreachable")
+
     def _add_list(self, symbols: list[str]) -> int:
-        resp = self._http.post(
+        resp = self._send(
+            "POST",
             f"{ENRICHR_URL}/addList",
             files={"list": (None, "\n".join(symbols)),
                    "description": (None, "genex")},
@@ -84,11 +110,11 @@ class EnrichrClient:
         return user_list_id
 
     def _enrich(self, user_list_id: int, library: str) -> list[list]:
-        resp = self._http.get(
+        resp = self._send(
+            "GET",
             f"{ENRICHR_URL}/enrich",
             params={"userListId": user_list_id, "backgroundType": library},
         )
-        resp.raise_for_status()
         return resp.json().get(library, [])
 
     def get_pathways(self, gene_symbols: list[str], category: str = DEFAULT_CATEGORIES,
@@ -107,7 +133,14 @@ class EnrichrClient:
         started = time.monotonic()
         libraries = [LIBRARY_BY_CATEGORY.get(c, c) for c in categories]
         try:
-            user_list_id = self._add_list(symbols)
+            with self._request_lock:
+                wait = MIN_SPACING_SECONDS - (time.monotonic() - self._last_request)
+                if wait > 0:
+                    time.sleep(wait)
+                try:
+                    user_list_id = self._add_list(symbols)
+                finally:
+                    self._last_request = time.monotonic()
             with ThreadPoolExecutor(max_workers=max(1, len(libraries))) as pool:
                 per_library = list(pool.map(
                     lambda lib: self._enrich(user_list_id, lib), libraries))

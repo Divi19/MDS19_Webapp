@@ -2,6 +2,8 @@
 import httpx
 import pytest
 
+from app.services import enrichr_client
+
 from app.services.david_client import PathwayLookupError
 from app.services.enrichr_client import EnrichrClient
 
@@ -68,3 +70,30 @@ def test_http_failure_raises_and_is_not_cached():
     with pytest.raises(PathwayLookupError):
         c.get_pathways(["CDK1", "CCNB1"])
     assert c._result_cache == {}
+
+
+def test_429_is_retried_then_succeeds(monkeypatch):
+    monkeypatch.setattr(enrichr_client.time, "sleep", lambda _s: None)
+    attempts = {"addList": 0}
+
+    def handler(request):
+        if request.url.path.endswith("/addList"):
+            attempts["addList"] += 1
+            if attempts["addList"] < 3:
+                return httpx.Response(429, headers={"Retry-After": "1"})
+            return httpx.Response(200, json={"userListId": 7})
+        lib = request.url.params["backgroundType"]
+        return httpx.Response(200, json={lib: ROWS[lib]})
+
+    c = EnrichrClient()
+    c._http = httpx.Client(transport=httpx.MockTransport(handler))
+    assert c.get_pathways(["CDK1", "CCNB1"])
+    assert attempts["addList"] == 3
+
+
+def test_persistent_429_eventually_fails(monkeypatch):
+    monkeypatch.setattr(enrichr_client.time, "sleep", lambda _s: None)
+    c = EnrichrClient()
+    c._http = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(429)))
+    with pytest.raises(PathwayLookupError):
+        c.get_pathways(["CDK1"])
