@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 import os
 import tarfile
 
@@ -11,6 +12,13 @@ from app.core.config import settings
 from app.services.david_client import DavidClient
 from app.services.enrichr_client import EnrichrClient
 from app.services.predictor import get_predictor
+
+# uvicorn only configures its own loggers, so without this every
+# logger.info() in app code (Modal/Enrichr timings, cache hits) is dropped.
+# httpx logs each request URL at INFO — noise at best, so keep it at WARNING.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # Model data ships as one gzipped tarball rather than N loose files: Drive
 # rate-limits on request count, and a per-file folder download reliably tripped
