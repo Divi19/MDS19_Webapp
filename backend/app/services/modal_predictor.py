@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import threading
+import time
 import uuid
 
 import httpx
@@ -172,7 +173,11 @@ class ModalPredictor(BasePredictor):
         if not self.is_loaded:
             raise RuntimeError("Predictor not loaded")
 
+        t0 = time.monotonic()
         path, signed_url = self._stage_upload(image_bytes)
+        t_staged = time.monotonic()
+        logger.info("Modal predict: staged %.1f MB in %.1fs",
+                    len(image_bytes) / 1e6, t_staged - t0)
         body = {"image_url": signed_url}
         if tissue:
             body["tissue"] = tissue
@@ -185,6 +190,8 @@ class ModalPredictor(BasePredictor):
             )
             resp.raise_for_status()
             result = resp.json()
+            logger.info("Modal predict: inference call took %.1fs",
+                        time.monotonic() - t_staged)
         except httpx.HTTPStatusError as exc:
             # Modal's FastAPI wrapper returns 4xx/5xx with a JSON detail body
             # for the same input errors _predict_bytes() raises locally
