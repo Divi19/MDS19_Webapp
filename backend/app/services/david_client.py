@@ -73,7 +73,7 @@ class DavidClient:
         # The WSDL itself is a static schema document, not session state —
         # safe to parse once and reuse. Only the actual addList/setCategories/
         # getChartReport call sequence (below) needs the lock.
-        self._client = Client(DAVID_WSDL, transport=Transport(timeout=30))
+        self._client = Client(DAVID_WSDL, transport=Transport(timeout=30, operation_timeout=30))
 
     def _symbols_to_entrez(self, symbols: list[str]) -> dict[str, str]:
         """gene symbol -> Entrez Gene ID, for whichever of `symbols` MyGene

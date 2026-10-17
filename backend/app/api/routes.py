@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 
 from app.models.schemas import PredictionResponse, HealthResponse, PathwayRequest, PathwayResult
@@ -26,7 +27,7 @@ async def _read_upload(file: UploadFile) -> bytes:
                 detail=f"Whole-slide file too large (max "
                        f"{MAX_WSI_UPLOAD_BYTES // (1024 * 1024)}MB)")
         try:
-            return convert_wsi_to_image_bytes(data, file.filename)
+            return await run_in_threadpool(convert_wsi_to_image_bytes, data, file.filename)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
 
@@ -78,8 +79,11 @@ async def predict(
     try:
         # Only pass tissue when given, so predictors without the parameter
         # keep their original predict(image_bytes) signature.
-        result = (predictor.predict(image_bytes, tissue=tissue) if tissue
-                  else predictor.predict(image_bytes))
+        # Blocking inference/relay work: off the event loop so other requests
+        # (health, pathways, a second predict) are not frozen behind it.
+        result = await (run_in_threadpool(predictor.predict, image_bytes, tissue=tissue)
+                        if tissue
+                        else run_in_threadpool(predictor.predict, image_bytes))
     except TissueNotSupportedError as exc:
         raise HTTPException(status_code=422, detail={
             "code": "tissue_not_supported",
@@ -119,7 +123,8 @@ async def predict_gradcam(
     image_bytes = await _read_upload(file)
     predictor = request.app.state.predictor
     try:
-        png_bytes = predictor.explain(image_bytes, spot_index, gene, tissue=_clean_tissue(tissue))
+        png_bytes = await run_in_threadpool(
+            predictor.explain, image_bytes, spot_index, gene, tissue=_clean_tissue(tissue))
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:
@@ -148,7 +153,8 @@ async def predict_gradcam_batch(
 
     predictor = request.app.state.predictor
     try:
-        results = predictor.explain_batch(image_bytes, indices, gene, tissue=_clean_tissue(tissue))
+        results = await run_in_threadpool(
+            predictor.explain_batch, image_bytes, indices, gene, tissue=_clean_tissue(tissue))
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:
@@ -170,7 +176,8 @@ async def pathways(request: Request, body: PathwayRequest):
         raise HTTPException(status_code=400, detail="genes must not be empty")
 
     try:
-        return client.get_pathways(body.genes, category=body.category)
+        # DAVID is a slow blocking SOAP call; keep it off the event loop.
+        return await run_in_threadpool(client.get_pathways, body.genes, category=body.category)
     except PathwayLookupError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     except Exception as exc:
