@@ -31,6 +31,7 @@ confirmed by hand against the live service before writing this:
 """
 import logging
 import threading
+import time
 import uuid
 
 import httpx
@@ -56,6 +57,12 @@ DEFAULT_MIN_COUNT = 1
 # Biological Process) cover a lot of real biology KEGG doesn't curate.
 DEFAULT_CATEGORIES = "KEGG_PATHWAY,REACTOME_PATHWAY,GOTERM_BP_FAT"
 
+# Results and symbol->Entrez mappings are stable for the life of a deploy, so
+# repeat lookups (re-running a slide, reopening History, the same cluster
+# markers) skip DAVID entirely. Bounded so a long-lived process can't grow it
+# without limit; oldest entries are evicted first.
+CACHE_MAX_ENTRIES = 256
+
 
 class PathwayLookupError(Exception):
     """Raised for any DAVID/MyGene failure the route should surface as an
@@ -70,6 +77,9 @@ class DavidClient:
             raise ValueError("DAVID_EMAIL is required to use DavidClient")
         self.email = email
         self._lock = threading.Lock()
+        self._cache_lock = threading.Lock()
+        self._result_cache: dict[tuple, list[dict]] = {}
+        self._entrez_cache: dict[str, str | None] = {}
         # The WSDL itself is a static schema document, not session state —
         # safe to parse once and reuse. Only the actual addList/setCategories/
         # getChartReport call sequence (below) needs the lock.
@@ -81,11 +91,16 @@ class DavidClient:
         no Entrez mapping simply can't be sent to DAVID, not a hard error."""
         if not symbols:
             return {}
+        with self._cache_lock:
+            known = {s: self._entrez_cache[s] for s in symbols if s in self._entrez_cache}
+        todo = [s for s in symbols if s not in known]
+        if not todo:
+            return {s: e for s, e in known.items() if e}
         try:
             resp = httpx.post(
                 MYGENE_URL,
                 data={
-                    "q": ",".join(symbols),
+                    "q": ",".join(todo),
                     "scopes": "symbol",
                     "species": "human",
                     "fields": "symbol,entrezgene",
@@ -97,12 +112,19 @@ class DavidClient:
         except Exception as exc:
             raise PathwayLookupError(f"Gene ID lookup failed: {exc}") from exc
 
-        mapping: dict[str, str] = {}
+        mapping: dict[str, str] = {s: e for s, e in known.items() if e}
+        fresh: dict[str, str] = {}
         for hit in hits:
             entrez = hit.get("entrezgene")
             symbol = hit.get("symbol")
             if entrez and symbol and not hit.get("notfound"):
-                mapping[symbol] = str(entrez)
+                fresh[symbol] = str(entrez)
+        mapping.update(fresh)
+        with self._cache_lock:
+            if len(self._entrez_cache) > CACHE_MAX_ENTRIES * 8:
+                self._entrez_cache.clear()
+            for sym in todo:
+                self._entrez_cache[sym] = fresh.get(sym)
         return mapping
 
     def get_pathways(
@@ -112,6 +134,26 @@ class DavidClient:
         ease: float = DEFAULT_EASE,
         min_count: int = DEFAULT_MIN_COUNT,
     ) -> list[dict]:
+        cache_key = (tuple(sorted(set(gene_symbols))), category, ease, min_count)
+        with self._cache_lock:
+            cached = self._result_cache.get(cache_key)
+        if cached is not None:
+            logger.info("DAVID cache hit for %d genes", len(cache_key[0]))
+            return cached
+
+        started = time.monotonic()
+        results = self._lookup(gene_symbols, category, ease, min_count)
+        logger.info("DAVID lookup of %d genes took %.1fs (%d terms)",
+                    len(cache_key[0]), time.monotonic() - started, len(results))
+        # Only successful lookups are cached (failures raise before here), so
+        # a transient DAVID outage is never remembered.
+        with self._cache_lock:
+            if len(self._result_cache) >= CACHE_MAX_ENTRIES:
+                self._result_cache.pop(next(iter(self._result_cache)))
+            self._result_cache[cache_key] = results
+        return results
+
+    def _lookup(self, gene_symbols, category, ease, min_count) -> list[dict]:
         symbol_by_entrez = {v: k for k, v in self._symbols_to_entrez(gene_symbols).items()}
         if not symbol_by_entrez:
             logger.info("No gene symbols resolved to Entrez IDs for %r", gene_symbols)
@@ -137,6 +179,7 @@ class DavidClient:
             except PathwayLookupError:
                 raise
             except Exception as exc:
+                logger.warning("DAVID request failed: %r", exc)
                 raise PathwayLookupError(f"DAVID request failed: {exc}") from exc
 
         results = []
