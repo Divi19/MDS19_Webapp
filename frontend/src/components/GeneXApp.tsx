@@ -100,7 +100,7 @@ export default function GeneXApp() {
   const [clusterPin, setClusterPin] = useState<number | null>(null);
   // Keyed by cluster index. Lives here (not in ClusterAnalysisPanel) so the
   // PDF report export can read already-fetched results instead of
-  // re-querying DAVID — see the pathways effect below.
+  // re-querying the pathway service — see the pathways effect below.
   const [pathways, setPathways] = useState<Record<number, PathwayState>>({});
   const gradcamRef = useRef<GradCamHandle>(null);
   const [gradcamStatus, setGradcamStatus] = useState<GradCamStatus>({
@@ -138,10 +138,8 @@ export default function GeneXApp() {
   const clusterAnalysis = useMemo(() => (ready ? analyzeClusters(pred) : []), [pred, ready]);
 
   // Pathway lookups fire automatically as soon as a prediction's clusters
-  // are known — DAVID caps registered accounts at 200 lookups/day (~40 full
-  // runs at k=5), acceptable for a small team tool but worth revisiting if
-  // usage grows. Lives here (not ClusterAnalysisPanel) so the PDF export
-  // can read these same results instead of re-querying DAVID.
+  // are known. Lives here (not ClusterAnalysisPanel) so the PDF export
+  // can read these same results instead of re-querying the pathway service.
   //
   // Cluster index alone doesn't identify which prediction a lookup belongs
   // to — "cluster 2" in one upload has nothing to do with "cluster 2" in

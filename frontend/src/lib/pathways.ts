@@ -13,20 +13,20 @@ export interface PathwayResult {
 
 /** Per-cluster pathway lookup state, keyed by cluster index. Lives in
  * GeneXApp (lifted from ClusterAnalysisPanel) so the PDF export can read
- * already-fetched results instead of re-querying DAVID. */
+ * already-fetched results instead of re-querying the pathway service. */
 export type PathwayState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "done"; results: PathwayResult[] };
 
-/** Pathway enrichment (DAVID) for a small gene list — a cluster's marker
+/** Pathway enrichment (Enrichr) for a small gene list — a cluster's marker
  * genes, or a single gene. Queries KEGG, Reactome, and GO Biological
  * Process by default (the backend's DEFAULT_CATEGORIES, the single source
  * of truth — omitted here so `category` left unset means exactly that, not
  * a second copy of the list). Throws with a message safe to show directly
  * (the backend's own error text), including the clean "not configured"
- * case (DAVID_EMAIL unset) as a 501. */
+ * case (no pathway provider configured) as a 501. */
 export async function fetchPathways(
   genes: string[],
   category?: string,

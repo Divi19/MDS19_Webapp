@@ -224,7 +224,7 @@ function Cover({ data }: { data: ReportData }) {
         </View>
         <View style={styles.coverMetaItem}>
           <Text style={styles.coverMetaLabel}>Pathway source</Text>
-          <Text style={styles.coverMetaValue}>DAVID (KEGG, Reactome, GO:BP)</Text>
+          <Text style={styles.coverMetaValue}>Enrichr (KEGG, Reactome, GO:BP)</Text>
         </View>
         <View style={styles.coverMetaItem}>
           <Text style={styles.coverMetaLabel}>Prepared with</Text>
@@ -293,7 +293,7 @@ function ExecutiveSummary({ data }: { data: ReportData }) {
         This report summarises the spatial gene expression prediction for sample{" "}
         <Text style={{ fontFamily: "Courier-Bold" }}>{data.sampleName}</Text>. GeneX predicted expression across{" "}
         {pred.genes.length} genes for each of {pred.total} tissue spots, grouped into {pred.clusters.length}{" "}
-        expression clusters. Pathway enrichment against DAVID (KEGG, Reactome, and GO Biological Process) returned
+        expression clusters. Pathway enrichment against Enrichr (KEGG, Reactome, and GO Biological Process) returned
         significant matches for {significantClusters.length} of {analysis.length} clusters.
       </Text>
 
@@ -355,7 +355,7 @@ function SampleOverview({ data }: { data: ReportData }) {
     ["Spots analysed", String(pred.total)],
     ["Genes predicted per spot", String(pred.genes.length)],
     ["Expression clusters identified", String(pred.clusters.length)],
-    ["Pathway database", "DAVID (KEGG_PATHWAY, REACTOME_PATHWAY, GOTERM_BP_FAT)"],
+    ["Pathway database", "Enrichr (KEGG_2021_Human, Reactome_2022, GO_Biological_Process_2023)"],
   ];
   return (
     <Page size="A4" style={styles.page}>
@@ -468,10 +468,10 @@ function PathwayEnrichment({ data }: { data: ReportData }) {
       <Text style={styles.eyebrow}>Section 04</Text>
       <Text style={styles.h1}>Pathway Enrichment</Text>
       <Text style={styles.body}>
-        Each cluster&apos;s top genes are tested against DAVID&apos;s KEGG, Reactome, and GO Biological Process
-        databases together. DAVID only returns a term once its enrichment p-value clears its own significance
-        threshold, loosened here from DAVID&apos;s stricter default since a cluster&apos;s gene list is short (five
-        genes) relative to the hundreds of pathway terms tested. A cluster with no listed pathway below does not
+        Each cluster&apos;s top genes are tested against Enrichr&apos;s KEGG, Reactome, and GO Biological Process
+        libraries together. A term is only listed once its enrichment p-value is at or below 0.05 (unadjusted,
+        since a cluster&apos;s gene list is short — five genes — and adjusted values rarely clear any threshold at
+        that size). A cluster with no listed pathway below does not
         have genes of no known function — it simply found no match that cleared that threshold.
       </Text>
 

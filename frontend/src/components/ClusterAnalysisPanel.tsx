@@ -32,7 +32,7 @@ export default function ClusterAnalysisPanel({
   hidden?: boolean;
   /** Keyed by cluster index. Fetched and kept in GeneXApp (not here) so the
    * PDF report export can read the same already-fetched results instead of
-   * re-querying DAVID. */
+   * re-querying the pathway service. */
   pathways: Record<number, PathwayState>;
   onRetryPathways: (clusterIndex: number) => void;
   onGeneClick: (gene: string, rect: DOMRect) => void;
@@ -116,7 +116,7 @@ export default function ClusterAnalysisPanel({
                     <span
                       className="info-icon"
                       tabIndex={0}
-                      data-tooltip="Biological pathways and processes this cluster's genes are significantly linked to, found by searching KEGG, Reactome, and GO Biological Process together through DAVID. No pathways shown just means none reached significance. It does not mean the genes have no known function."
+                      data-tooltip="Biological pathways and processes this cluster's genes are significantly linked to, found by searching KEGG, Reactome, and GO Biological Process together through Enrichr. No pathways shown just means none reached significance. It does not mean the genes have no known function."
                     >
                       i
                     </span>
