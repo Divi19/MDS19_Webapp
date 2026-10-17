@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -12,6 +14,11 @@ from app.services.gradcam import tile_json
 from app.services.wsi import is_wsi_filename, convert_wsi_to_image_bytes
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# Hard ceiling for one pathway lookup, so the client gets a readable error
+# instead of the platform proxy's bare 502 when DAVID is slow.
+PATHWAY_TIMEOUT_SECONDS = 45.0
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024        # 50 MB -- regular jpeg/png/tiff uploads
 MAX_WSI_UPLOAD_BYTES = 500 * 1024 * 1024   # 500 MB -- .svs/.ndpi/.mrxs-as-zip uploads
@@ -177,8 +184,18 @@ async def pathways(request: Request, body: PathwayRequest):
 
     try:
         # DAVID is a slow blocking SOAP call; keep it off the event loop.
-        return await run_in_threadpool(client.get_pathways, body.genes, category=body.category)
+        return await asyncio.wait_for(
+            run_in_threadpool(client.get_pathways, body.genes, category=body.category),
+            timeout=PATHWAY_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        logger.warning("Pathway lookup timed out after %ss", PATHWAY_TIMEOUT_SECONDS)
+        raise HTTPException(
+            status_code=504,
+            detail=f"Pathway lookup timed out after {int(PATHWAY_TIMEOUT_SECONDS)}s "
+                   f"(DAVID is slow right now). Try again shortly.")
     except PathwayLookupError as exc:
+        logger.warning("Pathway lookup failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc))
     except Exception as exc:
+        logger.exception("Pathway lookup crashed")
         raise HTTPException(status_code=500, detail=f"Pathway lookup failed: {exc}")
