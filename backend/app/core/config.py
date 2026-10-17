@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     # point at david.ncifcrf.gov, which is dead (NXDOMAIN) — the working
     # host is davidbioinformatics.nih.gov, same path.
     david_email: str = ""
+    # Which backend answers /api/pathways: "enrichr" (default; plain HTTP,
+    # no registration) or "david" (needs DAVID_EMAIL; its SOAP service
+    # read-timed-out from the production host, hence the default).
+    pathway_provider: str = "enrichr"
 
     class Config:
         env_file = ".env"

@@ -174,16 +174,16 @@ async def predict_gradcam_batch(
 
 @router.post("/pathways", response_model=list[PathwayResult])
 async def pathways(request: Request, body: PathwayRequest):
-    client = request.app.state.david_client
+    client = request.app.state.pathway_client
     if client is None:
         raise HTTPException(
             status_code=501,
-            detail="Pathway enrichment is not configured (DAVID_EMAIL unset)")
+            detail="Pathway enrichment is not configured (PATHWAY_PROVIDER=david needs DAVID_EMAIL)")
     if not body.genes:
         raise HTTPException(status_code=400, detail="genes must not be empty")
 
     try:
-        # DAVID is a slow blocking SOAP call; keep it off the event loop.
+        # Blocking network calls; keep them off the event loop.
         return await asyncio.wait_for(
             run_in_threadpool(client.get_pathways, body.genes, category=body.category),
             timeout=PATHWAY_TIMEOUT_SECONDS)
@@ -192,7 +192,7 @@ async def pathways(request: Request, body: PathwayRequest):
         raise HTTPException(
             status_code=504,
             detail=f"Pathway lookup timed out after {int(PATHWAY_TIMEOUT_SECONDS)}s "
-                   f"(DAVID is slow right now). Try again shortly.")
+                   f"(the enrichment service is slow right now). Try again shortly.")
     except PathwayLookupError as exc:
         logger.warning("Pathway lookup failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc))
