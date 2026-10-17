@@ -35,6 +35,9 @@ export async function fetchPathways(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ genes, category }),
+    // Just above the backend's own 45s ceiling, so its readable 504 wins
+    // over a bare client-side abort.
+    signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok) {
     const detail = await res.text();

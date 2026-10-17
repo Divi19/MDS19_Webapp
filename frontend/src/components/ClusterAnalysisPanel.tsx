@@ -23,6 +23,7 @@ export default function ClusterAnalysisPanel({
   ready,
   hidden = false,
   pathways,
+  onRetryPathways,
   onGeneClick,
 }: {
   pred: Prediction;
@@ -33,6 +34,7 @@ export default function ClusterAnalysisPanel({
    * PDF report export can read the same already-fetched results instead of
    * re-querying DAVID. */
   pathways: Record<number, PathwayState>;
+  onRetryPathways: (clusterIndex: number) => void;
   onGeneClick: (gene: string, rect: DOMRect) => void;
 }) {
   const analysis = useMemo(() => (ready ? analyzeClusters(pred) : []), [pred, ready]);
@@ -123,7 +125,12 @@ export default function ClusterAnalysisPanel({
                     <div className="cluster-analysis-text">looking up…</div>
                   )}
                   {pathwayState.status === "error" && (
-                    <div className="cluster-analysis-text">{pathwayState.message}</div>
+                    <div className="cluster-analysis-text">
+                      {pathwayState.message}{" "}
+                      <button type="button" onClick={() => onRetryPathways(a.index)}>
+                        Retry
+                      </button>
+                    </div>
                   )}
                   {pathwayState.status === "done" && (
                     <div className="cluster-analysis-genes">

@@ -181,6 +181,21 @@ export default function GeneXApp() {
     };
   }, [clusterAnalysis]);
 
+  const retryPathways = useCallback(
+    (index: number) => {
+      const a = clusterAnalysis.find((c) => c.index === index);
+      if (!a || !a.markers.length) return;
+      setPathways((prev) => ({ ...prev, [index]: { status: "loading" } }));
+      fetchPathways(a.markers.map((m) => m.name))
+        .then((results) => setPathways((prev) => ({ ...prev, [index]: { status: "done", results } })))
+        .catch((e) => {
+          const message = e instanceof Error ? e.message : "Pathway lookup failed";
+          setPathways((prev) => ({ ...prev, [index]: { status: "error", message } }));
+        });
+    },
+    [clusterAnalysis],
+  );
+
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     window.clearTimeout(toastTimer.current);
@@ -1221,6 +1236,7 @@ export default function GeneXApp() {
           ready={ready}
           hidden={view === "tissue" && ready && !!pred.tissue}
           pathways={pathways}
+          onRetryPathways={retryPathways}
           onGeneClick={(name, rect) =>
             setPopoverAnchor({ gene: name, x: rect.left, top: rect.top, bottom: rect.bottom })
           }
