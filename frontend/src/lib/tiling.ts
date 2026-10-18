@@ -64,3 +64,86 @@ export function tileOrigin(gridX: number, gridY: number, tiling: Tiling): [numbe
 export function tileCentre(gridX: number, gridY: number, tiling: Tiling): [number, number] {
   return [gridX * tiling.stride + tiling.tile / 2, gridY * tiling.stride + tiling.tile / 2];
 }
+
+/** A source rectangle in original-image pixels. It may extend past the image
+ * edges (see drawImageRect), and always has the canvas's aspect ratio. */
+export interface ViewRect {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+}
+
+/** Margin kept around the tissue, as a fraction of its size on each side. */
+const TISSUE_VIEW_PAD = 0.06;
+
+/**
+ * The part of the original image to show in a cw x ch canvas so the tissue is
+ * centred and fills the view, wherever it sits on the upload (e.g. a small
+ * section in the bottom-left corner of an A4 scan). Fits the bounding box of
+ * the predicted tiles plus a margin; the rect can extend past the image when
+ * the tissue is near an edge. With no usable spots (demo data), falls back to
+ * a centred cover-fit of the whole image.
+ */
+export function tissueViewRect(
+  imgW: number,
+  imgH: number,
+  spots: { gridX?: number | null; gridY?: number | null }[],
+  tiling: Tiling,
+  cw: number,
+  ch: number,
+): ViewRect {
+  const cr = cw / ch;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const s of spots) {
+    if (s.gridX == null || s.gridY == null) continue;
+    const [ox, oy] = tileOrigin(s.gridX, s.gridY, tiling);
+    minX = Math.min(minX, ox);
+    minY = Math.min(minY, oy);
+    maxX = Math.max(maxX, ox + tiling.tile);
+    maxY = Math.max(maxY, oy + tiling.tile);
+  }
+  if (!Number.isFinite(minX)) {
+    // Centred cover-fit of the whole image.
+    if (imgW / imgH > cr) {
+      const sh = imgH;
+      const sw = sh * cr;
+      return { sx: (imgW - sw) / 2, sy: 0, sw, sh };
+    }
+    const sw = imgW;
+    const sh = sw / cr;
+    return { sx: 0, sy: (imgH - sh) / 2, sw, sh };
+  }
+  const bw = (maxX - minX) * (1 + 2 * TISSUE_VIEW_PAD);
+  const bh = (maxY - minY) * (1 + 2 * TISSUE_VIEW_PAD);
+  const sw = Math.max(bw, bh * cr);
+  const sh = sw / cr;
+  return { sx: (minX + maxX) / 2 - sw / 2, sy: (minY + maxY) / 2 - sh / 2, sw, sh };
+}
+
+/** Draws `rect` of `img` into a w x h canvas, filling anywhere the rect
+ * extends past the image with `background` (drawImage with an out-of-range
+ * source rect is not portable, so only the overlap is drawn). */
+export function drawImageRect(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  rect: ViewRect,
+  w: number,
+  h: number,
+  background = "#faf8f3",
+) {
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, w, h);
+  const x0 = Math.max(rect.sx, 0);
+  const y0 = Math.max(rect.sy, 0);
+  const x1 = Math.min(rect.sx + rect.sw, img.naturalWidth);
+  const y1 = Math.min(rect.sy + rect.sh, img.naturalHeight);
+  if (x1 <= x0 || y1 <= y0) return;
+  const kx = w / rect.sw;
+  const ky = h / rect.sh;
+  ctx.drawImage(img, x0, y0, x1 - x0, y1 - y0, (x0 - rect.sx) * kx, (y0 - rect.sy) * ky, (x1 - x0) * kx, (y1 - y0) * ky);
+}
+

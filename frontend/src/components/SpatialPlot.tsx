@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CL, viridis, type Prediction, type Spot } from "@/lib/mockPrediction";
-import { DEFAULT_TILING, tileCentre, type Tiling } from "@/lib/tiling";
+import { DEFAULT_TILING, drawImageRect, tileCentre, tissueViewRect, type Tiling } from "@/lib/tiling";
 import {
   clusterTissueLabels, formatPercent, isUncertain, TISSUE_CLASSES, TISSUE_COLORS, TISSUE_SHORT_NAMES,
   type TissueClass,
@@ -355,22 +355,16 @@ export default function SpatialPlot({
     // directly on the tissue instead of an abstract grid.
     if ((genesView || tissueLayer) && imgRef.current) {
       const img = imgRef.current;
-      const ir = img.naturalWidth / img.naturalHeight;
-      const cr = w / h;
-      let sx: number, sy: number, sw: number, sh: number;
-      if (ir > cr) {
-        sh = img.naturalHeight;
-        sw = sh * cr;
-        sy = 0;
-        sx = (img.naturalWidth - sw) / 2;
-      } else {
-        sw = img.naturalWidth;
-        sh = sw / cr;
-        sx = 0;
-        sy = (img.naturalHeight - sh) / 2;
-      }
+      const { sx, sy, sw, sh } = tissueViewRect(
+        img.naturalWidth,
+        img.naturalHeight,
+        pred.spots,
+        pred.tiling ?? DEFAULT_TILING,
+        w,
+        h,
+      );
       if (showImage) {
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+        drawImageRect(ctx, img, { sx, sy, sw, sh }, w, h);
       } else {
         ctx.fillStyle = "#faf8f3";
         ctx.fillRect(0, 0, w, h);

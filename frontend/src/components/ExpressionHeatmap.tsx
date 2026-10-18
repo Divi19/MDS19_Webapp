@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Prediction, Spot } from "@/lib/mockPrediction";
-import { DEFAULT_TILING, tileCentre, type Tiling } from "@/lib/tiling";
+import { DEFAULT_TILING, drawImageRect, tileCentre, tissueViewRect, type Tiling } from "@/lib/tiling";
 
 
 // Low-res field the heatmap is computed on, then smoothly upscaled onto the
@@ -103,24 +103,20 @@ export default function ExpressionHeatmap({
     ctx.clearRect(0, 0, w, h);
     if (!img || !ready) return;
 
-    // Cover-fit the real image into the canvas — same transform SpatialPlot
-    // uses for its image-overlay view, so tile positions line up identically.
-    const ir = img.naturalWidth / img.naturalHeight;
-    const cr = w / h;
-    let sx: number, sy: number, sw: number, sh: number;
-    if (ir > cr) {
-      sh = img.naturalHeight;
-      sw = sh * cr;
-      sy = 0;
-      sx = (img.naturalWidth - sw) / 2;
-    } else {
-      sw = img.naturalWidth;
-      sh = sw / cr;
-      sx = 0;
-      sy = (img.naturalHeight - sh) / 2;
-    }
+    const tiling = pred.tiling ?? DEFAULT_TILING;
+
+    // Centre the tissue in the canvas — same transform SpatialPlot uses for
+    // its image-overlay view, so tile positions line up identically.
+    const { sx, sy, sw, sh } = tissueViewRect(
+      img.naturalWidth,
+      img.naturalHeight,
+      pred.spots,
+      tiling,
+      w,
+      h,
+    );
     const geom: ImgGeom = { sx, sy, sw, sh, w, h };
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+    drawImageRect(ctx, img, { sx, sy, sw, sh }, w, h);
 
     const spots = pred.spots.filter((s) => s.gridX != null && s.gridY != null);
     if (!spots.length || !pred.geneMeta[gene]) return;
@@ -138,7 +134,6 @@ export default function ExpressionHeatmap({
     // a binary on/off coverage test upscaled from a low-res grid produces a
     // faceted, low-poly-looking edge; a gradual ramp upscales into a smooth
     // curve that actually follows the tissue's real (irregular) boundary.
-    const tiling = pred.tiling ?? DEFAULT_TILING;
     const spacing = tiling.stride * (geom.w / geom.sw);
     const innerD2 = (spacing * 0.9) ** 2;
     const outerD2 = (spacing * 1.7) ** 2;
