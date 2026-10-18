@@ -116,7 +116,7 @@ export default function ClusterAnalysisPanel({
                     <span
                       className="info-icon"
                       tabIndex={0}
-                      data-tooltip="Biological pathways and processes this cluster's genes are significantly linked to, found by searching KEGG, Reactome, and GO Biological Process together through Enrichr. No pathways shown just means none reached significance. It does not mean the genes have no known function."
+                      data-tooltip="Biological pathways and processes this cluster's top genes are enriched in, found by testing them against KEGG, Reactome, and GO Biological Process through Enrichr. Only terms with p ≤ 0.05 are kept, and the 3 most significant are shown. No pathways shown just means none reached significance. It does not mean the genes have no known function."
                     >
                       i
                     </span>
