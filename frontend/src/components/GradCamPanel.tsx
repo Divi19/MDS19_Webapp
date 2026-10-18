@@ -4,7 +4,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { explainGradcamBatch } from "@/lib/api";
 import { gradcamExperimental } from "@/lib/cancer";
 import type { Prediction, Spot } from "@/lib/mockPrediction";
-import { DEFAULT_TILING, tileOrigin, type Tiling } from "@/lib/tiling";
+import { DEFAULT_TILING, drawImageRect, tileOrigin, tissueViewRect, type Tiling } from "@/lib/tiling";
 
 export interface GradCamStatus {
   loading: boolean;
@@ -228,24 +228,10 @@ interface ViewState {
   panY: number;
 }
 
-function computeGeom(img: HTMLImageElement, w: number, h: number): ImgGeom {
-  // Cover-fit the real image into the canvas — same transform SpatialPlot
-  // uses for its image-overlay view, so tile positions line up identically.
-  const ir = img.naturalWidth / img.naturalHeight;
-  const cr = w / h;
-  let sx: number, sy: number, sw: number, sh: number;
-  if (ir > cr) {
-    sh = img.naturalHeight;
-    sw = sh * cr;
-    sy = 0;
-    sx = (img.naturalWidth - sw) / 2;
-  } else {
-    sw = img.naturalWidth;
-    sh = sw / cr;
-    sx = 0;
-    sy = (img.naturalHeight - sh) / 2;
-  }
-  return { sx, sy, sw, sh, w, h };
+function computeGeom(img: HTMLImageElement, w: number, h: number, spots: Spot[], tiling: Tiling): ImgGeom {
+  // Centre the tissue in the canvas — same transform SpatialPlot uses for its
+  // image-overlay view, so tile positions line up identically.
+  return { ...tissueViewRect(img.naturalWidth, img.naturalHeight, spots, tiling, w, h), w, h };
 }
 
 /** A tile's bounding box on the canvas, from its true grid position on the
@@ -418,9 +404,9 @@ const GradCamPanel = forwardRef<GradCamHandle, {
     ctx.clearRect(-view.panX / view.scale, -view.panY / view.scale, w / view.scale, h / view.scale);
     if (!img) return;
 
-    const geom = computeGeom(img, w, h);
+    const geom = computeGeom(img, w, h, pred.spots, pred.tiling ?? DEFAULT_TILING);
     if (showImage) {
-      ctx.drawImage(img, geom.sx, geom.sy, geom.sw, geom.sh, 0, 0, w, h);
+      drawImageRect(ctx, img, geom, w, h);
     } else {
       ctx.fillStyle = "#faf8f3";
       ctx.fillRect(0, 0, w, h);
@@ -642,7 +628,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
       const view = viewRef.current;
       const worldX = (mx - view.panX) / view.scale;
       const worldY = (my - view.panY) / view.scale;
-      const geom = computeGeom(img, mapW, mapH);
+      const geom = computeGeom(img, mapW, mapH, pred.spots, pred.tiling ?? DEFAULT_TILING);
       for (let i = 0; i < pred.spots.length; i++) {
         if (!tileImgsRef.current[i] && !heatRef.current[i]) continue;
         const s = pred.spots[i];
