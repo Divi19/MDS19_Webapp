@@ -74,3 +74,12 @@ class PathwayResult(BaseModel):
     list_hits: int
     list_total: int
     genes: list[str]
+    # Database ID (R-HSA-… / GO:…) when the source gives one; "" otherwise
+    # (KEGG terms from Enrichr carry a name only). Used to look up a description.
+    term_id: str = ""
+
+
+class PathwayDescription(BaseModel):
+    # None when the source has no text we can fetch (KEGG: link-out only).
+    description: str | None = None
+    url: str

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { CL, type Prediction } from "@/lib/mockPrediction";
 import { analyzeClusters } from "@/lib/clusterAnalysis";
+import PathwayListModal from "./PathwayListModal";
 import type { PathwayState } from "@/lib/pathways";
 import { clusterTissueLabels } from "@/lib/tissue";
 
@@ -40,6 +41,10 @@ export default function ClusterAnalysisPanel({
   const analysis = useMemo(() => (ready ? analyzeClusters(pred) : []), [pred, ready]);
   // Tissue name per cluster from the tissue classifier; null without it.
   const labels = useMemo(() => clusterTissueLabels(pred), [pred]);
+
+  // Cluster whose full pathway list is open in the modal; null = closed.
+  const [pathwayModal, setPathwayModal] = useState<number | null>(null);
+  const modalState = pathwayModal === null ? undefined : pathways[pathwayModal];
 
   return (
     <div className="col col-3 glass" data-tour="cluster-analysis" hidden={hidden}>
@@ -148,12 +153,28 @@ export default function ClusterAnalysisPanel({
                       ) : (
                         <span className="cluster-analysis-text">no significant pathways found</span>
                       )}
+                      {pathwayState.results.length > 0 && (
+                        <button
+                          type="button"
+                          className="cluster-analysis-viewall"
+                          onClick={() => setPathwayModal(a.index)}
+                        >
+                          View all {pathwayState.results.length}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
               );
             })}
       </div>
+      {pathwayModal !== null && modalState?.status === "done" && (
+        <PathwayListModal
+          cluster={pathwayModal}
+          results={modalState.results}
+          onClose={() => setPathwayModal(null)}
+        />
+      )}
     </div>
   );
 }

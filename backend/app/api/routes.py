@@ -7,13 +7,16 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 
-from app.models.schemas import PredictionResponse, HealthResponse, PathwayRequest, PathwayResult
+from app.models.schemas import (
+    PredictionResponse, HealthResponse, PathwayRequest, PathwayResult, PathwayDescription)
 from app.services.david_client import PathwayLookupError
 from app.services.errors import TissueNotSupportedError
 from app.services.gradcam import tile_json
+from app.services.pathway_description import PathwayDescriber
 from app.services.wsi import is_wsi_filename, convert_wsi_to_image_bytes
 
 router = APIRouter()
+_describer = PathwayDescriber()
 logger = logging.getLogger(__name__)
 
 # Hard ceiling for one pathway lookup, so the client gets a readable error
@@ -199,3 +202,13 @@ async def pathways(request: Request, body: PathwayRequest):
     except Exception as exc:
         logger.exception("Pathway lookup crashed")
         raise HTTPException(status_code=500, detail=f"Pathway lookup failed: {exc}")
+
+
+@router.get("/pathways/describe", response_model=PathwayDescription)
+async def describe_pathway(category: str, term_id: str = "", term: str = ""):
+    try:
+        return await run_in_threadpool(_describer.describe, category, term_id, term)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except PathwayLookupError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
