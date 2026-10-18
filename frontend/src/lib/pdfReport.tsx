@@ -1,4 +1,4 @@
-import { Document, Page, View, Text, Svg, Circle, Ellipse, Image as PdfImage, StyleSheet, pdf } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Svg, Circle, Rect, Image as PdfImage, StyleSheet, pdf } from "@react-pdf/renderer";
 import { CL } from "@/lib/mockPrediction";
 import type { Prediction } from "@/lib/mockPrediction";
 import type { ClusterAnalysis } from "@/lib/clusterAnalysis";
@@ -27,74 +27,76 @@ function formatTerm(term: string): string {
   return term.replace(/^[a-zA-Z]+\d+:/, "");
 }
 
-const INK = "#1a1f2b";
-const MUTED = "#5c5a52";
-const MUTED2 = "#8d897c";
-const BORDER = "#d9d2c4";
-const ACCENT = "#0c7a8a";
-const ACCENT_DARK = "#0a6675";
-const ACCENT_SOFT = "#0c7a8a14";
-const SURFACE2 = "#f6f3ed";
+// Palette and shapes follow the live app's "floating glass" skin (globals.css):
+// near-black ink, one blue accent, white pills with a hairline border and
+// generously rounded cards on a pale neutral ground.
+const INK = "#1D1D1F";
+const INK2 = "#3A3A3E";
+const MUTED = "#6E6E73";
+const MUTED2 = "#8E8E93";
+const BORDER = "#D4D4DC";
+const BORDER_SOFT = "#E4E4E9";
+const ACCENT = "#2C5AA0";
+const ACCENT_SOFT = "#2C5AA014";
+const SURFACE2 = "#F5F5F7";
+
+// Source tags, same hues as the Pathway table in the app.
+const SOURCE_STYLE: Record<string, { label: string; color: string; bg: string }> = {
+  KEGG_PATHWAY: { label: "KEGG", color: "#25744A", bg: "#2E8B5722" },
+  REACTOME_PATHWAY: { label: "Reactome", color: "#2C5AA0", bg: "#2C5AA01F" },
+  GOTERM_BP_FAT: { label: "GO:BP", color: "#A85F12", bg: "#D67D1E24" },
+};
 
 const styles = StyleSheet.create({
-  page: { padding: "40 44", fontSize: 9.5, fontFamily: "Helvetica", color: INK },
+  page: { padding: "40 44", fontSize: 9.5, fontFamily: "Helvetica", color: INK, backgroundColor: "#FFFFFF" },
   pageHead: {
     flexDirection: "row",
     justifyContent: "space-between",
     fontSize: 7.5,
     color: MUTED2,
-    borderBottom: `1 solid ${BORDER}`,
+    borderBottom: `0.75 solid ${BORDER}`,
     paddingBottom: 8,
     marginBottom: 18,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
-  eyebrow: {
-    fontSize: 8.5,
-    fontWeight: 700,
-    color: ACCENT,
-    marginBottom: 6,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  h1: { fontSize: 20, fontFamily: "Times-Bold", marginBottom: 12 },
-  h2: { fontSize: 12, fontFamily: "Times-Bold", marginTop: 16, marginBottom: 7 },
-  body: { fontSize: 9.5, lineHeight: 1.5, color: INK, marginBottom: 8, maxWidth: 440 },
+  eyebrow: { fontSize: 8.5, color: MUTED, marginBottom: 4 },
+  h1: { fontSize: 22, fontFamily: "Helvetica-Bold", letterSpacing: -0.5, marginBottom: 12 },
+  h2: { fontSize: 12, fontFamily: "Helvetica-Bold", letterSpacing: -0.2, marginTop: 16, marginBottom: 7 },
+  body: { fontSize: 9.5, lineHeight: 1.55, color: INK2, marginBottom: 8, maxWidth: 450 },
   statRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
-  statTile: { flex: 1, backgroundColor: ACCENT_SOFT, border: `1 solid ${BORDER}`, borderRadius: 6, padding: 8 },
-  statLabel: { fontSize: 6.5, color: MUTED, textTransform: "uppercase" },
-  statValue: { fontSize: 14, fontFamily: "Times-Bold", color: ACCENT_DARK, marginTop: 2 },
-  statSub: { fontSize: 6.5, color: MUTED2, marginTop: 1 },
+  statTile: { flex: 1, backgroundColor: SURFACE2, border: `0.75 solid ${BORDER_SOFT}`, borderRadius: 12, padding: 10 },
+  statLabel: { fontSize: 7.5, color: MUTED },
+  statValue: { fontSize: 16, fontFamily: "Helvetica-Bold", letterSpacing: -0.3, color: INK, marginTop: 3 },
+  statSub: { fontSize: 7, color: MUTED2, marginTop: 1 },
   table: { marginTop: 4, marginBottom: 12 },
-  tr: { flexDirection: "row", borderBottom: `1 solid ${BORDER}` },
-  thRow: { flexDirection: "row", borderBottom: `1.5 solid ${INK}` },
-  th: { fontSize: 7, textTransform: "uppercase", color: MUTED2, padding: 4, flex: 1 },
-  td: { fontSize: 8.5, padding: 4, flex: 1 },
-  tdMono: { fontSize: 8.5, padding: 4, flex: 1, fontFamily: "Courier-Bold" },
+  tr: { flexDirection: "row", alignItems: "center", borderBottom: `0.75 solid ${BORDER_SOFT}`, paddingVertical: 1 },
+  thRow: { flexDirection: "row", borderBottom: `0.75 solid ${BORDER}` },
+  th: { fontSize: 7.5, color: MUTED2, padding: 4, flex: 1 },
+  td: { fontSize: 8.5, padding: 4, flex: 1, color: INK2 },
+  tdMono: { fontSize: 8.5, padding: 4, flex: 1, fontFamily: "Helvetica-Bold", color: INK },
   tdRight: { textAlign: "right" },
   swatch: { width: 6, height: 6, borderRadius: 3, marginRight: 4 },
   cardRow: { flexDirection: "row" },
   findings: { marginTop: 4 },
-  findingItem: { flexDirection: "row", gap: 6, paddingVertical: 6, borderBottom: `1 solid ${BORDER}`, fontSize: 9 },
+  findingItem: { flexDirection: "row", gap: 6, paddingVertical: 6, borderBottom: `0.75 solid ${BORDER_SOFT}`, fontSize: 9, color: INK2 },
   findingDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: ACCENT, marginTop: 3 },
   clusterCard: {
-    border: `1 solid ${BORDER}`,
-    borderRadius: 6,
-    padding: 9,
-    marginBottom: 7,
-    backgroundColor: "#fdfcf9",
+    border: `0.75 solid ${BORDER_SOFT}`,
+    borderRadius: 12,
+    padding: 11,
+    marginBottom: 8,
+    backgroundColor: SURFACE2,
   },
-  clusterCardHead: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 4 },
-  clusterCardName: { fontFamily: "Times-Bold", fontSize: 10 },
+  clusterCardHead: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 6 },
+  clusterCardName: { fontFamily: "Helvetica-Bold", fontSize: 10.5 },
   clusterCardCount: { fontSize: 7.5, color: MUTED, marginLeft: "auto" },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 3, marginBottom: 4 },
-  chip: { fontSize: 7.5, fontFamily: "Courier-Bold", color: ACCENT_DARK, backgroundColor: ACCENT_SOFT, borderRadius: 3, paddingVertical: 2, paddingHorizontal: 5 },
-  cardText: { fontSize: 7.8, color: MUTED, lineHeight: 1.4 },
-  pill: { fontSize: 7.5, fontFamily: "Courier-Bold", borderRadius: 3, paddingVertical: 2, paddingHorizontal: 5, marginRight: 4, marginBottom: 3 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginBottom: 6 },
+  chip: { fontSize: 8, fontFamily: "Helvetica-Bold", color: INK, backgroundColor: "#FFFFFF", border: `0.75 solid ${BORDER}`, borderRadius: 99, paddingVertical: 2.5, paddingHorizontal: 8 },
+  cardText: { fontSize: 8, color: MUTED, lineHeight: 1.45 },
+  pill: { fontSize: 7.5, color: INK2, backgroundColor: "#FFFFFF", border: `0.75 solid ${BORDER}`, borderRadius: 99, paddingVertical: 2.5, paddingHorizontal: 8, marginRight: 4, marginBottom: 4 },
+  sourceTag: { fontSize: 6.5, borderRadius: 99, paddingVertical: 1.5, paddingHorizontal: 6 },
   legendRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 8, marginBottom: 4 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 4, fontSize: 7.5, color: MUTED },
-  mapBox: { border: `1 solid ${BORDER}`, borderRadius: 6, backgroundColor: SURFACE2 },
-  stackBar: { flexDirection: "row", height: 14, borderRadius: 4, overflow: "hidden", border: `1 solid ${BORDER}`, marginTop: 6, marginBottom: 8 },
+  stackBar: { flexDirection: "row", height: 14, borderRadius: 99, overflow: "hidden", marginTop: 6, marginBottom: 8 },
   pageFoot: {
     position: "absolute",
     bottom: 24,
@@ -104,16 +106,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     fontSize: 7,
     color: MUTED2,
-    borderTop: `1 solid ${BORDER}`,
+    borderTop: `0.75 solid ${BORDER}`,
     paddingTop: 6,
   },
   // cover
   coverTop: { flexDirection: "row", alignItems: "center", gap: 8 },
-  coverLogo: { width: 20, height: 20, borderRadius: 5, backgroundColor: ACCENT },
-  coverWordmark: { fontFamily: "Courier-Bold", fontSize: 10, letterSpacing: 0.5 },
-  coverKicker: { fontSize: 8, color: ACCENT, textTransform: "uppercase", letterSpacing: 0.8, marginTop: 100, marginBottom: 10 },
-  coverTitle: { fontSize: 28, fontFamily: "Times-Bold", lineHeight: 1.2, maxWidth: 380 },
-  coverSample: { fontFamily: "Courier", fontSize: 10, color: MUTED, marginTop: 12 },
+  coverWordmark: { fontFamily: "Helvetica-Bold", fontSize: 12, letterSpacing: -0.2 },
+  coverKicker: { fontSize: 11, fontFamily: "Times-Italic", color: ACCENT, marginTop: 110, marginBottom: 6 },
+  coverTitle: { fontSize: 34, fontFamily: "Helvetica-Bold", letterSpacing: -1.2, lineHeight: 1.1, maxWidth: 400 },
+  coverSample: { fontSize: 10, color: MUTED, marginTop: 14 },
   coverMeta: {
     position: "absolute",
     bottom: 60,
@@ -121,18 +122,22 @@ const styles = StyleSheet.create({
     right: 44,
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 16,
-    borderTop: `1 solid ${BORDER}`,
-    paddingTop: 14,
+    gap: 10,
   },
-  coverMetaItem: { width: "44%" },
-  coverMetaLabel: { fontSize: 6.5, color: MUTED2, textTransform: "uppercase" },
-  coverMetaValue: { fontFamily: "Courier-Bold", fontSize: 9, color: INK, marginTop: 2 },
+  coverMetaItem: { width: "48%", backgroundColor: SURFACE2, border: `0.75 solid ${BORDER_SOFT}`, borderRadius: 12, padding: 10 },
+  coverMetaLabel: { fontSize: 7, color: MUTED2 },
+  coverMetaValue: { fontFamily: "Helvetica-Bold", fontSize: 9.5, color: INK, marginTop: 3 },
   // TOC
-  tocRow: { flexDirection: "row", alignItems: "baseline", gap: 6, paddingVertical: 7, borderBottom: `1 solid ${BORDER}` },
-  tocNum: { fontFamily: "Courier", fontSize: 8, color: ACCENT, width: 14 },
-  tocName: { fontFamily: "Times-Bold", fontSize: 10 },
+  tocRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 9, paddingHorizontal: 12, marginBottom: 6, backgroundColor: SURFACE2, border: `0.75 solid ${BORDER_SOFT}`, borderRadius: 12 },
+  tocNum: { fontSize: 8, color: MUTED2, width: 16 },
+  tocName: { fontFamily: "Helvetica-Bold", fontSize: 10.5 },
 });
+
+const PATHWAYS_PER_CLUSTER = 10;
+
+function formatP(p: number): string {
+  return p < 0.001 ? p.toExponential(1) : p.toFixed(3);
+}
 
 function PageHead({ page }: { page: string }) {
   return (
@@ -165,14 +170,7 @@ function ClusterMapSvg({
   const pad = 4;
   return (
     <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      <Ellipse
-        cx={width / 2}
-        cy={height / 2}
-        rx={width / 2 - 1}
-        ry={height / 2 - 1}
-        fill={SURFACE2}
-        stroke={BORDER}
-      />
+      <Rect x={0.5} y={0.5} width={width - 1} height={height - 1} rx={10} fill={SURFACE2} stroke={BORDER_SOFT} />
       {pred.spots.map((s, i) => {
         const on = highlight === undefined || s.cluster === highlight;
         const cx = pad + s.x * (width - 2 * pad);
@@ -198,12 +196,17 @@ function Cover({ data }: { data: ReportData }) {
   return (
     <Page size="A4" style={styles.page}>
       <View style={styles.coverTop}>
-        <View style={styles.coverLogo} />
-        <Text style={styles.coverWordmark}>GENEX</Text>
+        <Svg width={26} height={26} viewBox="0 0 26 26">
+          <Circle cx={13} cy={13} r={13} fill={INK} />
+          {[8.5, 13, 17.5].flatMap((cx) =>
+            [8.5, 13, 17.5].map((cy) => <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={1.3} fill="#FFFFFF" />),
+          )}
+        </Svg>
+        <Text style={styles.coverWordmark}>GeneX</Text>
       </View>
-      <Text style={styles.coverKicker}>Spatial Gene Expression · Analysis Report</Text>
-      <Text style={styles.coverTitle}>Spatial Gene Expression Analysis Report</Text>
-      <Text style={styles.coverSample}>Sample {sampleName}</Text>
+      <Text style={styles.coverKicker}>Analysis report</Text>
+      <Text style={styles.coverTitle}>Spatial gene expression, read from your slide.</Text>
+      <Text style={styles.coverSample}>Sample · {sampleName}</Text>
 
       <View style={styles.coverMeta}>
         <View style={styles.coverMetaItem}>
@@ -291,7 +294,7 @@ function ExecutiveSummary({ data }: { data: ReportData }) {
       <Text style={styles.h1}>Executive Summary</Text>
       <Text style={styles.body}>
         This report summarises the spatial gene expression prediction for sample{" "}
-        <Text style={{ fontFamily: "Courier-Bold" }}>{data.sampleName}</Text>. GeneX predicted expression across{" "}
+        <Text style={{ fontFamily: "Helvetica-Bold" }}>{data.sampleName}</Text>. GeneX predicted expression across{" "}
         {pred.genes.length} genes for each of {pred.total} tissue spots, grouped into {pred.clusters.length}{" "}
         expression clusters. Pathway enrichment against Enrichr (KEGG, Reactome, and GO Biological Process) returned
         significant matches for {significantClusters.length} of {analysis.length} clusters.
@@ -335,7 +338,7 @@ function ExecutiveSummary({ data }: { data: ReportData }) {
             <View key={a.index} style={styles.findingItem}>
               <View style={styles.findingDot} />
               <Text style={{ flex: 1 }}>
-                <Text style={{ fontFamily: "Courier-Bold" }}>Cluster {a.index}</Text> ({a.count} spots,{" "}
+                <Text style={{ fontFamily: "Helvetica-Bold" }}>Cluster {a.index}</Text> ({a.count} spots,{" "}
                 {(a.fraction * 100).toFixed(1)}%) is led by {topMarker.name} ({topMarker.diff >= 0 ? "+" : ""}
                 {topMarker.diff.toFixed(2)}); {pathwayNote}.
               </Text>
@@ -392,8 +395,8 @@ function ClusterAnalysisPages({ data }: { data: ReportData }) {
           its mean expression inside the cluster and its mean across the rest of the tissue.
         </Text>
 
-        <View style={[styles.mapBox, { width: "100%", height: 260 }]}>
-          <ClusterMapSvg pred={pred} width={460} height={260} />
+        <View style={{ width: "100%", height: 260 }}>
+          <ClusterMapSvg pred={pred} width={507} height={260} />
         </View>
         <View style={styles.legendRow}>
           {analysis.map((a) => (
@@ -424,7 +427,7 @@ function ClusterAnalysisPages({ data }: { data: ReportData }) {
                 <Text style={styles.td}>{a.count}</Text>
                 <Text style={styles.td}>{(a.fraction * 100).toFixed(1)}%</Text>
                 <Text style={[styles.tdMono, { flex: 1.6 }]}>
-                  {top ? `${top.name} ${top.diff >= 0 ? "↑" : "↓"} ${Math.abs(top.diff).toFixed(2)}` : "—"}
+                  {top ? `${top.name} ${top.diff >= 0 ? "+" : "−"}${Math.abs(top.diff).toFixed(2)}` : "—"}
                 </Text>
               </View>
             );
@@ -479,18 +482,34 @@ function PathwayEnrichment({ data }: { data: ReportData }) {
         const p = pathways[a.index];
         return (
           <View key={a.index} wrap={false} style={{ marginBottom: 10 }}>
-            <Text style={styles.h2}>Cluster {a.index}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", marginTop: 14, marginBottom: 7 }}>
+              <Swatch color={CL[a.index]} />
+              <Text style={{ fontSize: 11, fontFamily: "Helvetica-Bold" }}>Cluster {a.index}</Text>
+            </View>
             {p?.status === "done" ? (
               p.results.length ? (
-                <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                  {p.results.map((r) => (
-                    <Text
-                      key={r.term}
-                      style={[styles.pill, { color: CL[a.index], backgroundColor: `${CL[a.index]}22` }]}
-                    >
-                      {formatTerm(r.term)}
+                <View style={{ borderRadius: 12, border: `0.75 solid ${BORDER_SOFT}`, backgroundColor: SURFACE2, paddingHorizontal: 10, paddingVertical: 4 }}>
+                  {p.results.slice(0, PATHWAYS_PER_CLUSTER).map((r) => {
+                    const src = SOURCE_STYLE[r.category];
+                    return (
+                      <View key={`${r.category}:${r.term}`} style={styles.tr}>
+                        <Text style={[styles.td, { flex: 4, color: INK }]}>{formatTerm(r.term)}</Text>
+                        <View style={{ flex: 1.1 }}>
+                          {src ? (
+                            <Text style={[styles.sourceTag, { color: src.color, backgroundColor: src.bg, alignSelf: "flex-start" }]}>
+                              {src.label}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={[styles.td, styles.tdRight, { flex: 1 }]}>p {formatP(r.pvalue)}</Text>
+                      </View>
+                    );
+                  })}
+                  {p.results.length > PATHWAYS_PER_CLUSTER && (
+                    <Text style={[styles.cardText, { paddingVertical: 5 }]}>
+                      + {p.results.length - PATHWAYS_PER_CLUSTER} more terms in the app&apos;s full pathway list
                     </Text>
-                  ))}
+                  )}
                 </View>
               ) : (
                 <Text style={[styles.cardText]}>No significant pathways found.</Text>
@@ -579,7 +598,7 @@ function TissueComposition({ data }: { data: ReportData }) {
             <View style={{ width: 46, height: 34 }}>
               <ClusterMapSvg pred={pred} width={46} height={34} highlight={i} />
             </View>
-            <Text style={{ width: 54, fontSize: 7.5, fontFamily: "Courier" }}>Cluster {i}</Text>
+            <Text style={{ width: 54, fontSize: 8, color: INK2 }}>Cluster {i}</Text>
             <View style={{ flex: 1, flexDirection: "row", height: 10, borderRadius: 3, overflow: "hidden" }}>
               {TISSUE_CLASSES.map((cls, ci) => (
                 <View
