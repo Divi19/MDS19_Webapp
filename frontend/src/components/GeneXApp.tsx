@@ -20,6 +20,7 @@ import SpatialPlot from "./SpatialPlot";
 import TissueAnalysisPanel, { type TissueGroup } from "./TissueAnalysisPanel";
 import TissueBreakdown from "./TissueBreakdown";
 import TutorialOverlay from "./TutorialOverlay";
+import TissueThumb from "./TissueThumb";
 import UploadModal, { type RunPayload } from "./UploadModal";
 import {
   clusterTissueLabels, geneHomeTissue, TISSUE_COLORS, TISSUE_SHORT_NAMES, type GeneTissue, type TissueClass,
@@ -780,8 +781,7 @@ export default function GeneXApp() {
             </div>
             <div className="input-image">
               {ready && uploaded?.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={uploaded.url} alt="uploaded H&E section" />
+                <TissueThumb url={uploaded.url} pred={pred} alt="uploaded H&E section" />
               ) : (
                 <div className="empty-hint">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
