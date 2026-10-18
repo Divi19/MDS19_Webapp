@@ -102,6 +102,7 @@ export default function PathwayListModal({
           </button>
         </div>
         <div className="modal-body pathway-body">
+          <div className="pathway-table">
           <div className="pathway-row pathway-row-head">
             <span>#</span>
             <span>Term</span>
@@ -174,6 +175,7 @@ export default function PathwayListModal({
             </div>
             );
           })}
+          </div>
         </div>
         <div className="modal-footer">
           <div className="hint">
