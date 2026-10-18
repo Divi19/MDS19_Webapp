@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import TissueThumb from "./TissueThumb";
 
 export interface RunPayload {
   name: string;
@@ -144,8 +145,7 @@ export default function UploadModal({
           <span className="corner br" />
           {fileInput}
           {url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={url} alt="uploaded H&E section preview" />
+            <TissueThumb url={url} alt="uploaded H&E section preview" />
           ) : file ? (
             <div className="capture-hint">
               <div className="capture-title">Whole-slide image</div>

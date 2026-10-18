@@ -76,6 +76,35 @@ export interface ViewRect {
 /** Margin kept around the tissue, as a fraction of its size on each side. */
 const TISSUE_VIEW_PAD = 0.06;
 
+/** The view rect for a tissue bounding box (original-image pixels): centred
+ * on the box, containing it plus a margin, and kept inside the image. */
+export function viewRectForBox(
+  imgW: number,
+  imgH: number,
+  box: { x0: number; y0: number; x1: number; y1: number },
+  cw: number,
+  ch: number,
+): ViewRect {
+  const cr = cw / ch;
+  const minX = box.x0;
+  const minY = box.y0;
+  const maxX = box.x1;
+  const maxY = box.y1;
+  const bw = (maxX - minX) * (1 + 2 * TISSUE_VIEW_PAD);
+  const bh = (maxY - minY) * (1 + 2 * TISSUE_VIEW_PAD);
+  let sw = Math.max(bw, bh * cr);
+  let sh = sw / cr;
+  // Never show blank space past the image: shrink to fit inside it (only the
+  // margin is lost in practice), then slide the rect back in. Tissue touching
+  // an image edge is therefore centred as far as the image allows.
+  const fit = Math.min(1, imgW / sw, imgH / sh);
+  sw *= fit;
+  sh *= fit;
+  const sx = Math.min(Math.max((minX + maxX) / 2 - sw / 2, 0), imgW - sw);
+  const sy = Math.min(Math.max((minY + maxY) / 2 - sh / 2, 0), imgH - sh);
+  return { sx, sy, sw, sh };
+}
+
 /**
  * The part of the original image to show in a cw x ch canvas so the tissue is
  * centred and fills the view, wherever it sits on the upload (e.g. a small
@@ -116,19 +145,7 @@ export function tissueViewRect(
     const sh = sw / cr;
     return { sx: 0, sy: (imgH - sh) / 2, sw, sh };
   }
-  const bw = (maxX - minX) * (1 + 2 * TISSUE_VIEW_PAD);
-  const bh = (maxY - minY) * (1 + 2 * TISSUE_VIEW_PAD);
-  let sw = Math.max(bw, bh * cr);
-  let sh = sw / cr;
-  // Never show blank space past the image: shrink to fit inside it (only the
-  // margin is lost in practice), then slide the rect back in. Tissue touching
-  // an image edge is therefore centred as far as the image allows.
-  const fit = Math.min(1, imgW / sw, imgH / sh);
-  sw *= fit;
-  sh *= fit;
-  const sx = Math.min(Math.max((minX + maxX) / 2 - sw / 2, 0), imgW - sw);
-  const sy = Math.min(Math.max((minY + maxY) / 2 - sh / 2, 0), imgH - sh);
-  return { sx, sy, sw, sh };
+  return viewRectForBox(imgW, imgH, { x0: minX, y0: minY, x1: maxX, y1: maxY }, cw, ch);
 }
 
 /** Draws `rect` of `img` into a w x h canvas, filling anywhere the rect
