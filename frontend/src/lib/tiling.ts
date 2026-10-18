@@ -65,8 +65,7 @@ export function tileCentre(gridX: number, gridY: number, tiling: Tiling): [numbe
   return [gridX * tiling.stride + tiling.tile / 2, gridY * tiling.stride + tiling.tile / 2];
 }
 
-/** A source rectangle in original-image pixels. It may extend past the image
- * edges (see drawImageRect), and always has the canvas's aspect ratio. */
+/** A source rectangle in original-image pixels, with the canvas's aspect ratio. */
 export interface ViewRect {
   sx: number;
   sy: number;
@@ -81,8 +80,8 @@ const TISSUE_VIEW_PAD = 0.06;
  * The part of the original image to show in a cw x ch canvas so the tissue is
  * centred and fills the view, wherever it sits on the upload (e.g. a small
  * section in the bottom-left corner of an A4 scan). Fits the bounding box of
- * the predicted tiles plus a margin; the rect can extend past the image when
- * the tissue is near an edge. With no usable spots (demo data), falls back to
+ * the predicted tiles plus a margin, kept inside the image so the view never
+ * shows blank space. With no usable spots (demo data), falls back to
  * a centred cover-fit of the whole image.
  */
 export function tissueViewRect(
@@ -119,9 +118,17 @@ export function tissueViewRect(
   }
   const bw = (maxX - minX) * (1 + 2 * TISSUE_VIEW_PAD);
   const bh = (maxY - minY) * (1 + 2 * TISSUE_VIEW_PAD);
-  const sw = Math.max(bw, bh * cr);
-  const sh = sw / cr;
-  return { sx: (minX + maxX) / 2 - sw / 2, sy: (minY + maxY) / 2 - sh / 2, sw, sh };
+  let sw = Math.max(bw, bh * cr);
+  let sh = sw / cr;
+  // Never show blank space past the image: shrink to fit inside it (only the
+  // margin is lost in practice), then slide the rect back in. Tissue touching
+  // an image edge is therefore centred as far as the image allows.
+  const fit = Math.min(1, imgW / sw, imgH / sh);
+  sw *= fit;
+  sh *= fit;
+  const sx = Math.min(Math.max((minX + maxX) / 2 - sw / 2, 0), imgW - sw);
+  const sy = Math.min(Math.max((minY + maxY) / 2 - sh / 2, 0), imgH - sh);
+  return { sx, sy, sw, sh };
 }
 
 /** Draws `rect` of `img` into a w x h canvas, filling anywhere the rect
