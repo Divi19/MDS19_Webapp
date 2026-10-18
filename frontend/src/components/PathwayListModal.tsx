@@ -3,6 +3,12 @@
 import { createPortal } from "react-dom";
 import type { PathwayResult } from "@/lib/pathways";
 
+const CATEGORY_CLASS: Record<string, string> = {
+  KEGG_PATHWAY: "kegg",
+  REACTOME_PATHWAY: "reactome",
+  GOTERM_BP_FAT: "gobp",
+};
+
 const CATEGORY_LABEL: Record<string, string> = {
   KEGG_PATHWAY: "KEGG",
   REACTOME_PATHWAY: "Reactome",
@@ -78,7 +84,7 @@ export default function PathwayListModal({
                 </span>
               </span>
               <span>
-                <span className="pathway-src">{CATEGORY_LABEL[r.category] ?? r.category}</span>
+                <span className={`pathway-src ${CATEGORY_CLASS[r.category] ?? ""}`}>{CATEGORY_LABEL[r.category] ?? r.category}</span>
               </span>
               <span className="bar-track">
                 <span className="bar-fill" style={{ width: `${(logP(r.pvalue) / maxLogP) * 100}%` }} />

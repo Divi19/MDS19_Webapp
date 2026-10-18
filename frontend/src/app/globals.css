@@ -719,6 +719,9 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .pathway-genes{display:flex;flex-wrap:wrap;gap:4px}
 .pathway-gene{font-size:10.5px;color:var(--ink-2);background:#fff;box-shadow:0 0 0 1px var(--line-chip);padding:1px 8px;border-radius:var(--r-pill)}
 .pathway-src{display:inline-block;font-size:10px;color:var(--muted);background:rgba(0,0,0,.05);padding:2px 8px;border-radius:var(--r-pill);white-space:nowrap}
+.pathway-src.kegg{background:rgba(46,139,87,.13);color:#25744a}
+.pathway-src.reactome{background:rgba(44,90,160,.12);color:#2C5AA0}
+.pathway-src.gobp{background:rgba(214,125,30,.14);color:#a85f12}
 .pathway-row .bar-track{height:6px;display:block}
 .pathway-p{font-size:13px;color:var(--ink);display:flex;flex-direction:column;line-height:1.2}
 .pathway-adj{font-size:10px;color:var(--faint)}
