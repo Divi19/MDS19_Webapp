@@ -704,3 +704,12 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .gradcam-overlay.tr{top:10px;right:10px}
 .gradcam-overlay .gradcam-limited{padding:3px 10px;background:#FBF1DC;box-shadow:0 0 0 1px var(--line)}
 .gradcam-chip{font-size:11px;color:var(--ink-2);background:rgba(255,255,255,.85);box-shadow:0 0 0 1px var(--line);padding:3px 10px;border-radius:var(--r-pill);white-space:nowrap}
+
+/* ---------- pathway full list ---------- */
+.pathway-modal{width:760px}
+.pathway-row{display:grid;grid-template-columns:minmax(0,2.2fr) 66px 62px 62px minmax(0,1.4fr);gap:10px;align-items:start;padding:8px 4px;font-size:11.5px;color:var(--ink-2);border-bottom:1px solid var(--line)}
+.pathway-row-head{position:sticky;top:0;background:var(--glass);font-size:10.5px;color:var(--faint);padding-top:0}
+.pathway-term{color:var(--ink)}
+.pathway-src,.pathway-genes{color:var(--muted);font-size:10.5px}
+.cluster-analysis-viewall{font:inherit;font-size:11px;color:var(--muted);background:none;border:none;padding:3px 6px;cursor:pointer;text-decoration:underline}
+.cluster-analysis-viewall:hover{color:var(--ink)}
