@@ -706,11 +706,11 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .gradcam-chip{font-size:11px;color:var(--ink-2);background:rgba(255,255,255,.85);box-shadow:0 0 0 1px var(--line);padding:3px 10px;border-radius:var(--r-pill);white-space:nowrap}
 
 /* ---------- pathway full list ---------- */
-.pathway-modal{width:760px}
+.pathway-modal{width:760px;background:rgba(255,255,255,.86)}
 .pathway-body{display:flex;flex-direction:column;padding-top:0}
 .pathway-row{display:grid;grid-template-columns:22px minmax(0,1fr) 62px 90px 74px;gap:14px;align-items:center;padding:10px 8px;border-radius:12px;transition:background .2s var(--ease)}
-.pathway-row:not(.pathway-row-head):hover{background:rgba(255,255,255,.7)}
-.pathway-row-head{position:sticky;top:0;z-index:1;padding:0 8px 6px;border-radius:0;font-size:10.5px;color:var(--faint);border-bottom:1px solid var(--line);background:transparent;-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+.pathway-row:not(.pathway-row-head):hover{background:rgba(0,0,0,.035)}
+.pathway-row-head{position:sticky;top:0;z-index:1;padding:0 8px 6px;border-radius:0;font-size:10.5px;color:var(--faint);border-bottom:1px solid var(--line);background:rgba(255,255,255,.86)}
 .pathway-row-head>:last-child,.pathway-p{text-align:right}
 .pathway-rank{font-size:11px;color:var(--faint)}
 .pathway-main{display:flex;flex-direction:column;gap:6px;min-width:0}
