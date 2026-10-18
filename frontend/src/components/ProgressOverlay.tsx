@@ -22,11 +22,12 @@ const SUBTEXT = [
   "saving predictions…",
 ];
 
+/** Stopwatch style: 00:12.3 */
 function formatElapsed(ms: number): string {
-  const total = Math.floor(ms / 100) / 10;
-  const m = Math.floor(total / 60);
-  const sec = (total - m * 60).toFixed(1).padStart(4, "0");
-  return m > 0 ? `${m}:${sec}` : `${total.toFixed(1)}s`;
+  const tenths = Math.floor(ms / 100);
+  const m = Math.floor(tenths / 600);
+  const sec = ((tenths % 600) / 10).toFixed(1).padStart(4, "0");
+  return `${String(m).padStart(2, "0")}:${sec}`;
 }
 
 export default function ProgressOverlay({
@@ -61,7 +62,13 @@ export default function ProgressOverlay({
       <div className="progress-card">
         <div className="progress-head">
           <h3>Running Prediction…</h3>
-          <span className="progress-timer" aria-label="Elapsed time">{formatElapsed(elapsedMs)}</span>
+          <span className="progress-timer" role="timer" aria-label="Elapsed time">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="13" r="8" />
+              <path d="M12 9v4l2.5 2.5M9.5 2h5" />
+            </svg>
+            {formatElapsed(elapsedMs)}
+          </span>
         </div>
         <div className="sub">{sub}</div>
         <div className="progress-bar">
