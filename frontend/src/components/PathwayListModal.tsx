@@ -114,7 +114,23 @@ export default function PathwayListModal({
             const isOpen = open.has(key);
             const desc = descs[key];
             return (
-            <div key={key} className="pathway-row">
+            <div
+              key={key}
+              className={`pathway-row pathway-row-click${isOpen ? " is-open" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-expanded={isOpen}
+              onClick={(e) => {
+                // Clicks inside the opened description (text, link) don't toggle.
+                if (!(e.target as HTMLElement).closest(".pathway-desc")) toggle(r);
+              }}
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  toggle(r);
+                }
+              }}
+            >
               <span className="pathway-rank">{i + 1}</span>
               <span className="pathway-main">
                 <span className="pathway-term">{formatTerm(r.term)}</span>
@@ -125,16 +141,9 @@ export default function PathwayListModal({
                 </span>
               </span>
               <span>
-                <button
-                  type="button"
-                  className={`pathway-src ${CATEGORY_CLASS[r.category] ?? ""}`}
-                  aria-expanded={isOpen}
-                  title="Show description"
-                  onClick={() => toggle(r)}
-                >
+                <span className={`pathway-src ${CATEGORY_CLASS[r.category] ?? ""}`}>
                   {CATEGORY_LABEL[r.category] ?? r.category}
-                  <span className="pathway-src-caret" aria-hidden>{isOpen ? "▴" : "▾"}</span>
-                </button>
+                </span>
               </span>
               <span className="bar-track">
                 <span className="bar-fill" style={{ width: `${(logP(r.pvalue) / maxLogP) * 100}%` }} />
@@ -168,8 +177,8 @@ export default function PathwayListModal({
         </div>
         <div className="modal-footer">
           <div className="hint">
-            {results.length} terms with p ≤ 0.05 (up to 10 per library), sorted by p-value. Adj. p is
-            Enrichr&apos;s Benjamini–Hochberg value.
+            Click a row for its description. {results.length} terms with p ≤ 0.05 (up to 10 per
+            library), sorted by p-value. Adj. p is Enrichr&apos;s Benjamini–Hochberg value.
           </div>
         </div>
       </div>
