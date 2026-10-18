@@ -97,3 +97,10 @@ def test_persistent_429_eventually_fails(monkeypatch):
     c._http = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(429)))
     with pytest.raises(PathwayLookupError):
         c.get_pathways(["CDK1"])
+
+
+def test_term_ids_extracted_from_reactome_and_go_terms():
+    out = _client([]).get_pathways(["CDK1", "CCNB1"])
+    ids = {r["category"]: r["term_id"] for r in out}
+    assert ids == {"KEGG_PATHWAY": "", "REACTOME_PATHWAY": "R-HSA-68877",
+                   "GOTERM_BP_FAT": "GO:0000278"}

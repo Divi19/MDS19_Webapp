@@ -66,6 +66,20 @@ _TERM_SUFFIXES = (
 )
 
 
+_TERM_IDS = (
+    re.compile(r"R-HSA-\d+"),
+    re.compile(r"GO:\d+"),
+)
+
+
+def _term_id(term: str) -> str:
+    for pattern in _TERM_IDS:
+        m = pattern.search(term)
+        if m:
+            return m.group(0)
+    return ""
+
+
 def _clean_term(term: str) -> str:
     for pattern in _TERM_SUFFIXES:
         term = pattern.sub("", term)
@@ -159,6 +173,7 @@ class EnrichrClient:
                     continue
                 results.append({
                     "term": _clean_term(term),
+                    "term_id": _term_id(term),
                     "category": CATEGORY_BY_LIBRARY.get(library, library),
                     "pvalue": pvalue,
                     "benjamini": adj_p,
