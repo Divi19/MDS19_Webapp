@@ -59,6 +59,19 @@ describe("tissueViewRect", () => {
     expect(r.sy + r.sh).toBeGreaterThanOrEqual(y1 + DEFAULT_TILING.tile);
   });
 
+  it("stays inside the image when the tissue touches an edge", () => {
+    const edge = [
+      { gridX: 0, gridY: 2 },
+      { gridX: 3, gridY: 6 },
+    ];
+    const r = tissueViewRect(4000, 6000, edge, DEFAULT_TILING, 800, 600);
+    expect(r.sx).toBe(0);
+    expect(r.sx + r.sw).toBeLessThanOrEqual(4000);
+    expect(r.sy).toBeGreaterThanOrEqual(0);
+    expect(r.sy + r.sh).toBeLessThanOrEqual(6000);
+    expect(r.sw / r.sh).toBeCloseTo(800 / 600);
+  });
+
   it("falls back to a centred cover-fit with no grid spots", () => {
     const r = tissueViewRect(2000, 1000, [{}], DEFAULT_TILING, 500, 500);
     expect(r).toEqual({ sx: 500, sy: 0, sw: 1000, sh: 1000 });
