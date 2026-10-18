@@ -37,7 +37,6 @@ const MUTED2 = "#8E8E93";
 const BORDER = "#D4D4DC";
 const BORDER_SOFT = "#E4E4E9";
 const ACCENT = "#2C5AA0";
-const ACCENT_SOFT = "#2C5AA014";
 const SURFACE2 = "#F5F5F7";
 
 // Source tags, same hues as the Pathway table in the app.
