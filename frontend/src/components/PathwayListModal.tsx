@@ -9,6 +9,10 @@ const CATEGORY_LABEL: Record<string, string> = {
   GOTERM_BP_FAT: "GO:BP",
 };
 
+function logP(p: number): number {
+  return -Math.log10(Math.max(p, 1e-12));
+}
+
 function formatP(p: number): string {
   return p < 0.001 ? p.toExponential(1) : p.toFixed(3);
 }
@@ -31,6 +35,8 @@ export default function PathwayListModal({
   results: PathwayResult[];
   onClose: () => void;
 }) {
+  const maxLogP = Math.max(...results.map((r) => logP(r.pvalue)), 1);
+
   // Portal: the glass panel's backdrop-filter would otherwise trap position:fixed.
   return createPortal(
     <div
@@ -52,21 +58,35 @@ export default function PathwayListModal({
             </svg>
           </button>
         </div>
-        <div className="modal-body">
+        <div className="modal-body pathway-body">
           <div className="pathway-row pathway-row-head">
+            <span>#</span>
             <span>Term</span>
             <span>Source</span>
+            <span>Significance</span>
             <span>p-value</span>
-            <span>Adj. p</span>
-            <span>Genes</span>
           </div>
-          {results.map((r) => (
+          {results.map((r, i) => (
             <div key={`${r.category}:${r.term}`} className="pathway-row">
-              <span className="pathway-term">{formatTerm(r.term)}</span>
-              <span className="pathway-src">{CATEGORY_LABEL[r.category] ?? r.category}</span>
-              <span>{formatP(r.pvalue)}</span>
-              <span>{formatP(r.benjamini)}</span>
-              <span className="pathway-genes">{r.genes.join(", ")}</span>
+              <span className="pathway-rank">{i + 1}</span>
+              <span className="pathway-main">
+                <span className="pathway-term">{formatTerm(r.term)}</span>
+                <span className="pathway-genes">
+                  {r.genes.map((g) => (
+                    <span key={g} className="pathway-gene">{g}</span>
+                  ))}
+                </span>
+              </span>
+              <span>
+                <span className="pathway-src">{CATEGORY_LABEL[r.category] ?? r.category}</span>
+              </span>
+              <span className="bar-track">
+                <span className="bar-fill" style={{ width: `${(logP(r.pvalue) / maxLogP) * 100}%` }} />
+              </span>
+              <span className="pathway-p">
+                {formatP(r.pvalue)}
+                <span className="pathway-adj">adj {formatP(r.benjamini)}</span>
+              </span>
             </div>
           ))}
         </div>

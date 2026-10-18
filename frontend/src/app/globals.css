@@ -707,9 +707,19 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 
 /* ---------- pathway full list ---------- */
 .pathway-modal{width:760px}
-.pathway-row{display:grid;grid-template-columns:minmax(0,2.2fr) 66px 62px 62px minmax(0,1.4fr);gap:10px;align-items:start;padding:8px 4px;font-size:11.5px;color:var(--ink-2);border-bottom:1px solid var(--line)}
-.pathway-row-head{position:sticky;top:0;background:var(--glass);font-size:10.5px;color:var(--faint);padding-top:0}
-.pathway-term{color:var(--ink)}
-.pathway-src,.pathway-genes{color:var(--muted);font-size:10.5px}
+.pathway-body{display:flex;flex-direction:column;padding-top:0}
+.pathway-row{display:grid;grid-template-columns:22px minmax(0,1fr) 62px 90px 74px;gap:14px;align-items:center;padding:10px 8px;border-radius:12px;transition:background .2s var(--ease)}
+.pathway-row:not(.pathway-row-head):hover{background:rgba(255,255,255,.7)}
+.pathway-row-head{position:sticky;top:0;z-index:1;padding:0 8px 6px;border-radius:0;font-size:10.5px;color:var(--faint);border-bottom:1px solid var(--line);background:transparent;-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+.pathway-row-head>:last-child,.pathway-p{text-align:right}
+.pathway-rank{font-size:11px;color:var(--faint)}
+.pathway-main{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pathway-term{font-size:14px;color:var(--ink);line-height:1.25}
+.pathway-genes{display:flex;flex-wrap:wrap;gap:4px}
+.pathway-gene{font-size:10.5px;color:var(--ink-2);background:#fff;box-shadow:0 0 0 1px var(--line-chip);padding:1px 8px;border-radius:var(--r-pill)}
+.pathway-src{display:inline-block;font-size:10px;color:var(--muted);background:rgba(0,0,0,.05);padding:2px 8px;border-radius:var(--r-pill);white-space:nowrap}
+.pathway-row .bar-track{height:6px;display:block}
+.pathway-p{font-size:13px;color:var(--ink);display:flex;flex-direction:column;line-height:1.2}
+.pathway-adj{font-size:10px;color:var(--faint)}
 .cluster-analysis-viewall{font:inherit;font-size:11px;color:var(--muted);background:none;border:none;padding:3px 6px;cursor:pointer;text-decoration:underline}
 .cluster-analysis-viewall:hover{color:var(--ink)}
