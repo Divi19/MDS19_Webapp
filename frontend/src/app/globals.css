@@ -719,6 +719,13 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .pathway-genes{display:flex;flex-wrap:wrap;gap:4px}
 .pathway-gene{font-size:10.5px;color:var(--ink-2);background:#fff;box-shadow:0 0 0 1px var(--line-chip);padding:1px 8px;border-radius:var(--r-pill)}
 .pathway-src{display:inline-block;font-size:10px;color:var(--muted);background:rgba(0,0,0,.05);padding:2px 8px;border-radius:var(--r-pill);white-space:nowrap}
+.pathway-src{border:none;font:inherit;font-size:10px;cursor:pointer;transition:filter .2s var(--ease)}
+.pathway-src:hover{filter:brightness(.94)}
+.pathway-src-caret{margin-left:4px;font-size:8px}
+.pathway-desc{grid-column:1/-1;margin-top:-2px;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.035);font-size:12px;line-height:1.5;color:var(--ink-2);display:flex;flex-direction:column;gap:6px}
+.pathway-desc a{color:var(--accent);text-decoration:none;font-size:11px}
+.pathway-desc a:hover{text-decoration:underline}
+.pathway-desc-muted{color:var(--muted)}
 .pathway-src.kegg{background:rgba(46,139,87,.13);color:#25744a}
 .pathway-src.reactome{background:rgba(44,90,160,.12);color:#2C5AA0}
 .pathway-src.gobp{background:rgba(214,125,30,.14);color:#a85f12}

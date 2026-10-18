@@ -9,6 +9,14 @@ export interface PathwayResult {
   list_hits: number;
   list_total: number;
   genes: string[];
+  /** R-HSA-… / GO:… when the source gives one; "" for KEGG. */
+  term_id: string;
+}
+
+export interface PathwayDescription {
+  /** null when the source has no text to fetch (KEGG: link-out only). */
+  description: string | null;
+  url: string;
 }
 
 /** Per-cluster pathway lookup state, keyed by cluster index. Lives in
@@ -43,5 +51,16 @@ export async function fetchPathways(
     const detail = await res.text();
     throw new Error(`Pathway lookup failed (${res.status}): ${detail}`);
   }
+  return res.json();
+}
+
+/** Description of one pathway term, from its source database (Reactome,
+ * QuickGO; KEGG gives a link only). Fetched on demand when a row is opened. */
+export async function fetchPathwayDescription(r: PathwayResult): Promise<PathwayDescription> {
+  const params = new URLSearchParams({ category: r.category, term_id: r.term_id, term: r.term });
+  const res = await fetch(`${API_URL}/api/pathways/describe?${params}`, {
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`Description lookup failed (${res.status})`);
   return res.json();
 }
