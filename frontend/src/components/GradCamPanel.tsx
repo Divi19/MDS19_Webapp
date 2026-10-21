@@ -792,8 +792,48 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         {error && <div className="canvas-empty">{error}</div>}
         {/* Notes and view controls float on the map, so the card below can be
             the same size as the Genes tab's colour bar. */}
-        {(pred.cancer?.limitedSupport || (!error && gradcamExperimental(pred.cancer))) && (
+        {(!error || pred.cancer?.limitedSupport) && (
           <div className="gradcam-overlay tl">
+            {!error && (
+              <span className="gradcam-info-wrap">
+                <button type="button" className="gradcam-info" aria-describedby="gradcam-info-card">
+                  <span className="gradcam-info-i" aria-hidden="true">
+                    i
+                  </span>
+                  How to read
+                </button>
+                <div id="gradcam-info-card" className="gradcam-info-card" role="tooltip">
+                  <div className="gradcam-info-title">How to read this map</div>
+                  <ul>
+                    <li>
+                      <span className="gradcam-swatch gradcam-swatch-hot" aria-hidden="true" />
+                      <span>
+                        <strong>Red / orange:</strong> areas the model relied on most for this slide&apos;s top gene.
+                      </span>
+                    </li>
+                    <li>
+                      <span className="gradcam-swatch gradcam-swatch-cool" aria-hidden="true" />
+                      <span>
+                        <strong>Blue / purple:</strong> areas that mattered less. No colour means almost no influence.
+                      </span>
+                    </li>
+                    <li>
+                      <span className="gradcam-swatch gradcam-swatch-none" aria-hidden="true" />
+                      <span>
+                        <strong>Click a spot</strong> for a close-up of that single spot.
+                      </span>
+                    </li>
+                    <li>
+                      <span className="gradcam-swatch gradcam-swatch-none" aria-hidden="true" />
+                      <span>Drag to pan. Scroll or use + / − to zoom.</span>
+                    </li>
+                  </ul>
+                  <div className="gradcam-info-note">
+                    One colour scale covers the whole slide. It shows what the model used, not proof of the biology.
+                  </div>
+                </div>
+              </span>
+            )}
             {pred.cancer?.limitedSupport && (
               <span
                 className="gradcam-limited"
