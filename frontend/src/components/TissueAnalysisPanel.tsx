@@ -42,6 +42,8 @@ export default function TissueAnalysisPanel({
   onHoverCluster,
   pinnedCluster = null,
   onPinCluster,
+  tab: tabProp,
+  onTabChange,
 }: {
   pred: Prediction;
   gene: string;
@@ -54,8 +56,17 @@ export default function TissueAnalysisPanel({
   /** Composition tab: the cluster locked on the map (click a cluster card). */
   pinnedCluster?: number | null;
   onPinCluster?: (cluster: number | null) => void;
+  /** Which sub-view is showing, when the parent drives it (the guided
+   * tutorial switches it); uncontrolled when omitted. */
+  tab?: "expression" | "composition";
+  onTabChange?: (tab: "expression" | "composition") => void;
 }) {
-  const [tab, setTab] = useState<"expression" | "composition">("expression");
+  const [tabState, setTabState] = useState<"expression" | "composition">("expression");
+  const tab = tabProp ?? tabState;
+  const setTab = (next: "expression" | "composition") => {
+    setTabState(next);
+    onTabChange?.(next);
+  };
   const byClass = useMemo(() => geneByTissue(pred, gene), [pred, gene]);
   const types = useMemo(() => comparableTypes(pred), [pred]);
   const [picked, setPicked] = useState<TissueClass>("Cancer");
@@ -127,7 +138,7 @@ export default function TissueAnalysisPanel({
           />
         ) : (
           <>
-            <section className="cluster-analysis-box" aria-labelledby="ta-gene">
+            <section className="cluster-analysis-box" aria-labelledby="ta-gene" data-tour="tissue-expression">
               <h4 id="ta-gene" className="ta-title">
                 <span className="insight-gene">{gene}</span> by tissue type
               </h4>
@@ -178,7 +189,7 @@ export default function TissueAnalysisPanel({
               ))}
             </section>
 
-            <section className="cluster-analysis-box" aria-labelledby="ta-markers">
+            <section className="cluster-analysis-box" aria-labelledby="ta-markers" data-tour="tissue-genes-higher">
               <h4 id="ta-markers" className="ta-title">Genes higher in {type ? TISSUE_SHORT_NAMES[type] : "a tissue type"}</h4>
               {types.length ? (
                 <>

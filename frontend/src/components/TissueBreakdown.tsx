@@ -25,7 +25,7 @@ export default function TissueBreakdown({
 }) {
   const summary = pred.tissue!.summary;
   return (
-    <div className="card tissue-breakdown">
+    <div className="card tissue-breakdown" data-tour="tissue-breakdown">
       <div className="card-title">
         Tissue breakdown
         <span className="meta">click a type to pin it on the map</span>

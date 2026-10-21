@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { CL, type Prediction } from "@/lib/mockPrediction";
 import { analyzeClusters } from "@/lib/clusterAnalysis";
 import PathwayListModal from "./PathwayListModal";
@@ -25,6 +25,9 @@ export default function ClusterAnalysisPanel({
   hidden = false,
   pathways,
   onRetryPathways,
+  pathwayModal,
+  onPathwayModalChange,
+  tourCluster = null,
   onGeneClick,
 }: {
   pred: Prediction;
@@ -36,14 +39,18 @@ export default function ClusterAnalysisPanel({
    * re-querying the pathway service. */
   pathways: Record<number, PathwayState>;
   onRetryPathways: (clusterIndex: number) => void;
+  /** Cluster whose full pathway list is open in the modal; null = closed.
+   * Held by GeneXApp so the guided tutorial can open it. */
+  pathwayModal: number | null;
+  onPathwayModalChange: (cluster: number | null) => void;
+  /** The cluster whose pathway pills the tutorial points at, if any. */
+  tourCluster?: number | null;
   onGeneClick: (gene: string, rect: DOMRect) => void;
 }) {
   const analysis = useMemo(() => (ready ? analyzeClusters(pred) : []), [pred, ready]);
   // Tissue name per cluster from the tissue classifier; null without it.
   const labels = useMemo(() => clusterTissueLabels(pred), [pred]);
 
-  // Cluster whose full pathway list is open in the modal; null = closed.
-  const [pathwayModal, setPathwayModal] = useState<number | null>(null);
   const modalState = pathwayModal === null ? undefined : pathways[pathwayModal];
 
   return (
@@ -138,7 +145,10 @@ export default function ClusterAnalysisPanel({
                     </div>
                   )}
                   {pathwayState.status === "done" && (
-                    <div className="cluster-analysis-genes">
+                    <div
+                      className="cluster-analysis-genes"
+                      data-tour={a.index === tourCluster ? "pathway-pills" : undefined}
+                    >
                       {pathwayState.results.length ? (
                         pathwayState.results
                           .slice(0, 3)
@@ -157,7 +167,7 @@ export default function ClusterAnalysisPanel({
                         <button
                           type="button"
                           className="cluster-analysis-viewall"
-                          onClick={() => setPathwayModal(a.index)}
+                          onClick={() => onPathwayModalChange(a.index)}
                         >
                           View all {pathwayState.results.length}
                         </button>
@@ -172,7 +182,7 @@ export default function ClusterAnalysisPanel({
         <PathwayListModal
           pretitle={`Cluster ${pathwayModal} · Enrichr`}
           results={modalState.results}
-          onClose={() => setPathwayModal(null)}
+          onClose={() => onPathwayModalChange(null)}
         />
       )}
     </div>

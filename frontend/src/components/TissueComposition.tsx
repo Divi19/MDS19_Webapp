@@ -58,7 +58,7 @@ export default function TissueComposition({
   const overall = TISSUE_CLASSES.map((name) => pred.tissue!.summary[name].count);
 
   return (
-    <div className="composition">
+    <div className="composition" data-tour="tissue-composition">
       <section className="cluster-analysis-box composition-row overall">
         <div className="composition-head">
           <span className="composition-label">All tiles</span>

@@ -26,7 +26,7 @@ import UploadModal, { type RunPayload } from "./UploadModal";
 import {
   clusterTissueLabels, geneHomeTissue, TISSUE_COLORS, TISSUE_SHORT_NAMES, type GeneTissue, type TissueClass,
 } from "@/lib/tissue";
-import { TUTORIAL_LOADING_STEP, TUTORIAL_STEPS } from "@/lib/tutorial";
+import { buildTourSteps, pickTourPathwayCluster, tourTarget, TUTORIAL_NO_RESULT_STEP } from "@/lib/tutorial";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -133,12 +133,23 @@ export default function GeneXApp() {
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | undefined>(undefined);
   // Guided tutorial: the current step's id, or null when it is closed.
-  // Suspended while the sign-in window it opened is showing.
   const [tutorialStepId, setTutorialStepId] = useState<string | null>(null);
-  const [tutorialSuspended, setTutorialSuspended] = useState(false);
-  // True while the tutorial waits for a saved analysis it opened to load.
-  const [tutorialWaiting, setTutorialWaiting] = useState(false);
-  const [historyLoadState, setHistoryLoadState] = useState<"idle" | "loading" | "loaded" | "failed">("idle");
+  // A step with two moments (the gene map, the pathway table) starts on its
+  // first target and moves to the second by itself.
+  const [tourPhase, setTourPhase] = useState(0);
+  // Tissue Analysis sub-view and the cluster whose pathway table is open.
+  // Held here (not in their panels) so the tutorial can drive them.
+  const [tissueTab, setTissueTab] = useState<"expression" | "composition">("expression");
+  const [pathwayModal, setPathwayModal] = useState<number | null>(null);
+  // What the presenter had on screen when the tour started, put back when it
+  // ends or is dismissed.
+  const tourSnapshot = useRef<{
+    view: View;
+    gene: string;
+    tissueTab: "expression" | "composition";
+    tissuePin: TissueClass | null;
+    tissueClusterPin: number | null;
+  } | null>(null);
   const tutorialActiveRef = useRef(false);
   const tutorialViewTimer = useRef<number | undefined>(undefined);
 
@@ -285,7 +296,6 @@ export default function GeneXApp() {
     async (predictionId: string) => {
       const seq = ++loadSeqRef.current;
       setLandingOpen(false);
-      setHistoryLoadState("loading");
       try {
         const { response, imageUrl, imagePath, filename } = await getPredictionResponse(predictionId);
         if (seq !== loadSeqRef.current) return;
@@ -314,11 +324,9 @@ export default function GeneXApp() {
         setGeneFilter("all");
         setView("clusters");
         setReady(true);
-        setHistoryLoadState("loaded");
         showToast("Loaded from history");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Could not load that prediction";
-        if (seq === loadSeqRef.current) setHistoryLoadState("failed");
         showToast(message);
       }
     },
@@ -382,124 +390,139 @@ export default function GeneXApp() {
     }
   }, [ready, pred, gradcamOk, gradcamMounted, gradcamStatus, uploaded, clusterAnalysis, pathways, showToast]);
 
-  // Signed-in visitors are taken straight to History; everyone else must
-  // sign in first, since History is a core part of the tutorial.
+  // The cluster whose pathways the tour shows; null while no cluster has any.
+  const tourPathwayCluster = useMemo(() => pickTourPathwayCluster(pathways), [pathways]);
+
+  // The tour walks a loaded result; without one it is a single notice card.
   const tutorialSteps = useMemo(
     () =>
-      TUTORIAL_STEPS.filter(
-        (step) => (step.id !== "sign-in" || !user) && (step.id !== "gradcam" || gradcamOk),
-      ),
-    [user, gradcamOk],
+      ready
+        ? buildTourSteps({ tissue: !!pred.tissue, gradcam: gradcamOk, pathways: tourPathwayCluster !== null })
+        : [TUTORIAL_NO_RESULT_STEP],
+    [ready, pred.tissue, gradcamOk, tourPathwayCluster],
   );
 
+  /** How long a two-moment step shows its first target before moving on. */
+  const TOUR_PHASE_MS = 1600;
+
   /** Moves the tutorial to a step, first putting the page into the state
-   * that step describes (open windows, active view, gene popover). */
+   * that step describes (active view, Tissue sub-view). Anything the previous
+   * step opened (the pathway table) is closed. */
   const goToTutorialStep = useCallback(
     (id: string) => {
       setAccountMenuOpen(false);
       setGeneMenuOpen(false);
-      setHistoryOpen(id === "history-entry");
-      setModalOpen(id === "upload-window" || id === "upload-run");
       setPopoverAnchor(null);
+      setPathwayModal(null);
+      setTourPhase(0);
+      if (id === "gene-list") setGenePage(0);
+      if (id === "tissue-expression") setTissueTab("expression");
+      if (id === "tissue-composition") setTissueTab("composition");
       // Views are switched once the tutorial's glide has finished: redrawing
       // the map (or starting Grad-CAM) mid-animation makes the motion stutter.
       window.clearTimeout(tutorialViewTimer.current);
       const tutorialView: View | null =
-        id === "spatial-map" ? "clusters" : id === "genes-view" ? "genes" : id === "gradcam" ? "gradcam" : null;
+        id === "clusters" || id === "cluster-analysis" || id === "pathways"
+          ? "clusters"
+          : id === "tissue-expression" || id === "tissue-composition"
+            ? "tissue"
+            : id === "gradcam"
+              ? "gradcam"
+              : null;
       if (tutorialView) tutorialViewTimer.current = window.setTimeout(() => changeView(tutorialView), 320);
-      if (id === "gene-reference") {
-        const chip = document.querySelector<HTMLElement>('[data-tour="cluster-analysis"] .cluster-analysis-gene');
-        if (chip?.textContent) {
-          const rect = chip.getBoundingClientRect();
-          setPopoverAnchor({ gene: chip.textContent, x: rect.left, top: rect.top, bottom: rect.bottom });
-        }
-      }
-      setTutorialSuspended(false);
-      setTutorialWaiting(false);
       setTutorialStepId(id);
     },
     [changeView],
   );
 
+  /** What a two-moment step shows in its later moments. */
+  const runTourPhase = useCallback(
+    (id: string, phase: number) => {
+      if (phase < 1) return;
+      if (id === "gene-map") {
+        // The click goes through the gene list itself, so the highlighted row
+        // is the gene that gets mapped.
+        const row = document.querySelector<HTMLElement>('[data-tour="gene-first"]');
+        if (row) row.click();
+        else if (pred.topGenes[0]) setGene(pred.topGenes[0].name);
+        changeView("genes");
+      } else if (id === "pathways") {
+        setPathwayModal(tourPathwayCluster);
+      }
+    },
+    [changeView, pred.topGenes, tourPathwayCluster],
+  );
+
+  useEffect(() => {
+    const step = tutorialSteps.find((item) => item.id === tutorialStepId);
+    if (!step?.phases || tourPhase >= step.phases.length - 1) return;
+    const timer = window.setTimeout(() => {
+      const next = tourPhase + 1;
+      runTourPhase(step.id, next);
+      setTourPhase(next);
+    }, TOUR_PHASE_MS);
+    return () => window.clearTimeout(timer);
+  }, [runTourPhase, tourPhase, tutorialStepId, tutorialSteps]);
+
+  /** Closes the tour and puts back what the tour changed: the view, the
+   * selected gene, the Tissue sub-view and pins, and anything it opened. */
   const endTutorial = useCallback(() => {
     window.clearTimeout(tutorialViewTimer.current);
     setTutorialStepId(null);
-    setTutorialSuspended(false);
-    setTutorialWaiting(false);
+    setTourPhase(0);
+    setPathwayModal(null);
+    setPopoverAnchor(null);
+    const snapshot = tourSnapshot.current;
+    tourSnapshot.current = null;
+    if (snapshot) {
+      setTissueTab(snapshot.tissueTab);
+      setTissuePin(snapshot.tissuePin);
+      setTissueClusterPin(snapshot.tissueClusterPin);
+      setGene(snapshot.gene);
+      changeView(snapshot.view);
+    }
+  }, [changeView]);
+
+  /** Take the Tutorial: the tour of the loaded result, or a notice when there
+   * is none. */
+  const startTutorial = useCallback(() => {
+    setAccountMenuOpen(false);
+    setGeneMenuOpen(false);
     setHistoryOpen(false);
     setModalOpen(false);
     setPopoverAnchor(null);
-  }, []);
+    if (!ready) {
+      setTutorialStepId(TUTORIAL_NO_RESULT_STEP.id);
+      return;
+    }
+    setLandingOpen(false);
+    tourSnapshot.current = { view, gene, tissueTab, tissuePin, tissueClusterPin };
+    goToTutorialStep(tutorialSteps[0].id);
+  }, [gene, goToTutorialStep, ready, tissueClusterPin, tissuePin, tissueTab, tutorialSteps, view]);
 
   const tutorialIndex = tutorialSteps.findIndex((step) => step.id === tutorialStepId);
 
+  // A step the result can no longer show (its pathways went away) ends the tour
+  // instead of leaving the page blocked behind nothing.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- closing the tour when the result stops offering the step it is on
+    if (tutorialStepId !== null && tutorialIndex < 0) endTutorial();
+  }, [endTutorial, tutorialIndex, tutorialStepId]);
+
   const nextTutorialStep = useCallback(() => {
-    // Signing in is required to continue: Next opens the sign-in window, and
-    // the tutorial resumes at History once the visitor is signed in.
-    if (tutorialStepId === "sign-in" && !user) {
-      setAuthModalOpen(true);
-      return;
-    }
     const next = tutorialSteps[tutorialIndex + 1];
     if (next) goToTutorialStep(next.id);
     else endTutorial();
-  }, [endTutorial, goToTutorialStep, tutorialIndex, tutorialStepId, tutorialSteps, user]);
+  }, [endTutorial, goToTutorialStep, tutorialIndex, tutorialSteps]);
 
   const previousTutorialStep = useCallback(() => {
     const previous = tutorialSteps[tutorialIndex - 1];
     if (previous) goToTutorialStep(previous.id);
   }, [goToTutorialStep, tutorialIndex, tutorialSteps]);
 
-  const handleTutorialTargetActivated = useCallback(
-    (stepId: string) => {
-      if (stepId !== tutorialStepId) return;
-      // Choosing a saved analysis starts a load that takes a few seconds;
-      // the tutorial shows a loading card until the result has rendered.
-      if (stepId === "history-entry") setTutorialWaiting(true);
-      else nextTutorialStep();
-    },
-    [nextTutorialStep, tutorialStepId],
-  );
-
-  // Leave the loading card once the saved analysis has loaded (after a short
-  // pause for it to render), return to the History list if it failed, and
-  // never wait longer than 20 seconds.
   useEffect(() => {
-    if (!tutorialWaiting) return;
-    if (historyLoadState === "loaded" || historyLoadState === "failed") {
-      const timer = window.setTimeout(
-        () => goToTutorialStep(historyLoadState === "loaded" ? "input-card" : "history-entry"),
-        150,
-      );
-      return () => window.clearTimeout(timer);
-    }
-    const timeout = window.setTimeout(() => goToTutorialStep("input-card"), 20000);
-    return () => window.clearTimeout(timeout);
-  }, [goToTutorialStep, historyLoadState, tutorialWaiting]);
-
-  // The Sign in step's window sits beneath the tutorial layer, so the
-  // tutorial steps aside while it is open, then resumes at History once
-  // the visitor is signed in, or back at the Sign in step if they close it.
-  useEffect(() => {
-    if (tutorialStepId !== "sign-in") return;
-    if (user) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- resuming the tutorial once the auth state it was waiting on arrives
-      goToTutorialStep("history-button");
-    } else {
-      setTutorialSuspended(authModalOpen);
-    }
-  }, [authModalOpen, goToTutorialStep, tutorialStepId, user]);
-
-  useEffect(() => {
-    tutorialActiveRef.current = tutorialStepId !== null && !tutorialSuspended;
-  }, [tutorialStepId, tutorialSuspended]);
-
-  // Offer the tutorial shortly after the page loads. The upload window is
-  // one step away from the tutorial, or from the Upload button.
-  useEffect(() => {
-    const t = window.setTimeout(() => setTutorialStepId("welcome"), 350);
-    return () => window.clearTimeout(t);
-  }, []);
+    tutorialActiveRef.current = tutorialStepId !== null;
+  }, [tutorialStepId]);
 
   // keyboard: Esc closes, U opens
   useEffect(() => {
@@ -717,7 +740,7 @@ export default function GeneXApp() {
         <div className="cap-middle">
         <button
           className="tutorial-launch"
-          onClick={() => goToTutorialStep("welcome")}
+          onClick={startTutorial}
           disabled={running}
           title="Start a guided tutorial of the workspace"
         >
@@ -1263,6 +1286,8 @@ export default function GeneXApp() {
             onHoverCluster={setTissueClusterHover}
             pinnedCluster={tissueClusterPin}
             onPinCluster={pinTissueCluster}
+            tab={tissueTab}
+            onTabChange={setTissueTab}
           />
         )}
         <ClusterAnalysisPanel
@@ -1271,6 +1296,9 @@ export default function GeneXApp() {
           hidden={view === "tissue" && ready && !!pred.tissue}
           pathways={pathways}
           onRetryPathways={retryPathways}
+          pathwayModal={pathwayModal}
+          onPathwayModalChange={setPathwayModal}
+          tourCluster={tutorialStepId === "pathways" ? tourPathwayCluster : null}
           onGeneClick={(name, rect) =>
             setPopoverAnchor({ gene: name, x: rect.left, top: rect.top, bottom: rect.bottom })
           }
@@ -1347,23 +1375,22 @@ export default function GeneXApp() {
         />
       )}
       <div className={`toast${toast ? " show" : ""}`}>{toast}</div>
-      {tutorialStepId && !tutorialSuspended && tutorialIndex >= 0 && (() => {
+      {tutorialStepId && tutorialIndex >= 0 && (() => {
         const step = tutorialSteps[tutorialIndex];
         const chapterSteps = tutorialSteps.filter((item) => item.chapter === step.chapter);
         return (
           <TutorialOverlay
             view={{
-              step: tutorialWaiting ? TUTORIAL_LOADING_STEP : step,
+              step: { ...step, target: tourTarget(step, tourPhase) },
               stepNumber: tutorialIndex + 1,
               stepCount: tutorialSteps.length,
               chapterStepNumber: chapterSteps.indexOf(step) + 1,
               chapterStepCount: chapterSteps.length,
-              waiting: tutorialWaiting,
             }}
             onNext={nextTutorialStep}
             onBack={previousTutorialStep}
             onSkip={endTutorial}
-            onTargetActivated={handleTutorialTargetActivated}
+            onTargetActivated={nextTutorialStep}
           />
         );
       })()}

@@ -103,7 +103,7 @@ export default function PathwayListModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="modal pathway-modal" role="dialog" aria-modal="true">
+      <div className="modal pathway-modal" role="dialog" aria-modal="true" data-tour="enrichment-modal">
         <div className="modal-header">
           <div>
             <div className="pretitle">{pretitle}</div>

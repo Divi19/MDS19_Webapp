@@ -19,11 +19,16 @@ const ARROW_SIZE = 40;
 // How far the pulsing ring grows beyond the spotlight on each side.
 const RING_GROWTH = 8;
 
-/** All elements marked for a step. A step can highlight several at once
- * (e.g. the first few history entries); the spotlight covers them all. */
+/** All elements marked for a step. A step can highlight several at once —
+ * several elements sharing one `data-tour` value, or several space-separated
+ * values — and the spotlight covers them all. */
 function findTargets(target: string | undefined): HTMLElement[] {
   if (!target) return [];
-  return Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`));
+  const found = new Set<HTMLElement>();
+  for (const value of target.split(/\s+/).filter(Boolean)) {
+    document.querySelectorAll<HTMLElement>(`[data-tour="${value}"]`).forEach((element) => found.add(element));
+  }
+  return Array.from(found);
 }
 
 /** Bounding box of every visible element marked for the step. */
@@ -151,7 +156,9 @@ export interface TutorialView {
 }
 
 function viewKey(view: TutorialView) {
-  return `${view.step.id}|${view.stepNumber}|${view.stepCount}|${view.chapterStepNumber}|${view.chapterStepCount}|${view.waiting ? 1 : 0}`;
+  // The target is part of the key: a step with two moments changes target
+  // while keeping its id.
+  return `${view.step.id}|${view.step.target ?? ""}|${view.stepNumber}|${view.stepCount}|${view.chapterStepNumber}|${view.chapterStepCount}|${view.waiting ? 1 : 0}`;
 }
 
 export default function TutorialOverlay({
@@ -439,7 +446,7 @@ export default function TutorialOverlay({
   }, [isFirst, onBack, onSkip, shown.waiting]);
 
   const hint = step.target && !targetFound ? step.missingTargetNote : step.actionHint;
-  const primaryLabel = isFirst ? "Begin tutorial" : isLast ? "Finish tutorial" : "Next";
+  const primaryLabel = step.notice ? "Close" : isFirst ? "Begin tutorial" : isLast ? "Finish tutorial" : "Next";
 
   return (
     <div
@@ -481,19 +488,23 @@ export default function TutorialOverlay({
         aria-labelledby="tutorial-title"
         aria-describedby="tutorial-body"
       >
-        <div className="tutorial-card-head">
-          <span className="tutorial-chapter">
-            Chapter {step.chapter} of {TUTORIAL_CHAPTERS.length} · {TUTORIAL_CHAPTERS[step.chapter - 1]}
-          </span>
-          <span className="tutorial-count">
-            {shown.stepNumber} / {shown.stepCount}
-          </span>
-        </div>
-        <div className="tutorial-progress" aria-hidden="true">
-          {Array.from({ length: shown.chapterStepCount }, (_, index) => (
-            <span key={index} className={index < shown.chapterStepNumber ? "on" : ""} />
-          ))}
-        </div>
+        {!step.notice && (
+          <>
+            <div className="tutorial-card-head">
+              <span className="tutorial-chapter">
+                Chapter {step.chapter} of {TUTORIAL_CHAPTERS.length} · {TUTORIAL_CHAPTERS[step.chapter - 1]}
+              </span>
+              <span className="tutorial-count">
+                {shown.stepNumber} / {shown.stepCount}
+              </span>
+            </div>
+            <div className="tutorial-progress" aria-hidden="true">
+              {Array.from({ length: shown.chapterStepCount }, (_, index) => (
+                <span key={index} className={index < shown.chapterStepNumber ? "on" : ""} />
+              ))}
+            </div>
+          </>
+        )}
         <h2 id="tutorial-title" className="tutorial-title">
           {step.title}
         </h2>
@@ -510,13 +521,13 @@ export default function TutorialOverlay({
           </div>
         )}
         <div className="tutorial-actions">
-          {!isLast && (
+          {!isLast && !step.notice && (
             <button type="button" className="tutorial-skip" onClick={onSkip}>
               Skip tutorial
             </button>
           )}
           <span className="tutorial-actions-spacer" />
-          {!isFirst && !shown.waiting && (
+          {!isFirst && !step.notice && !shown.waiting && (
             <button type="button" className="tutorial-btn-secondary" onClick={onBack}>
               Back
             </button>
