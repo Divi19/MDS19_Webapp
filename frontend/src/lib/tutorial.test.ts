@@ -47,7 +47,6 @@ describe("tour content", () => {
       "clusters",
       "pathways",
       "tissue-expression",
-      "tissue-composition",
       "gradcam",
       "header-actions",
       "finish",
@@ -72,14 +71,20 @@ describe("buildTourSteps", () => {
   const ids = (a: Parameters<typeof buildTourSteps>[0]) => buildTourSteps(a).map((s) => s.id);
 
   it("shows every step when the result supports them", () => {
-    expect(ids({ tissue: true, gradcam: true, pathways: true })).toHaveLength(10);
+    expect(ids({ tissue: true, gradcam: true, pathways: true })).toHaveLength(9);
   });
 
-  it("drops the Tissue steps without tissue data", () => {
+  it("drops the Tissue step without tissue data", () => {
     const out = ids({ tissue: false, gradcam: true, pathways: true });
     expect(out).not.toContain("tissue-expression");
-    expect(out).not.toContain("tissue-composition");
     expect(out).toContain("gradcam");
+    expect(out).toHaveLength(8);
+  });
+
+  it("has no tissue composition step, and Grad-CAM follows the tissue step directly", () => {
+    const all = ids({ tissue: true, gradcam: true, pathways: true });
+    expect(all).not.toContain("tissue-composition");
+    expect(all.slice(all.indexOf("pathways"))).toEqual(["pathways", "tissue-expression", "gradcam", "header-actions", "finish"]);
   });
 
   it("keeps the gene list's Cancer toggle moment only with tissue data and the tags switched on", () => {
