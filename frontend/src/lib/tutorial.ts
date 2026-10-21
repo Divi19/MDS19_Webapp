@@ -137,13 +137,6 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     body: ["Hover a tile to see the model's tissue probabilities. Click a type to pin it."],
   },
   {
-    id: "tissue-composition",
-    chapter: 2,
-    target: "tissue-composition",
-    title: "Tissue composition",
-    body: ["Which tissue each gene group is made of."],
-  },
-  {
     id: "gradcam",
     chapter: 3,
     // The map and colour bar, then the detail window of the first tile that
@@ -183,7 +176,7 @@ export interface TourAvailability {
 /** The tour for a loaded result, without the steps it cannot show. */
 export function buildTourSteps(available: TourAvailability): TutorialStep[] {
   return TUTORIAL_STEPS.filter((step) => {
-    if (step.id === "tissue-expression" || step.id === "tissue-composition") return available.tissue;
+    if (step.id === "tissue-expression") return available.tissue;
     if (step.id === "gradcam") return available.gradcam;
     if (step.id === "pathways") return available.pathways;
     return true;

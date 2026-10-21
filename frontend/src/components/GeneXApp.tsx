@@ -441,14 +441,13 @@ export default function GeneXApp() {
         if (start != null) setCancerToggle(start);
       }
       if (id === "tissue-expression") setTissueTab("expression");
-      if (id === "tissue-composition") setTissueTab("composition");
       // Views are switched once the tutorial's glide has finished: redrawing
       // the map (or starting Grad-CAM) mid-animation makes the motion stutter.
       window.clearTimeout(tutorialViewTimer.current);
       const tutorialView: View | null =
         id === "clusters" || id === "pathways"
           ? "clusters"
-          : id === "tissue-expression" || id === "tissue-composition"
+          : id === "tissue-expression"
             ? "tissue"
             : id === "gradcam"
               ? "gradcam"
