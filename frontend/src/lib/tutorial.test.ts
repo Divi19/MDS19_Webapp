@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SHOW_GENE_TISSUE_TAGS } from "./features";
 import type { PathwayResult, PathwayState } from "./pathways";
 import {
   isManualPhases,
@@ -81,10 +82,15 @@ describe("buildTourSteps", () => {
     expect(out).toContain("gradcam");
   });
 
-  it("keeps the gene list's Cancer toggle moment only when there is tissue data", () => {
+  it("keeps the gene list's Cancer toggle moment only with tissue data and the tags switched on", () => {
     const withTissue = buildTourSteps({ tissue: true, gradcam: true, pathways: true })[0];
-    expect(withTissue.phases).toEqual(["gene-list", "cancer-filter gene-list"]);
-    expect(withTissue.body[0]).toMatch(/Cancer toggle/);
+    if (SHOW_GENE_TISSUE_TAGS) {
+      expect(withTissue.phases).toEqual(["gene-list", "cancer-filter gene-list"]);
+      expect(withTissue.body[0]).toMatch(/Cancer toggle/);
+    } else {
+      expect(withTissue.phases).toBeUndefined();
+      expect(withTissue.body[0]).not.toMatch(/toggle/i);
+    }
     const without = buildTourSteps({ tissue: false, gradcam: true, pathways: true })[0];
     expect(without.id).toBe("gene-list");
     expect(without.phases).toBeUndefined();

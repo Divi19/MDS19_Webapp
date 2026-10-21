@@ -11,6 +11,7 @@
  */
 
 import type { PathwayState } from "@/lib/pathways";
+import { SHOW_GENE_TISSUE_TAGS } from "@/lib/features";
 
 export type TutorialInteraction =
   /** The highlighted element is clickable, and clicking it advances the
@@ -188,9 +189,10 @@ export function buildTourSteps(available: TourAvailability): TutorialStep[] {
     if (step.id === "pathways") return available.pathways;
     return true;
   }).map((step) =>
-    // The Cancer toggle only exists on results with tissue data; without it
-    // the gene list step is the plain one.
-    step.id === "gene-list" && !available.tissue
+    // The Cancer toggle only exists on results with tissue data, and only
+    // while SHOW_GENE_TISSUE_TAGS is on; without it the gene list step is the
+    // plain one.
+    step.id === "gene-list" && !(available.tissue && SHOW_GENE_TISSUE_TAGS)
       ? { ...step, phases: undefined, phaseMs: undefined, body: ["Genes ranked by average predicted level across the section."] }
       : step,
   );

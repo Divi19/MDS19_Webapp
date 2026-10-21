@@ -11,6 +11,7 @@ import { fetchPathways, type PathwayState } from "@/lib/pathways";
 import { generateReportPdf, reportFileName } from "@/lib/pdfReport";
 import AuthModal from "./AuthModal";
 import ClusterAnalysisPanel from "./ClusterAnalysisPanel";
+import { SHOW_GENE_TISSUE_TAGS } from "@/lib/features";
 import GenePathwayModal from "./GenePathwayModal";
 import GenePopover, { type PopoverAnchor } from "./GenePopover";
 import GradCamPanel, { type GradCamHandle, type GradCamStatus } from "./GradCamPanel";
@@ -766,7 +767,7 @@ export default function GeneXApp() {
 
   const filteredTopGenes = useMemo(
     () =>
-      showOnlyCancerGenes && geneHome
+      SHOW_GENE_TISSUE_TAGS && showOnlyCancerGenes && geneHome
         ? pred.topGenes.filter((g) => geneHome.get(g.name)?.cls === "Cancer")
         : pred.topGenes,
     [pred.topGenes, showOnlyCancerGenes, geneHome],
@@ -966,7 +967,7 @@ export default function GeneXApp() {
                 </button>
               </div>
             )}
-            {ready && geneHome && (
+            {SHOW_GENE_TISSUE_TAGS && ready && geneHome && (
               <label className="gene-filter-toggle" data-tour="cancer-filter">
                 <input
                   type="checkbox"
@@ -1012,7 +1013,7 @@ export default function GeneXApp() {
                           style={{ background: viridis(g.value / max) }}
                         />
                         <div className="gene-tile-name">{g.name}</div>
-                        {geneHome && <GeneTissueNote gene={g.name} value={g.value} home={geneHome.get(g.name)} className="gene-tile-tissue" />}
+                        {SHOW_GENE_TISSUE_TAGS && geneHome && <GeneTissueNote gene={g.name} value={g.value} home={geneHome.get(g.name)} className="gene-tile-tissue" />}
                         <div className="gene-tile-meta">
                           <span className="gene-tile-value">{g.value.toFixed(2)}</span>
                           <span className={`level-tag ${levelClass(g.level)}`}>{g.level}</span>
@@ -1039,7 +1040,7 @@ export default function GeneXApp() {
                         <span className="gene-rank">{genePageClamped * genesPerPage + index + 1}</span>
                         <span className="gene-name-cell">
                           <span className="gene-name">{g.name}</span>
-                          {geneHome && <GeneTissueNote gene={g.name} value={g.value} home={geneHome.get(g.name)} className="gene-row-tissue" />}
+                          {SHOW_GENE_TISSUE_TAGS && geneHome && <GeneTissueNote gene={g.name} value={g.value} home={geneHome.get(g.name)} className="gene-row-tissue" />}
                         </span>
                         <span className="gene-value">{g.value.toFixed(2)}</span>
                         <span className="bar-track">
