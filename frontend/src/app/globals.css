@@ -419,6 +419,9 @@ button.legend-item{font:inherit;font-size:11.5px}
 .pathway-action{display:inline-flex;align-items:center;gap:8px;padding:0 14px 0 18px;white-space:nowrap;transition:opacity .2s,transform .15s var(--ease)}
 .pathway-action svg{width:15px;height:15px;transition:transform .2s var(--ease)}
 .pathway-action:hover svg{transform:translateX(3px)}
+/* While the tutorial is open, the Gene pathways window's Explore button pulses (the tutorial's gene details step points at it). */
+body.tutorial-active .pathway-action[data-tour="explore-gene"]{animation:tutorial-explore 1.5s ease-in-out infinite}
+@keyframes tutorial-explore{0%,100%{box-shadow:0 0 0 0 rgba(10,132,255,.6)}50%{box-shadow:0 0 0 8px rgba(10,132,255,0)}}
 .btn-secondary{background:rgba(255,255,255,.7);box-shadow:0 0 0 .5px rgba(0,0,0,.1);border:none;color:var(--ink);font-size:12px;font-weight:500;height:38px;padding:0 18px;border-radius:var(--r-pill);cursor:pointer;transition:transform .15s var(--ease)}
 .btn-secondary:hover{background:#fff}
 .btn-secondary:active,.run-btn:active{transform:scale(.96)}
@@ -527,6 +530,9 @@ button.legend-item{font:inherit;font-size:11.5px}
 .tutorial-launch{position:static;transform:none}
 .tutorial-layer{position:fixed;inset:0;z-index:1000;pointer-events:none}
 body.tutorial-active .modal-backdrop{backdrop-filter:none}
+/* During the tour the window's backdrop lets clicks through (the tour's own layer already blocks everything outside the spotlight), so a gene in the list behind the Gene pathways window can be clicked directly. */
+body.tutorial-active .modal-backdrop{pointer-events:none}
+body.tutorial-active .modal-backdrop .modal{pointer-events:auto}
 .tutorial-dim{display:none;position:fixed;inset:0;background:rgba(29,29,31,.5)}
 /* No will-change on the focus layer: the spotlight's full-screen shadow would
    make a promoted layer enormous. */

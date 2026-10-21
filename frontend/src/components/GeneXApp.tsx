@@ -26,9 +26,20 @@ import UploadModal, { type RunPayload } from "./UploadModal";
 import {
   clusterTissueLabels, geneHomeTissue, TISSUE_COLORS, TISSUE_SHORT_NAMES, type GeneTissue, type TissueClass,
 } from "@/lib/tissue";
-import { buildTourSteps, pickTourPathwayCluster, tourTarget, TUTORIAL_NO_RESULT_STEP } from "@/lib/tutorial";
+import { buildTourSteps, DEFAULT_PHASE_MS, pickTourPathwayCluster, tourTarget, TUTORIAL_NO_RESULT_STEP } from "@/lib/tutorial";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** The gene list's Cancer toggle as it is on screen (null when the result has
+ * none). The tutorial reads and sets it through the page, since its state is
+ * declared far below the tutorial's callbacks. */
+const cancerToggle = () =>
+  document.querySelector<HTMLInputElement>('[data-tour="cancer-filter"] input[type="checkbox"]');
+/** Sets that toggle the way the presenter would: by clicking it. */
+const setCancerToggle = (on: boolean) => {
+  const box = cancerToggle();
+  if (box && box.checked !== on) box.click();
+};
 
 type View = "clusters" | "genes" | "tissue" | "gradcam";
 type GeneFilter = "all" | "High" | "Mid" | "Low" | "markers";
@@ -149,6 +160,8 @@ export default function GeneXApp() {
     tissueTab: "expression" | "composition";
     tissuePin: TissueClass | null;
     tissueClusterPin: number | null;
+    /** The gene list's "Show Cancer-type genes" toggle; null when it has none. */
+    onlyCancer: boolean | null;
   } | null>(null);
   const tutorialActiveRef = useRef(false);
   const tutorialViewTimer = useRef<number | undefined>(undefined);
@@ -402,9 +415,6 @@ export default function GeneXApp() {
     [ready, pred.tissue, gradcamOk, tourPathwayCluster],
   );
 
-  /** How long a two-moment step shows its first target before moving on. */
-  const TOUR_PHASE_MS = 1600;
-
   /** Moves the tutorial to a step, first putting the page into the state
    * that step describes (active view, Tissue sub-view). Anything the previous
    * step opened (the pathway table) is closed. */
@@ -415,7 +425,18 @@ export default function GeneXApp() {
       setPopoverAnchor(null);
       setPathwayModal(null);
       setTourPhase(0);
-      if (id === "gene-list") setGenePage(0);
+      // The Gene pathways window shows only on its own step, for the first
+      // gene in the list as it is now (the gene list marks that row).
+      const firstRow = document.querySelector<HTMLElement>('[data-tour="gene-first"]');
+      const firstGene = firstRow?.querySelector(".gene-name, .gene-tile-name")?.textContent?.trim() || null;
+      setGenePathwayModal(id === "gene-pathways" ? firstGene : null);
+      if (id === "gene-list") {
+        setGenePage(0);
+        // The Cancer toggle goes back to how the presenter had it, so the
+        // step plays the same way each time it is visited.
+        const start = tourSnapshot.current?.onlyCancer;
+        if (start != null) setCancerToggle(start);
+      }
       if (id === "tissue-expression") setTissueTab("expression");
       if (id === "tissue-composition") setTissueTab("composition");
       // Views are switched once the tutorial's glide has finished: redrawing
@@ -448,6 +469,8 @@ export default function GeneXApp() {
         changeView("genes");
       } else if (id === "pathways") {
         setPathwayModal(tourPathwayCluster);
+      } else if (id === "gene-list") {
+        setCancerToggle(true);
       }
     },
     [changeView, pred.topGenes, tourPathwayCluster],
@@ -460,7 +483,7 @@ export default function GeneXApp() {
       const next = tourPhase + 1;
       runTourPhase(step.id, next);
       setTourPhase(next);
-    }, TOUR_PHASE_MS);
+    }, step.phaseMs ?? DEFAULT_PHASE_MS);
     return () => window.clearTimeout(timer);
   }, [runTourPhase, tourPhase, tutorialStepId, tutorialSteps]);
 
@@ -471,10 +494,12 @@ export default function GeneXApp() {
     setTutorialStepId(null);
     setTourPhase(0);
     setPathwayModal(null);
+    setGenePathwayModal(null);
     setPopoverAnchor(null);
     const snapshot = tourSnapshot.current;
     tourSnapshot.current = null;
     if (snapshot) {
+      if (snapshot.onlyCancer != null) setCancerToggle(snapshot.onlyCancer);
       setTissueTab(snapshot.tissueTab);
       setTissuePin(snapshot.tissuePin);
       setTissueClusterPin(snapshot.tissueClusterPin);
@@ -496,7 +521,14 @@ export default function GeneXApp() {
       return;
     }
     setLandingOpen(false);
-    tourSnapshot.current = { view, gene, tissueTab, tissuePin, tissueClusterPin };
+    tourSnapshot.current = {
+      view,
+      gene,
+      tissueTab,
+      tissuePin,
+      tissueClusterPin,
+      onlyCancer: cancerToggle()?.checked ?? null,
+    };
     goToTutorialStep(tutorialSteps[0].id);
   }, [gene, goToTutorialStep, ready, tissueClusterPin, tissuePin, tissueTab, tutorialSteps, view]);
 
@@ -903,7 +935,7 @@ export default function GeneXApp() {
               </div>
             )}
             {ready && geneHome && (
-              <label className="gene-filter-toggle">
+              <label className="gene-filter-toggle" data-tour="cancer-filter">
                 <input
                   type="checkbox"
                   checked={showOnlyCancerGenes}
@@ -923,10 +955,10 @@ export default function GeneXApp() {
                 const pick = (g: (typeof genePageRows)[number]) => {
                   // Opens the gene's description + pathway table; its "Explore
                   // gene in tissue" button then maps the gene
-                  // (exploreGeneInGenesTab). The
-                  // tutorial's "Map a single gene" step skips the table and maps
-                  // the gene straight away, as the click always used to.
-                  if (tutorialStepId === null) {
+                  // (exploreGeneInGenesTab). The tutorial's "Map a gene" step
+                  // skips the table and maps the gene straight away, as the
+                  // click always used to.
+                  if (tutorialStepId !== "gene-map") {
                     setPopoverAnchor(null);
                     setGenePathwayModal(g.name);
                   } else {

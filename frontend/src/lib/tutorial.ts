@@ -32,6 +32,9 @@ export interface TutorialStep {
    * workspace moves to the next one by itself after a short pause (and does
    * whatever that moment shows, e.g. opens a window). `target` is the first. */
   phases?: string[];
+  /** How long the first moment lasts before the next one, in ms
+   * (DEFAULT_PHASE_MS when omitted). */
+  phaseMs?: number;
   title: string;
   body: string[];
   interaction?: TutorialInteraction;
@@ -44,6 +47,9 @@ export interface TutorialStep {
    * dots, count or Skip; a single Close button. */
   notice?: boolean;
 }
+
+/** Default pause before a two-moment step moves to its second moment. */
+export const DEFAULT_PHASE_MS = 1600;
 
 export const TUTORIAL_CHAPTERS = [
   "Reading a result",
@@ -65,8 +71,22 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: "gene-list",
     chapter: 1,
     target: "gene-list",
+    // Second moment: the Cancer toggle is switched on, and spotlighted with
+    // the list (GeneXApp restores it when the tour ends).
+    phases: ["gene-list", "cancer-filter gene-list"],
+    phaseMs: 1500,
     title: "Predicted genes",
-    body: ["Genes ranked by average predicted level across the section."],
+    body: ["Genes ranked by average predicted level. The Cancer toggle keeps genes clearly higher in cancer tiles."],
+  },
+  {
+    id: "gene-pathways",
+    chapter: 1,
+    // The Gene pathways window for the first gene in the list, beside the list
+    // so another gene can be clicked.
+    target: "gene-list enrichment-modal",
+    interaction: "free",
+    title: "Gene details",
+    body: ["Click a gene for what it does and the pathways it takes part in. Explore gene in tissue jumps to its tissue view."],
   },
   {
     id: "gene-map",
@@ -153,7 +173,13 @@ export function buildTourSteps(available: TourAvailability): TutorialStep[] {
     if (step.id === "gradcam") return available.gradcam;
     if (step.id === "pathways") return available.pathways;
     return true;
-  });
+  }).map((step) =>
+    // The Cancer toggle only exists on results with tissue data; without it
+    // the gene list step is the plain one.
+    step.id === "gene-list" && !available.tissue
+      ? { ...step, phases: undefined, phaseMs: undefined, body: ["Genes ranked by average predicted level across the section."] }
+      : step,
+  );
 }
 
 /** The `data-tour` value a step highlights during one of its moments. */

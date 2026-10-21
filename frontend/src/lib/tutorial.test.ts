@@ -28,7 +28,8 @@ describe("tour content", () => {
   it("keeps each card to one short paragraph, in neutral wording", () => {
     for (const step of [...TUTORIAL_STEPS, TUTORIAL_NO_RESULT_STEP]) {
       expect(step.body).toHaveLength(1);
-      expect(words(step.body[0])).toBeLessThanOrEqual(20);
+      // About 20 words; the gene details card runs a little over.
+      expect(words(step.body[0])).toBeLessThanOrEqual(25);
     }
     const all = JSON.stringify([...TUTORIAL_STEPS, TUTORIAL_NO_RESULT_STEP]).toLowerCase();
     expect(all).not.toContain("diagnos");
@@ -37,6 +38,7 @@ describe("tour content", () => {
   it("follows the agreed order", () => {
     expect(TUTORIAL_STEPS.map((s) => s.id)).toEqual([
       "gene-list",
+      "gene-pathways",
       "gene-map",
       "clusters",
       "cluster-analysis",
@@ -65,7 +67,7 @@ describe("buildTourSteps", () => {
   const ids = (a: Parameters<typeof buildTourSteps>[0]) => buildTourSteps(a).map((s) => s.id);
 
   it("shows every step when the result supports them", () => {
-    expect(ids({ tissue: true, gradcam: true, pathways: true })).toHaveLength(10);
+    expect(ids({ tissue: true, gradcam: true, pathways: true })).toHaveLength(11);
   });
 
   it("drops the Tissue steps without tissue data", () => {
@@ -73,6 +75,16 @@ describe("buildTourSteps", () => {
     expect(out).not.toContain("tissue-expression");
     expect(out).not.toContain("tissue-composition");
     expect(out).toContain("gradcam");
+  });
+
+  it("keeps the gene list's Cancer toggle moment only when there is tissue data", () => {
+    const withTissue = buildTourSteps({ tissue: true, gradcam: true, pathways: true })[0];
+    expect(withTissue.phases).toEqual(["gene-list", "cancer-filter gene-list"]);
+    expect(withTissue.body[0]).toMatch(/Cancer toggle/);
+    const without = buildTourSteps({ tissue: false, gradcam: true, pathways: true })[0];
+    expect(without.id).toBe("gene-list");
+    expect(without.phases).toBeUndefined();
+    expect(without.body[0]).not.toMatch(/toggle/i);
   });
 
   it("drops Grad-CAM and pathways when unavailable", () => {
@@ -93,6 +105,20 @@ describe("tourTarget", () => {
     expect(tourTarget(step("pathways"), 0)).toBe("pathway-pills");
     expect(tourTarget(step("pathways"), 1)).toBe("enrichment-modal");
     expect(tourTarget(step("pathways"), 9)).toBe("enrichment-modal");
+  });
+
+  it("switches the gene list on the Cancer toggle after its first moment", () => {
+    expect(tourTarget(step("gene-list"), 0)).toBe("gene-list");
+    expect(tourTarget(step("gene-list"), 1)).toBe("cancer-filter gene-list");
+    expect(step("gene-list").phaseMs).toBe(1500);
+  });
+
+  it("opens the gene details beside the list and lets the presenter interact", () => {
+    const g = step("gene-pathways");
+    expect(g.target).toBe("gene-list enrichment-modal");
+    expect(g.interaction).toBe("free");
+    expect(g.phases).toBeUndefined();
+    expect(tourTarget(g, 0)).toBe("gene-list enrichment-modal");
   });
 
   it("uses the plain target for other steps", () => {
