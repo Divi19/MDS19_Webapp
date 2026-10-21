@@ -18,7 +18,7 @@ export default function GenePathwayModal({
   onClose,
 }: {
   gene: string;
-  /** Button text, e.g. "Go to Genes tab". */
+  /** Button text, e.g. "Explore gene in tissue". */
   mapLabel: string;
   /** Closes the table and maps this gene; omitted if the gene has no map data. */
   onShowOnMap?: () => void;

@@ -1320,7 +1320,7 @@ export default function GeneXApp() {
       {genePathwayModal && (
         <GenePathwayModal
           gene={genePathwayModal}
-          mapLabel={view === "tissue" ? "Show on Tissue tab" : "Go to Genes tab"}
+          mapLabel="Explore gene in tissue"
           onShowOnMap={
             pred.geneMeta[genePathwayModal]
               ? () => {

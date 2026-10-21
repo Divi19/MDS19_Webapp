@@ -415,7 +415,10 @@ button.legend-item{font:inherit;font-size:11.5px}
 .meta-tile .value{font-size:12px;font-weight:500;margin-top:1px;word-break:break-all}
 .modal-footer{padding:14px 26px 22px;display:flex;align-items:center;gap:10px}
 .modal-footer .hint{flex:1;font-size:11px;color:var(--muted)}
-.modal-footer .pill-btn{flex-shrink:0;white-space:nowrap}
+.modal-header-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.pathway-action{display:inline-flex;align-items:center;gap:8px;padding:0 14px 0 18px;white-space:nowrap;transition:opacity .2s,transform .15s var(--ease)}
+.pathway-action svg{width:15px;height:15px;transition:transform .2s var(--ease)}
+.pathway-action:hover svg{transform:translateX(3px)}
 .btn-secondary{background:rgba(255,255,255,.7);box-shadow:0 0 0 .5px rgba(0,0,0,.1);border:none;color:var(--ink);font-size:12px;font-weight:500;height:38px;padding:0 18px;border-radius:var(--r-pill);cursor:pointer;transition:transform .15s var(--ease)}
 .btn-secondary:hover{background:#fff}
 .btn-secondary:active,.run-btn:active{transform:scale(.96)}

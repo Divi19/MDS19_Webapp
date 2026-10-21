@@ -64,7 +64,7 @@ export default function PathwayListModal({
   results: PathwayResult[];
   footer?: string;
   emptyText?: string;
-  /** Optional primary button in the footer. */
+  /** Optional primary button in the header, beside the close button. */
   action?: { label: string; onClick: () => void };
   onClose: () => void;
 }) {
@@ -109,12 +109,23 @@ export default function PathwayListModal({
             <div className="pretitle">{pretitle}</div>
             <h2>{title}</h2>
           </div>
-          <button className="modal-close" onClick={onClose} aria-label="Close">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+          <div className="modal-header-actions">
+            {action && (
+              <button type="button" className="pill-btn pathway-action" onClick={action.onClick}>
+                {action.label}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <polyline points="13 6 19 12 13 18" />
+                </svg>
+              </button>
+            )}
+            <button className="modal-close" onClick={onClose} aria-label="Close">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
         </div>
         <div className="modal-body pathway-body">
           {intro}
@@ -203,11 +214,6 @@ export default function PathwayListModal({
             {footer ??
               `Click a row for its description. ${results.length} terms with p ≤ 0.05 (up to 10 per library), sorted by p-value. Adj. p is Enrichr's Benjamini–Hochberg value.`}
           </div>
-          {action && (
-            <button type="button" className="pill-btn" onClick={action.onClick}>
-              {action.label}
-            </button>
-          )}
         </div>
       </div>
     </div>,
