@@ -18,9 +18,11 @@ const MIN_USABLE_HEIGHT = 160;
 export default function GenePopover({
   anchor,
   onClose,
+  onViewPathways,
 }: {
   anchor: PopoverAnchor | null;
   onClose: () => void;
+  onViewPathways: (gene: string) => void;
 }) {
   const [state, setState] = useState<"loading" | "error" | GeneInfo | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -107,6 +109,9 @@ export default function GenePopover({
             {state.summary ?? "No summary available for this gene."}
           </div>
           <div className="gene-popover-source">via mygene.info</div>
+          <button type="button" className="gene-popover-pathways" onClick={() => onViewPathways(anchor.gene)}>
+            View pathways
+          </button>
         </>
       )}
     </div>

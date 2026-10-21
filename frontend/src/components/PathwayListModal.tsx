@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   fetchPathwayDescription,
@@ -42,15 +42,27 @@ function formatTerm(term: string): string {
   return term.replace(/^[a-zA-Z]+\d+:/, "");
 }
 
-/** Full Enrichr result list for one cluster, sorted by p-value as returned
- * by the backend, so the pills' top 3 are its first three rows. */
+/** Full Enrichr result list, sorted by p-value as returned by the backend
+ * (for a cluster, the pills' top 3 are its first three rows). Used for a
+ * cluster's marker genes and for a single gene; `intro` sits above the table
+ * (the gene's description), `status` covers a lookup still in flight. */
 export default function PathwayListModal({
-  cluster,
+  pretitle,
+  title = "Pathway enrichment",
+  intro,
+  status = "done",
   results,
+  footer,
+  emptyText = "No significant pathways found.",
   onClose,
 }: {
-  cluster: number;
+  pretitle: string;
+  title?: string;
+  intro?: ReactNode;
+  status?: "loading" | "error" | "done";
   results: PathwayResult[];
+  footer?: string;
+  emptyText?: string;
   onClose: () => void;
 }) {
   // Rows whose description is open, and what has been fetched so far (kept
@@ -91,8 +103,8 @@ export default function PathwayListModal({
       <div className="modal pathway-modal" role="dialog" aria-modal="true">
         <div className="modal-header">
           <div>
-            <div className="pretitle">Cluster {cluster} · Enrichr</div>
-            <h2>Pathway enrichment</h2>
+            <div className="pretitle">{pretitle}</div>
+            <h2>{title}</h2>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -102,6 +114,11 @@ export default function PathwayListModal({
           </button>
         </div>
         <div className="modal-body pathway-body">
+          {intro}
+          {status === "loading" && <div className="pathway-status">Looking up pathways…</div>}
+          {status === "error" && <div className="pathway-status">Couldn&apos;t load pathways. Try again shortly.</div>}
+          {status === "done" && results.length === 0 && <div className="pathway-status">{emptyText}</div>}
+          {status === "done" && results.length > 0 && (
           <div className="pathway-table">
           <div className="pathway-row pathway-row-head">
             <span>#</span>
@@ -176,11 +193,12 @@ export default function PathwayListModal({
             );
           })}
           </div>
+          )}
         </div>
         <div className="modal-footer">
           <div className="hint">
-            Click a row for its description. {results.length} terms with p ≤ 0.05 (up to 10 per
-            library), sorted by p-value. Adj. p is Enrichr&apos;s Benjamini–Hochberg value.
+            {footer ??
+              `Click a row for its description. ${results.length} terms with p ≤ 0.05 (up to 10 per library), sorted by p-value. Adj. p is Enrichr's Benjamini–Hochberg value.`}
           </div>
         </div>
       </div>

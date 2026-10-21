@@ -11,6 +11,7 @@ import { fetchPathways, type PathwayState } from "@/lib/pathways";
 import { generateReportPdf, reportFileName } from "@/lib/pdfReport";
 import AuthModal from "./AuthModal";
 import ClusterAnalysisPanel from "./ClusterAnalysisPanel";
+import GenePathwayModal from "./GenePathwayModal";
 import GenePopover, { type PopoverAnchor } from "./GenePopover";
 import GradCamPanel, { type GradCamHandle, type GradCamStatus } from "./GradCamPanel";
 import HistoryPanel from "./HistoryPanel";
@@ -54,6 +55,8 @@ export default function GeneXApp() {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
+  // Gene whose pathway table is open (from the gene popover); null = closed.
+  const [genePathwayModal, setGenePathwayModal] = useState<string | null>(null);
   const [pred, setPred] = useState<Prediction>({
     spots: [],
     genes: [],
@@ -1296,7 +1299,15 @@ export default function GeneXApp() {
         onSelect={loadFromHistory}
       />
       <ProfilePanel open={profileOpen} onClose={() => setProfileOpen(false)} />
-      <GenePopover anchor={popoverAnchor} onClose={() => setPopoverAnchor(null)} />
+      <GenePopover
+        anchor={popoverAnchor}
+        onClose={() => setPopoverAnchor(null)}
+        onViewPathways={(g) => {
+          setPopoverAnchor(null);
+          setGenePathwayModal(g);
+        }}
+      />
+      {genePathwayModal && <GenePathwayModal gene={genePathwayModal} onClose={() => setGenePathwayModal(null)} />}
       <div className={`toast${toast ? " show" : ""}`}>{toast}</div>
       {tutorialStepId && !tutorialSuspended && tutorialIndex >= 0 && (() => {
         const step = tutorialSteps[tutorialIndex];

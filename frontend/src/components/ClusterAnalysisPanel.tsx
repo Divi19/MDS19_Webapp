@@ -170,7 +170,7 @@ export default function ClusterAnalysisPanel({
       </div>
       {pathwayModal !== null && modalState?.status === "done" && (
         <PathwayListModal
-          cluster={pathwayModal}
+          pretitle={`Cluster ${pathwayModal} · Enrichr`}
           results={modalState.results}
           onClose={() => setPathwayModal(null)}
         />
