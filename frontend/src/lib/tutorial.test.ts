@@ -27,8 +27,6 @@ describe("tour content", () => {
 
   it("keeps each card to one short paragraph, in neutral wording", () => {
     for (const step of [...TUTORIAL_STEPS, TUTORIAL_NO_RESULT_STEP]) {
-      // Grad-CAM keeps its original two-paragraph text.
-      if (step.id === "gradcam") continue;
       expect(step.body).toHaveLength(1);
       expect(words(step.body[0])).toBeLessThanOrEqual(20);
     }
@@ -49,6 +47,11 @@ describe("tour content", () => {
       "header-actions",
       "finish",
     ]);
+  });
+
+  it("spotlights the expression panels, not the breakdown tiles, in the tissue step", () => {
+    const step = TUTORIAL_STEPS.find((x) => x.id === "tissue-expression")!;
+    expect(step.target).toBe("tissue-expression tissue-genes-higher");
   });
 
   it("makes the no-result card a single notice", () => {

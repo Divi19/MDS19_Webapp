@@ -102,7 +102,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: "tissue-expression",
     chapter: 2,
-    target: "tissue-breakdown tissue-expression tissue-genes-higher",
+    target: "tissue-expression tissue-genes-higher",
     interaction: "free",
     title: "Tissue types",
     body: ["A separate model labels tissue from the image. Expression shows a gene's level in each tissue type."],
@@ -119,17 +119,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     chapter: 3,
     target: "plot-card",
     title: "Grad-CAM",
-    body: [
-      "Highlights the parts of each tile that most influenced the model for the section's top gene. Warmer colours mean greater influence.",
-      "It fills in over several minutes and keeps going while you use other views. It explains the model's behaviour and does not localise biological activity.",
-    ],
+    body: ["Warmer means more influence on the model. It fills in over time and explains the model, not the biology."],
   },
   {
     id: "header-actions",
     chapter: 3,
     target: "header-actions",
     title: "History and export",
-    body: ["Every run is saved to History and can be exported as a PDF."],
+    body: ["Every run is saved to History when signed in, and can be exported as a PDF."],
   },
   {
     id: "finish",
