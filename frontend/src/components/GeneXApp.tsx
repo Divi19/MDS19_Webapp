@@ -581,6 +581,19 @@ export default function GeneXApp() {
     [pred, view, changeView],
   );
 
+  /** The gene pathway table's button: always lands on the Genes tab showing
+   * just this gene, whatever tab the table was opened from, with any cluster
+   * highlight cleared so no spots are faded out. */
+  const exploreGeneInGenesTab = useCallback(
+    (name: string) => {
+      if (!pred.geneMeta[name]) return;
+      setGene(name);
+      setClusterPin(null);
+      changeView("genes");
+    },
+    [pred, changeView],
+  );
+
   const pickGene = useCallback(
     (name: string) => {
       setGene(name);
@@ -885,8 +898,9 @@ export default function GeneXApp() {
               (() => {
                 const max = maxGeneValue;
                 const pick = (g: (typeof genePageRows)[number]) => {
-                  // Opens the gene's description + pathway table; its "Go to
-                  // Genes tab" button then maps the gene (showGeneOnMap). The
+                  // Opens the gene's description + pathway table; its "Explore
+                  // gene in tissue" button then maps the gene
+                  // (exploreGeneInGenesTab). The
                   // tutorial's "Map a single gene" step skips the table and maps
                   // the gene straight away, as the click always used to.
                   if (tutorialStepId === null) {
@@ -1324,7 +1338,7 @@ export default function GeneXApp() {
           onShowOnMap={
             pred.geneMeta[genePathwayModal]
               ? () => {
-                  showGeneOnMap(genePathwayModal);
+                  exploreGeneInGenesTab(genePathwayModal);
                   setGenePathwayModal(null);
                 }
               : undefined
