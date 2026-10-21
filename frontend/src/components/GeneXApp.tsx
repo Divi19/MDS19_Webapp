@@ -26,7 +26,9 @@ import UploadModal, { type RunPayload } from "./UploadModal";
 import {
   clusterTissueLabels, geneHomeTissue, TISSUE_COLORS, TISSUE_SHORT_NAMES, type GeneTissue, type TissueClass,
 } from "@/lib/tissue";
-import { buildTourSteps, DEFAULT_PHASE_MS, pickTourPathwayCluster, tourTarget, TUTORIAL_NO_RESULT_STEP } from "@/lib/tutorial";
+import {
+  buildTourSteps, DEFAULT_PHASE_MS, isManualPhases, pickTourPathwayCluster, tourBody, tourTarget, TUTORIAL_NO_RESULT_STEP,
+} from "@/lib/tutorial";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -425,6 +427,7 @@ export default function GeneXApp() {
       setPopoverAnchor(null);
       setPathwayModal(null);
       setTourPhase(0);
+      gradcamRef.current?.closeTile();
       // The Gene pathways window shows only on its own step, for the first
       // gene in the list as it is now (the gene list marks that row).
       const firstRow = document.querySelector<HTMLElement>('[data-tour="gene-first"]');
@@ -443,7 +446,7 @@ export default function GeneXApp() {
       // the map (or starting Grad-CAM) mid-animation makes the motion stutter.
       window.clearTimeout(tutorialViewTimer.current);
       const tutorialView: View | null =
-        id === "clusters" || id === "cluster-analysis" || id === "pathways"
+        id === "clusters" || id === "pathways"
           ? "clusters"
           : id === "tissue-expression" || id === "tissue-composition"
             ? "tissue"
@@ -456,10 +459,11 @@ export default function GeneXApp() {
     [changeView],
   );
 
-  /** What a two-moment step shows in its later moments. */
+  /** What a two-moment step shows in its later moments. False when there is
+   * nothing to show for the moment (the step then has no second moment). */
   const runTourPhase = useCallback(
-    (id: string, phase: number) => {
-      if (phase < 1) return;
+    (id: string, phase: number): boolean => {
+      if (phase < 1) return true;
       if (id === "gene-map") {
         // The click goes through the gene list itself, so the highlighted row
         // is the gene that gets mapped.
@@ -471,14 +475,24 @@ export default function GeneXApp() {
         setPathwayModal(tourPathwayCluster);
       } else if (id === "gene-list") {
         setCancerToggle(true);
+      } else if (id === "gradcam") {
+        // The detail window of the first tile that has heat, as clicking it
+        // opens; nothing to show (and no error) if none has computed yet.
+        return gradcamRef.current?.openFirstTile() ?? false;
       }
+      return true;
     },
     [changeView, pred.topGenes, tourPathwayCluster],
   );
 
+  /** Undoes a moment when the presenter steps back into the one before it. */
+  const undoTourPhase = useCallback((id: string) => {
+    if (id === "gradcam") gradcamRef.current?.closeTile();
+  }, []);
+
   useEffect(() => {
     const step = tutorialSteps.find((item) => item.id === tutorialStepId);
-    if (!step?.phases || tourPhase >= step.phases.length - 1) return;
+    if (!step?.phases || isManualPhases(step) || tourPhase >= step.phases.length - 1) return;
     const timer = window.setTimeout(() => {
       const next = tourPhase + 1;
       runTourPhase(step.id, next);
@@ -496,6 +510,7 @@ export default function GeneXApp() {
     setPathwayModal(null);
     setGenePathwayModal(null);
     setPopoverAnchor(null);
+    gradcamRef.current?.closeTile();
     const snapshot = tourSnapshot.current;
     tourSnapshot.current = null;
     if (snapshot) {
@@ -542,15 +557,32 @@ export default function GeneXApp() {
   }, [endTutorial, tutorialIndex, tutorialStepId]);
 
   const nextTutorialStep = useCallback(() => {
+    // A step whose moments the presenter moves between: Next shows the next
+    // moment first, and only moves on from the last one (or when a moment has
+    // nothing to show).
+    const current = tutorialSteps[tutorialIndex];
+    if (current?.phases && isManualPhases(current) && tourPhase < current.phases.length - 1) {
+      const nextPhase = tourPhase + 1;
+      if (runTourPhase(current.id, nextPhase)) {
+        setTourPhase(nextPhase);
+        return;
+      }
+    }
     const next = tutorialSteps[tutorialIndex + 1];
     if (next) goToTutorialStep(next.id);
     else endTutorial();
-  }, [endTutorial, goToTutorialStep, tutorialIndex, tutorialSteps]);
+  }, [endTutorial, goToTutorialStep, runTourPhase, tourPhase, tutorialIndex, tutorialSteps]);
 
   const previousTutorialStep = useCallback(() => {
+    const current = tutorialSteps[tutorialIndex];
+    if (current && isManualPhases(current) && tourPhase > 0) {
+      undoTourPhase(current.id);
+      setTourPhase(tourPhase - 1);
+      return;
+    }
     const previous = tutorialSteps[tutorialIndex - 1];
     if (previous) goToTutorialStep(previous.id);
-  }, [goToTutorialStep, tutorialIndex, tutorialSteps]);
+  }, [goToTutorialStep, tourPhase, tutorialIndex, tutorialSteps, undoTourPhase]);
 
   useEffect(() => {
     tutorialActiveRef.current = tutorialStepId !== null;
@@ -1413,7 +1445,7 @@ export default function GeneXApp() {
         return (
           <TutorialOverlay
             view={{
-              step: { ...step, target: tourTarget(step, tourPhase) },
+              step: { ...step, target: tourTarget(step, tourPhase), body: tourBody(step, tourPhase) },
               stepNumber: tutorialIndex + 1,
               stepCount: tutorialSteps.length,
               chapterStepNumber: chapterSteps.indexOf(step) + 1,

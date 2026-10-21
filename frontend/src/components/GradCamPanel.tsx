@@ -21,6 +21,11 @@ export interface GradCamHandle {
    * reuses whatever the panel already computed rather than recomputing
    * Grad-CAM itself. */
   getSnapshot: () => string | null;
+  /** Opens the detail window of the first tile that already has heat, as
+   * clicking it would. False (and nothing opens) if no tile has computed yet. */
+  openFirstTile: () => boolean;
+  /** Closes the detail window, if open. */
+  closeTile: () => void;
 }
 
 
@@ -329,7 +334,17 @@ const GradCamPanel = forwardRef<GradCamHandle, {
 
   useImperativeHandle(ref, () => ({
     getSnapshot: () => canvasRef.current?.toDataURL("image/png") ?? null,
-  }), []);
+    openFirstTile: () => {
+      for (let i = 0; i < pred.spots.length; i++) {
+        if (tileImgsRef.current[i] || heatRef.current[i]) {
+          setSelectedTile(i);
+          return true;
+        }
+      }
+      return false;
+    },
+    closeTile: () => setSelectedTile(null),
+  }), [pred.spots.length]);
 
   // The map box's inner size: it fills the stage exactly like the Genes
   // tab's box (SpatialPlot), so the two are the same size.
@@ -762,7 +777,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
 
   return (
     <div className="plot-body" style={{ display: hidden ? "none" : undefined }}>
-      <div className="canvas-wrap gradcam-map" ref={wrapRef}>
+      <div className="canvas-wrap gradcam-map" ref={wrapRef} data-tour="gradcam-map">
         <canvas
           ref={canvasRef}
           width={520}
@@ -810,7 +825,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
           </div>
         )}
       </div>
-      <div className="dock glass">
+      <div className="dock glass" data-tour="gradcam-scale">
         <div className="legend">
           <div className="vbar vbar-jet" />
         </div>
@@ -830,7 +845,7 @@ const GradCamPanel = forwardRef<GradCamHandle, {
             if (e.target === e.currentTarget) setSelectedTile(null);
           }}
         >
-          <div className="modal" role="dialog" aria-modal="true" style={{ width: 420 }}>
+          <div className="modal" role="dialog" aria-modal="true" style={{ width: 420 }} data-tour="gradcam-detail">
             <div className="modal-header">
               <div>
                 <div className="pretitle">Grad-CAM detail</div>

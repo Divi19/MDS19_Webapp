@@ -33,8 +33,13 @@ export interface TutorialStep {
    * whatever that moment shows, e.g. opens a window). `target` is the first. */
   phases?: string[];
   /** How long the first moment lasts before the next one, in ms
-   * (DEFAULT_PHASE_MS when omitted). */
+   * (DEFAULT_PHASE_MS when omitted). 0 means the presenter moves between the
+   * moments: Next goes to the second moment and then on, Back returns to the
+   * first. Used where the presenter is talking or interacting. */
   phaseMs?: number;
+  /** For a step with two moments: the card sentence for each moment, when it
+   * differs from `body`. */
+  phaseBodies?: string[];
   title: string;
   body: string[];
   interaction?: TutorialInteraction;
@@ -99,16 +104,12 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: "clusters",
     chapter: 1,
+    // The map and breakdown, then the analysis panel; Next moves between them.
     target: "plot-card cluster-breakdown",
+    phases: ["plot-card cluster-breakdown", "cluster-analysis"],
+    phaseMs: 0,
     title: "Clusters",
-    body: ["Each colour is a group of tiles with similar predicted gene patterns."],
-  },
-  {
-    id: "cluster-analysis",
-    chapter: 1,
-    target: "cluster-analysis",
-    title: "Cluster analysis",
-    body: ["Genes most elevated in each group, strongest first. Small groups are flagged."],
+    body: ["Each colour is a group of tiles with similar predicted gene patterns. The panel lists each group's most elevated genes; small groups are flagged."],
   },
   {
     id: "pathways",
@@ -122,10 +123,18 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: "tissue-expression",
     chapter: 2,
-    target: "tissue-expression tissue-genes-higher",
+    // The map and legend (hover a tile, pin a type), then the Expression
+    // panel (click a gene to map it); Next moves between them.
+    target: "tissue-map tissue-legend",
+    phases: ["tissue-map tissue-legend", "tissue-expression tissue-genes-higher"],
+    phaseMs: 0,
+    phaseBodies: [
+      "Hover a tile to see the model's tissue probabilities. Click a type to pin it.",
+      "Click a gene in the list to map it.",
+    ],
     interaction: "free",
     title: "Tissue types",
-    body: ["A separate model labels tissue from the image. Expression shows a gene's level in each tissue type."],
+    body: ["Hover a tile to see the model's tissue probabilities. Click a type to pin it."],
   },
   {
     id: "tissue-composition",
@@ -137,9 +146,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: "gradcam",
     chapter: 3,
-    target: "plot-card",
+    // The map and colour bar, then the detail window of the first tile that
+    // has heat (skipped when none has computed yet); Next moves between them.
+    target: "gradcam-map gradcam-scale",
+    phases: ["gradcam-map gradcam-scale", "gradcam-detail"],
+    phaseMs: 0,
+    interaction: "free",
     title: "Grad-CAM",
-    body: ["Warmer means more influence on the model. It fills in over time and explains the model, not the biology."],
+    body: ["Warmer means more influence. Click a tile for the cells behind it. It explains the model, not the biology."],
   },
   {
     id: "header-actions",
@@ -180,6 +194,18 @@ export function buildTourSteps(available: TourAvailability): TutorialStep[] {
       ? { ...step, phases: undefined, phaseMs: undefined, body: ["Genes ranked by average predicted level across the section."] }
       : step,
   );
+}
+
+/** Whether the presenter (Next/Back) moves between this step's moments, rather
+ * than the tour moving on by itself. */
+export function isManualPhases(step: TutorialStep): boolean {
+  return Boolean(step.phases?.length) && step.phaseMs === 0;
+}
+
+/** The card text for one of a step's moments. */
+export function tourBody(step: TutorialStep, phase: number): string[] {
+  const text = step.phaseBodies?.[Math.max(phase, 0)];
+  return text ? [text] : step.body;
 }
 
 /** The `data-tour` value a step highlights during one of its moments. */

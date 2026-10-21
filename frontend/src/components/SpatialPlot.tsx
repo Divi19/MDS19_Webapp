@@ -567,7 +567,7 @@ export default function SpatialPlot({
 
   return (
     <div className="plot-body">
-      <div className="canvas-wrap" ref={wrapRef}>
+      <div className="canvas-wrap" ref={wrapRef} data-tour={view === "tissue" ? "tissue-map" : undefined}>
         <canvas
           ref={canvasRef}
           width={520}
@@ -648,7 +648,7 @@ export default function SpatialPlot({
             <div className="vscale is-hidden" aria-hidden>
               <span>&nbsp;</span>
             </div>
-            <div className="tissue-legend-row">
+            <div className="tissue-legend-row" data-tour="tissue-legend">
               {tissuePin && pinRange ? (
                 <div className="tissue-gene-scale">
                   <button

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PathwayResult, PathwayState } from "./pathways";
 import {
+  isManualPhases,
+  tourBody,
   TUTORIAL_CHAPTERS,
   TUTORIAL_NO_RESULT_STEP,
   TUTORIAL_STEPS,
@@ -30,6 +32,7 @@ describe("tour content", () => {
       expect(step.body).toHaveLength(1);
       // About 20 words; the gene details card runs a little over.
       expect(words(step.body[0])).toBeLessThanOrEqual(25);
+      for (const text of step.phaseBodies ?? []) expect(words(text)).toBeLessThanOrEqual(25);
     }
     const all = JSON.stringify([...TUTORIAL_STEPS, TUTORIAL_NO_RESULT_STEP]).toLowerCase();
     expect(all).not.toContain("diagnos");
@@ -41,7 +44,6 @@ describe("tour content", () => {
       "gene-pathways",
       "gene-map",
       "clusters",
-      "cluster-analysis",
       "pathways",
       "tissue-expression",
       "tissue-composition",
@@ -51,9 +53,11 @@ describe("tour content", () => {
     ]);
   });
 
-  it("spotlights the expression panels, not the breakdown tiles, in the tissue step", () => {
+  it("shows the tissue map and legend, then the expression panels, in the tissue step", () => {
     const step = TUTORIAL_STEPS.find((x) => x.id === "tissue-expression")!;
-    expect(step.target).toBe("tissue-expression tissue-genes-higher");
+    expect(step.phases).toEqual(["tissue-map tissue-legend", "tissue-expression tissue-genes-higher"]);
+    expect(step.target).toBe(step.phases![0]);
+    expect(step.interaction).toBe("free");
   });
 
   it("makes the no-result card a single notice", () => {
@@ -67,7 +71,7 @@ describe("buildTourSteps", () => {
   const ids = (a: Parameters<typeof buildTourSteps>[0]) => buildTourSteps(a).map((s) => s.id);
 
   it("shows every step when the result supports them", () => {
-    expect(ids({ tissue: true, gradcam: true, pathways: true })).toHaveLength(11);
+    expect(ids({ tissue: true, gradcam: true, pathways: true })).toHaveLength(10);
   });
 
   it("drops the Tissue steps without tissue data", () => {
@@ -121,9 +125,36 @@ describe("tourTarget", () => {
     expect(tourTarget(g, 0)).toBe("gene-list enrichment-modal");
   });
 
-  it("uses the plain target for other steps", () => {
-    expect(tourTarget(step("clusters"), 0)).toBe("plot-card cluster-breakdown");
+  it("uses the plain target for single-moment steps", () => {
+    expect(tourTarget(step("header-actions"), 0)).toBe("header-actions");
     expect(tourTarget(step("finish"), 0)).toBeUndefined();
+  });
+
+  it("merges the clusters and analysis steps into one two-moment step", () => {
+    expect(TUTORIAL_STEPS.some((x) => x.id === "cluster-analysis")).toBe(false);
+    expect(tourTarget(step("clusters"), 0)).toBe("plot-card cluster-breakdown");
+    expect(tourTarget(step("clusters"), 1)).toBe("cluster-analysis");
+  });
+
+  it("gives Grad-CAM a map-and-scale moment, then the tile detail", () => {
+    expect(tourTarget(step("gradcam"), 0)).toBe("gradcam-map gradcam-scale");
+    expect(tourTarget(step("gradcam"), 1)).toBe("gradcam-detail");
+    expect(step("gradcam").interaction).toBe("free");
+    expect(step("gradcam").body).toEqual(["Warmer means more influence. Click a tile for the cells behind it. It explains the model, not the biology."]);
+  });
+
+  it("lets the presenter move between the moments of the interactive steps", () => {
+    for (const id of ["clusters", "tissue-expression", "gradcam"]) expect(isManualPhases(step(id))).toBe(true);
+    // The timed steps keep moving on by themselves.
+    for (const id of ["gene-list", "gene-map", "pathways"]) expect(isManualPhases(step(id))).toBe(false);
+    expect(isManualPhases(step("finish"))).toBe(false);
+  });
+
+  it("uses a different card sentence per moment where the step has them", () => {
+    const tissue = step("tissue-expression");
+    expect(tourBody(tissue, 0)).toEqual(["Hover a tile to see the model's tissue probabilities. Click a type to pin it."]);
+    expect(tourBody(tissue, 1)).toEqual(["Click a gene in the list to map it."]);
+    expect(tourBody(step("gradcam"), 1)).toEqual(step("gradcam").body);
   });
 });
 

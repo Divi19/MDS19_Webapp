@@ -158,7 +158,7 @@ export interface TutorialView {
 function viewKey(view: TutorialView) {
   // The target is part of the key: a step with two moments changes target
   // while keeping its id.
-  return `${view.step.id}|${view.step.target ?? ""}|${view.stepNumber}|${view.stepCount}|${view.chapterStepNumber}|${view.chapterStepCount}|${view.waiting ? 1 : 0}`;
+  return `${view.step.id}|${view.step.target ?? ""}|${view.step.body.join("/")}|${view.stepNumber}|${view.stepCount}|${view.chapterStepNumber}|${view.chapterStepCount}|${view.waiting ? 1 : 0}`;
 }
 
 export default function TutorialOverlay({
