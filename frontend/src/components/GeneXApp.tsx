@@ -570,6 +570,17 @@ export default function GeneXApp() {
     return list.slice(0, 60);
   }, [geneOptions, geneQuery, geneFilter]);
 
+  /** Selects a gene on the map: the Genes tab, or in place on the Tissue tab,
+   * where the gene feeds "Expression by tissue type". */
+  const showGeneOnMap = useCallback(
+    (name: string) => {
+      if (!pred.geneMeta[name]) return;
+      setGene(name);
+      if (view !== "tissue") changeView("genes");
+    },
+    [pred, view, changeView],
+  );
+
   const pickGene = useCallback(
     (name: string) => {
       setGene(name);
@@ -874,17 +885,15 @@ export default function GeneXApp() {
               (() => {
                 const max = maxGeneValue;
                 const pick = (g: (typeof genePageRows)[number]) => {
-                  if (pred.geneMeta[g.name]) {
-                    setGene(g.name);
-                    // On the Tissue tab the gene feeds "Expression by tissue
-                    // type", so stay there instead of jumping to Genes.
-                    if (view !== "tissue") changeView("genes");
-                  }
-                  // Opens the gene's description + pathway table. Not during the
-                  // tutorial, whose "Map a single gene" step just needs the click.
+                  // Opens the gene's description + pathway table; its "Go to
+                  // Genes tab" button then maps the gene (showGeneOnMap). The
+                  // tutorial's "Map a single gene" step skips the table and maps
+                  // the gene straight away, as the click always used to.
                   if (tutorialStepId === null) {
                     setPopoverAnchor(null);
                     setGenePathwayModal(g.name);
+                  } else {
+                    showGeneOnMap(g.name);
                   }
                 };
 
@@ -1308,7 +1317,21 @@ export default function GeneXApp() {
           setGenePathwayModal(g);
         }}
       />
-      {genePathwayModal && <GenePathwayModal gene={genePathwayModal} onClose={() => setGenePathwayModal(null)} />}
+      {genePathwayModal && (
+        <GenePathwayModal
+          gene={genePathwayModal}
+          mapLabel={view === "tissue" ? "Show on Tissue tab" : "Go to Genes tab"}
+          onShowOnMap={
+            pred.geneMeta[genePathwayModal]
+              ? () => {
+                  showGeneOnMap(genePathwayModal);
+                  setGenePathwayModal(null);
+                }
+              : undefined
+          }
+          onClose={() => setGenePathwayModal(null)}
+        />
+      )}
       <div className={`toast${toast ? " show" : ""}`}>{toast}</div>
       {tutorialStepId && !tutorialSuspended && tutorialIndex >= 0 && (() => {
         const step = tutorialSteps[tutorialIndex];

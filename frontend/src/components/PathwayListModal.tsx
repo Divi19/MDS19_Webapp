@@ -54,6 +54,7 @@ export default function PathwayListModal({
   results,
   footer,
   emptyText = "No significant pathways found.",
+  action,
   onClose,
 }: {
   pretitle: string;
@@ -63,6 +64,8 @@ export default function PathwayListModal({
   results: PathwayResult[];
   footer?: string;
   emptyText?: string;
+  /** Optional primary button in the footer. */
+  action?: { label: string; onClick: () => void };
   onClose: () => void;
 }) {
   // Rows whose description is open, and what has been fetched so far (kept
@@ -200,6 +203,11 @@ export default function PathwayListModal({
             {footer ??
               `Click a row for its description. ${results.length} terms with p ≤ 0.05 (up to 10 per library), sorted by p-value. Adj. p is Enrichr's Benjamini–Hochberg value.`}
           </div>
+          {action && (
+            <button type="button" className="pill-btn" onClick={action.onClick}>
+              {action.label}
+            </button>
+          )}
         </div>
       </div>
     </div>,

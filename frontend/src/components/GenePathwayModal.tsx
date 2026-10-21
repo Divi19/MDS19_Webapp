@@ -11,7 +11,19 @@ type Lookup<T> = { status: "loading" } | { status: "error" } | { status: "done";
  * (Enrichr) it takes part in. The pathway list is a single-gene Enrichr
  * lookup, so it ranks the terms most specific to this gene first rather than
  * testing a gene set for enrichment. */
-export default function GenePathwayModal({ gene, onClose }: { gene: string; onClose: () => void }) {
+export default function GenePathwayModal({
+  gene,
+  mapLabel,
+  onShowOnMap,
+  onClose,
+}: {
+  gene: string;
+  /** Button text, e.g. "Go to Genes tab". */
+  mapLabel: string;
+  /** Closes the table and maps this gene; omitted if the gene has no map data. */
+  onShowOnMap?: () => void;
+  onClose: () => void;
+}) {
   const [info, setInfo] = useState<Lookup<GeneInfo | null>>({ status: "loading" });
   const [paths, setPaths] = useState<Lookup<PathwayResult[]>>({ status: "loading" });
 
@@ -50,6 +62,7 @@ export default function GenePathwayModal({ gene, onClose }: { gene: string; onCl
       results={paths.status === "done" ? paths.data : []}
       emptyText={`No pathways found for ${gene}. It may be an older symbol that the pathway libraries don't recognise.`}
       footer="Pathways this gene takes part in (KEGG, Reactome, GO:BP), most specific to this gene first. Click a row for its description."
+      action={onShowOnMap ? { label: mapLabel, onClick: onShowOnMap } : undefined}
       onClose={onClose}
     />
   );
