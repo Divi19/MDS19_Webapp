@@ -73,7 +73,10 @@ export default function GeneXApp() {
   // the user switches to another tab — it loads real per-tile Grad-CAM in
   // the background over minutes, and unmounting it on every tab switch
   // used to throw away every loaded tile and the in-flight fetch loop,
-  // forcing a full restart on returning to the tab.
+  // forcing a full restart on returning to the tab. Set when a fresh
+  // prediction finishes (runPrediction), or on first visit to the tab for a
+  // run reopened from History — History runs don't auto-start it, so
+  // browsing old runs doesn't spend GPU time on slides nobody asked to explain.
   const [gradcamMounted, setGradcamMounted] = useState(false);
   // Grad-CAM is offered only for the cancers it is verified for (lib/cancer.ts).
   const gradcamOk = gradcamAvailable(pred.cancer);
@@ -251,6 +254,11 @@ export default function GeneXApp() {
         setStepIndex(PIPELINE_STEPS.length);
         await sleep(250);
         setReady(true);
+        // Prediction is on screen; now start Grad-CAM in the background
+        // (GradCamPanel mounts hidden and loads batch by batch) so it is
+        // usually done by the time the Grad-CAM tab is opened or the PDF
+        // is exported, instead of only starting on the first tab click.
+        if (gradcamAvailable(converted.cancer)) setGradcamMounted(true);
         showToast("Real model prediction complete");
 
         if (user) {
@@ -315,9 +323,10 @@ export default function GeneXApp() {
   );
 
   // The full PDF report embeds a Grad-CAM snapshot, so export is blocked
-  // until that panel has actually finished for this prediction — visiting
-  // the tab fires the computation (GeneXApp.gradcamMounted), and
-  // gradcamStatus.ready only flips true once it completes.
+  // until that panel has actually finished for this prediction — it starts
+  // when the prediction finishes (or on visiting the tab for a History run;
+  // GeneXApp.gradcamMounted), and gradcamStatus.ready only flips true once
+  // it completes.
   const exportPdfReport = useCallback(async () => {
     if (!ready || !pred.topGenes.length) {
       showToast("Run a section first");
