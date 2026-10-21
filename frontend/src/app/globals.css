@@ -207,6 +207,10 @@ button.legend-item{font:inherit;font-size:11.5px}
 .gene-row-head>:nth-child(5),.gene-row>:nth-child(5){order:4}
 .gene-row-head{flex-shrink:0;padding:0 8px 6px;font-size:10.5px;color:var(--faint);font-weight:400;border-bottom:1px solid var(--line)}
 .gene-row{flex:0 0 auto;height:44px;padding:0 8px;border:none;border-radius:12px;background:none;cursor:pointer;text-align:left;font:inherit;transition:background .2s var(--ease)}
+.gene-row{position:relative}
+/* A hairline between rows, inset to the content edges, so rows read as separate without boxing them in. */
+.gene-row::after{content:"";position:absolute;left:8px;right:8px;bottom:0;height:1px;background:var(--line-soft);transition:opacity .2s var(--ease)}
+.gene-row:last-child::after,.gene-row:hover::after{opacity:0}
 .gene-row:hover{background:rgba(255,255,255,.7)}
 .gene-rank{font-size:11px;color:var(--faint);text-align:left}
 .gene-name{color:var(--ink);font-size:14px}
