@@ -718,7 +718,7 @@ body.tutorial-active .modal-backdrop{backdrop-filter:none}
 .pathway-status{padding:28px 0;text-align:center;font-size:12px;color:var(--muted)}
 .pathway-intro{margin-bottom:14px;padding:12px 14px;border-radius:12px;background:#F3F3F6}
 .pathway-intro-name{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px}
-.pathway-intro-text{font-size:12px;line-height:1.55;color:var(--ink-2);max-height:120px;overflow-y:auto}
+.pathway-intro-text{font-size:12px;line-height:1.55;color:var(--ink-2)}
 .pathway-intro-src{margin-top:6px;font-size:10px;color:var(--faint)}
 .pathway-table{background:#fff;border:1px solid var(--line-soft);border-radius:14px;box-shadow:0 1px 3px rgba(30,20,40,.05)}
 .pathway-row{display:grid;grid-template-columns:24px minmax(0,1fr) 72px 96px 78px;column-gap:16px;align-items:center;padding:13px 18px;border-bottom:1px solid var(--line-soft);transition:background .15s var(--ease)}
