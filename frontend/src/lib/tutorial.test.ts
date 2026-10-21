@@ -108,6 +108,7 @@ describe("pickTourPathwayCluster", () => {
     list_hits: genes.length,
     list_total: 5,
     genes,
+    term_id: "",
   });
   const done = (...genes: string[][]): PathwayState => ({ status: "done", results: genes.map(row) });
 
