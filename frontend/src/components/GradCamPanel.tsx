@@ -792,8 +792,24 @@ const GradCamPanel = forwardRef<GradCamHandle, {
         {error && <div className="canvas-empty">{error}</div>}
         {/* Notes and view controls float on the map, so the card below can be
             the same size as the Genes tab's colour bar. */}
-        {(pred.cancer?.limitedSupport || (!error && gradcamExperimental(pred.cancer))) && (
+        {(!error || pred.cancer?.limitedSupport) && (
           <div className="gradcam-overlay tl">
+            {!error && (
+              <span
+                className="info-icon tooltip-below"
+                tabIndex={0}
+                data-tooltip={
+                  "How to read this map\n" +
+                  "Red / orange: areas the model relied on most for this slide's top gene.\n" +
+                  "Blue / purple: areas that mattered less. No colour means almost no influence.\n" +
+                  "Click a spot for a close-up of that single spot.\n" +
+                  "Drag to pan. Scroll or use + / - to zoom.\n" +
+                  "One colour scale covers the whole slide. It shows what the model used, not proof of the biology."
+                }
+              >
+                i
+              </span>
+            )}
             {pred.cancer?.limitedSupport && (
               <span
                 className="gradcam-limited"
