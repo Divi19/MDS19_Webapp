@@ -11,7 +11,7 @@ import { fetchPathways, type PathwayState } from "@/lib/pathways";
 import { generateReportPdf, reportFileName } from "@/lib/pdfReport";
 import AuthModal from "./AuthModal";
 import ClusterAnalysisPanel from "./ClusterAnalysisPanel";
-import { SHOW_GENE_TISSUE_TAGS } from "@/lib/features";
+import { SHOW_BREAKDOWN_TISSUE_NAMES, SHOW_GENE_TISSUE_TAGS } from "@/lib/features";
 import GenePathwayModal from "./GenePathwayModal";
 import GenePopover, { type PopoverAnchor } from "./GenePopover";
 import GradCamPanel, { type GradCamHandle, type GradCamStatus } from "./GradCamPanel";
@@ -1298,13 +1298,13 @@ export default function GeneXApp() {
                         type="button"
                         className={`cluster-tile clickable${clusterPin === i ? " pinned" : ""}`}
                         onClick={() => setClusterPin((prev) => (prev === i ? null : i))}
-                        title={clusterLabels[i] ? `cluster ${i} · ${clusterLabels[i]!.full}` : undefined}
+                        title={SHOW_BREAKDOWN_TISSUE_NAMES && clusterLabels[i] ? `cluster ${i} · ${clusterLabels[i]!.full}` : undefined}
                       >
                         <div className="head">
                           <span className="dot" style={{ background: c }} />
                           <span className="name">
-                            {i}
-                            {clusterLabels[i] && ` · ${clusterLabels[i]!.short}`}
+                            {SHOW_BREAKDOWN_TISSUE_NAMES ? i : `Cluster ${i}`}
+                            {SHOW_BREAKDOWN_TISSUE_NAMES && clusterLabels[i] && ` · ${clusterLabels[i]!.short}`}
                           </span>
                         </div>
                         <div className="count" style={{ color: c }}>
