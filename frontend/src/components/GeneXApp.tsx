@@ -28,7 +28,7 @@ import {
   clusterTissueLabels, geneHomeTissue, TISSUE_COLORS, TISSUE_SHORT_NAMES, type GeneTissue, type TissueClass,
 } from "@/lib/tissue";
 import {
-  buildTourSteps, DEFAULT_PHASE_MS, isManualPhases, pickTourPathwayCluster, tourBody, tourTarget, TUTORIAL_NO_RESULT_STEP,
+  buildTourSteps, isManualPhases, pickTourPathwayCluster, tourBody, tourTarget, TUTORIAL_NO_RESULT_STEP,
 } from "@/lib/tutorial";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -148,8 +148,8 @@ export default function GeneXApp() {
   const toastTimer = useRef<number | undefined>(undefined);
   // Guided tutorial: the current step's id, or null when it is closed.
   const [tutorialStepId, setTutorialStepId] = useState<string | null>(null);
-  // A step with two moments (the gene map, the pathway table) starts on its
-  // first target and moves to the second by itself.
+  // A step with two moments (the gene map, the pathway table, ...) starts on
+  // its first target; Next moves to the second.
   const [tourPhase, setTourPhase] = useState(0);
   // Tissue Analysis sub-view and the cluster whose pathway table is open.
   // Held here (not in their panels) so the tutorial can drive them.
@@ -488,18 +488,13 @@ export default function GeneXApp() {
   /** Undoes a moment when the presenter steps back into the one before it. */
   const undoTourPhase = useCallback((id: string) => {
     if (id === "gradcam") gradcamRef.current?.closeTile();
+    else if (id === "pathways") setPathwayModal(null);
+    else if (id === "gene-list") {
+      // The Cancer toggle goes back to how the presenter had it.
+      const start = tourSnapshot.current?.onlyCancer;
+      if (start != null) setCancerToggle(start);
+    }
   }, []);
-
-  useEffect(() => {
-    const step = tutorialSteps.find((item) => item.id === tutorialStepId);
-    if (!step?.phases || isManualPhases(step) || tourPhase >= step.phases.length - 1) return;
-    const timer = window.setTimeout(() => {
-      const next = tourPhase + 1;
-      runTourPhase(step.id, next);
-      setTourPhase(next);
-    }, step.phaseMs ?? DEFAULT_PHASE_MS);
-    return () => window.clearTimeout(timer);
-  }, [runTourPhase, tourPhase, tutorialStepId, tutorialSteps]);
 
   /** Closes the tour and puts back what the tour changed: the view, the
    * selected gene, the Tissue sub-view and pins, and anything it opened. */
@@ -1450,6 +1445,7 @@ export default function GeneXApp() {
               stepCount: tutorialSteps.length,
               chapterStepNumber: chapterSteps.indexOf(step) + 1,
               chapterStepCount: chapterSteps.length,
+              hasPreviousMoment: isManualPhases(step) && tourPhase > 0,
             }}
             onNext={nextTutorialStep}
             onBack={previousTutorialStep}

@@ -153,12 +153,15 @@ export interface TutorialView {
   chapterStepCount: number;
   /** Shows a loading indicator in place of Back and Next. */
   waiting?: boolean;
+  /** The step is on a later moment, so Back has somewhere to go even on the
+   * first step. */
+  hasPreviousMoment?: boolean;
 }
 
 function viewKey(view: TutorialView) {
   // The target is part of the key: a step with two moments changes target
   // while keeping its id.
-  return `${view.step.id}|${view.step.target ?? ""}|${view.step.body.join("/")}|${view.stepNumber}|${view.stepCount}|${view.chapterStepNumber}|${view.chapterStepCount}|${view.waiting ? 1 : 0}`;
+  return `${view.step.id}|${view.step.target ?? ""}|${view.step.body.join("/")}|${view.hasPreviousMoment ? 1 : 0}|${view.stepNumber}|${view.stepCount}|${view.chapterStepNumber}|${view.chapterStepCount}|${view.waiting ? 1 : 0}`;
 }
 
 export default function TutorialOverlay({
@@ -202,6 +205,9 @@ export default function TutorialOverlay({
 
   const { step } = shown;
   const isFirst = shown.stepNumber === 1;
+  // Back is there whenever there is somewhere to go: an earlier step, or an
+  // earlier moment of this one.
+  const canGoBack = !isFirst || Boolean(shown.hasPreviousMoment);
   const isLast = shown.stepNumber === shown.stepCount;
 
   useLayoutEffect(() => {
@@ -436,17 +442,17 @@ export default function TutorialOverlay({
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
         primaryRef.current?.click();
-      } else if (event.key === "ArrowLeft" && !isFirst && !shown.waiting) {
+      } else if (event.key === "ArrowLeft" && canGoBack && !shown.waiting) {
         event.preventDefault();
         onBack();
       }
     }
     window.addEventListener("keydown", handleKey, true);
     return () => window.removeEventListener("keydown", handleKey, true);
-  }, [isFirst, onBack, onSkip, shown.waiting]);
+  }, [canGoBack, onBack, onSkip, shown.waiting]);
 
   const hint = step.target && !targetFound ? step.missingTargetNote : step.actionHint;
-  const primaryLabel = step.notice ? "Close" : isFirst ? "Begin tutorial" : isLast ? "Finish tutorial" : "Next";
+  const primaryLabel = step.notice ? "Close" : isFirst && !shown.hasPreviousMoment ? "Begin tutorial" : isLast ? "Finish tutorial" : "Next";
 
   return (
     <div
@@ -527,7 +533,7 @@ export default function TutorialOverlay({
             </button>
           )}
           <span className="tutorial-actions-spacer" />
-          {!isFirst && !step.notice && !shown.waiting && (
+          {canGoBack && !step.notice && !shown.waiting && (
             <button type="button" className="tutorial-btn-secondary" onClick={onBack}>
               Back
             </button>

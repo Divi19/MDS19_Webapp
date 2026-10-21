@@ -29,15 +29,11 @@ export interface TutorialStep {
   /** `data-tour` value(s) to highlight. Several values, separated by spaces,
    * are highlighted together: the spotlight covers all of them. */
   target?: string;
-  /** For a step with two moments: the target of each moment, in order. The
-   * workspace moves to the next one by itself after a short pause (and does
-   * whatever that moment shows, e.g. opens a window). `target` is the first. */
+  /** For a step with two moments: the target of each moment, in order. Next
+   * moves to the next moment (and the workspace does whatever it shows, e.g.
+   * opens a window) before it moves on to the next step; Back returns to the
+   * first. Nothing moves on its own. `target` is the first. */
   phases?: string[];
-  /** How long the first moment lasts before the next one, in ms
-   * (DEFAULT_PHASE_MS when omitted). 0 means the presenter moves between the
-   * moments: Next goes to the second moment and then on, Back returns to the
-   * first. Used where the presenter is talking or interacting. */
-  phaseMs?: number;
   /** For a step with two moments: the card sentence for each moment, when it
    * differs from `body`. */
   phaseBodies?: string[];
@@ -53,9 +49,6 @@ export interface TutorialStep {
    * dots, count or Skip; a single Close button. */
   notice?: boolean;
 }
-
-/** Default pause before a two-moment step moves to its second moment. */
-export const DEFAULT_PHASE_MS = 1600;
 
 export const TUTORIAL_CHAPTERS = [
   "Reading a result",
@@ -77,10 +70,9 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     id: "gene-list",
     chapter: 1,
     target: "gene-list",
-    // Second moment: the Cancer toggle is switched on, and spotlighted with
-    // the list (GeneXApp restores it when the tour ends).
+    // Second moment (Next): the Cancer toggle is switched on, and spotlighted
+    // with the list (GeneXApp restores it when the tour ends).
     phases: ["gene-list", "cancer-filter gene-list"],
-    phaseMs: 1500,
     title: "Predicted genes",
     body: ["Genes ranked by average predicted level. The Cancer toggle keeps genes clearly higher in cancer tiles."],
   },
@@ -108,7 +100,6 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     // The map and breakdown, then the analysis panel; Next moves between them.
     target: "plot-card cluster-breakdown",
     phases: ["plot-card cluster-breakdown", "cluster-analysis"],
-    phaseMs: 0,
     title: "Clusters",
     body: ["Each colour is a group of tiles with similar predicted gene patterns. The panel lists each group's most elevated genes; small groups are flagged."],
   },
@@ -128,7 +119,6 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     // panel (click a gene to map it); Next moves between them.
     target: "tissue-map tissue-legend",
     phases: ["tissue-map tissue-legend", "tissue-expression tissue-genes-higher"],
-    phaseMs: 0,
     phaseBodies: [
       "Hover a tile to see the model's tissue probabilities. Click a type to pin it.",
       "Click a gene in the list to map it.",
@@ -144,7 +134,6 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     // has heat (skipped when none has computed yet); Next moves between them.
     target: "gradcam-map gradcam-scale",
     phases: ["gradcam-map gradcam-scale", "gradcam-detail"],
-    phaseMs: 0,
     interaction: "free",
     title: "Grad-CAM",
     body: ["Warmer means more influence. Click a tile for the cells behind it. It explains the model, not the biology."],
@@ -186,15 +175,15 @@ export function buildTourSteps(available: TourAvailability): TutorialStep[] {
     // while SHOW_GENE_TISSUE_TAGS is on; without it the gene list step is the
     // plain one.
     step.id === "gene-list" && !(available.tissue && SHOW_GENE_TISSUE_TAGS)
-      ? { ...step, phases: undefined, phaseMs: undefined, body: ["Genes ranked by average predicted level across the section."] }
+      ? { ...step, phases: undefined, body: ["Genes ranked by average predicted level across the section."] }
       : step,
   );
 }
 
-/** Whether the presenter (Next/Back) moves between this step's moments, rather
- * than the tour moving on by itself. */
+/** Whether the step has moments the presenter moves between with Next and
+ * Back (every step with `phases`; nothing moves on a timer). */
 export function isManualPhases(step: TutorialStep): boolean {
-  return Boolean(step.phases?.length) && step.phaseMs === 0;
+  return Boolean(step.phases?.length);
 }
 
 /** The card text for one of a step's moments. */

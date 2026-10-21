@@ -125,7 +125,6 @@ describe("tourTarget", () => {
   it("switches the gene list on the Cancer toggle after its first moment", () => {
     expect(tourTarget(step("gene-list"), 0)).toBe("gene-list");
     expect(tourTarget(step("gene-list"), 1)).toBe("cancer-filter gene-list");
-    expect(step("gene-list").phaseMs).toBe(1500);
   });
 
   it("opens the gene details beside the list and lets the presenter interact", () => {
@@ -154,11 +153,15 @@ describe("tourTarget", () => {
     expect(step("gradcam").body).toEqual(["Warmer means more influence. Click a tile for the cells behind it. It explains the model, not the biology."]);
   });
 
-  it("lets the presenter move between the moments of the interactive steps", () => {
-    for (const id of ["clusters", "tissue-expression", "gradcam"]) expect(isManualPhases(step(id))).toBe(true);
-    // The timed steps keep moving on by themselves.
-    for (const id of ["gene-list", "gene-map", "pathways"]) expect(isManualPhases(step(id))).toBe(false);
+  it("lets the presenter move between the moments of every two-moment step", () => {
+    const phased = TUTORIAL_STEPS.filter((x) => x.phases?.length).map((x) => x.id);
+    expect(phased).toEqual(["gene-list", "gene-map", "clusters", "pathways", "tissue-expression", "gradcam"]);
+    for (const id of phased) expect(isManualPhases(step(id))).toBe(true);
     expect(isManualPhases(step("finish"))).toBe(false);
+  });
+
+  it("has no timers: nothing in the step data moves on by itself", () => {
+    for (const x of TUTORIAL_STEPS) expect(Object.keys(x)).not.toContain("phaseMs");
   });
 
   it("uses a different card sentence per moment where the step has them", () => {
