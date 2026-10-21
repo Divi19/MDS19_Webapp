@@ -873,18 +873,19 @@ export default function GeneXApp() {
             ) : (
               (() => {
                 const max = maxGeneValue;
-                const pick = (
-                  g: (typeof genePageRows)[number],
-                  e: React.MouseEvent<HTMLButtonElement>,
-                ) => {
+                const pick = (g: (typeof genePageRows)[number]) => {
                   if (pred.geneMeta[g.name]) {
                     setGene(g.name);
                     // On the Tissue tab the gene feeds "Expression by tissue
                     // type", so stay there instead of jumping to Genes.
                     if (view !== "tissue") changeView("genes");
                   }
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setPopoverAnchor({ gene: g.name, x: rect.left, top: rect.top, bottom: rect.bottom });
+                  // Opens the gene's description + pathway table. Not during the
+                  // tutorial, whose "Map a single gene" step just needs the click.
+                  if (tutorialStepId === null) {
+                    setPopoverAnchor(null);
+                    setGenePathwayModal(g.name);
+                  }
                 };
 
                 return geneView === "cards" ? (
@@ -894,7 +895,7 @@ export default function GeneXApp() {
                         key={g.name}
                         className="gene-tile"
                         data-tour={index === 0 ? "gene-first" : undefined}
-                        onClick={(e) => pick(g, e)}
+                        onClick={() => pick(g)}
                       >
                         <div
                           className="gene-tile-swatch"
@@ -923,7 +924,7 @@ export default function GeneXApp() {
                         key={g.name}
                         className="gene-row"
                         data-tour={index === 0 ? "gene-first" : undefined}
-                        onClick={(e) => pick(g, e)}
+                        onClick={() => pick(g)}
                       >
                         <span className="gene-rank">{genePageClamped * genesPerPage + index + 1}</span>
                         <span className="gene-name-cell">

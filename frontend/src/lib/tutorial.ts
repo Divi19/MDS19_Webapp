@@ -141,7 +141,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     interaction: "free",
     title: "Gene reference information",
     body: [
-      "Selecting any gene name, here or in the gene list, opens a short description of the gene retrieved from MyGene.info, which aggregates NCBI, Ensembl and UniProt annotations.",
+      "Selecting a gene name here opens a short description retrieved from MyGene.info, which aggregates NCBI, Ensembl and UniProt annotations. Selecting a gene in the gene list opens that description together with the pathways the gene takes part in.",
     ],
   },
   {
