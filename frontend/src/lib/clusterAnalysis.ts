@@ -68,7 +68,7 @@ export function analyzeClusters(pred: Prediction, topN = 5): ClusterAnalysis[] {
           (first
             ? ` Top gene ${first.name} is ${first.diff >= 0 ? "elevated" : "reduced"} by ${Math.abs(first.diff).toFixed(2)} vs. the rest of the tissue.`
             : "") +
-          (lowSample ? " Small sample — interpret with caution." : "");
+          (lowSample ? " Small sample, interpret with caution." : "");
 
     return { index: c, count: nIn, fraction, markers: top, summary, lowSample };
   });

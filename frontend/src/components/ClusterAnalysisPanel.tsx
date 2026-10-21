@@ -74,7 +74,7 @@ export default function ClusterAnalysisPanel({
                   <span className="dot" style={{ background: c }} />
                   <span className="name">Cluster {i}</span>
                 </div>
-                <div className="cluster-analysis-text">no predictions yet — upload a section</div>
+                <div className="cluster-analysis-text">no predictions yet, upload a section</div>
               </div>
             ))
           : analysis.map((a) => {
